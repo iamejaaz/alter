@@ -3,6 +3,15 @@ import Sidebar from "./components/Sidebar";
 import SettingsPanel from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
 import Logo from "./components/Logo";
+import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
+
+function extractArtifacts(content: string): ArtifactType[] {
+  const arts: ArtifactType[] = [];
+  const re = /```(html|svg)\s*\n([\s\S]*?)```/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content))) arts.push({ lang: m[1].toLowerCase(), code: m[2].trim() });
+  return arts;
+}
 import { buildSystemPrompt, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
@@ -35,6 +44,7 @@ export default function App() {
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
+  const [artifact, setArtifact] = useState<ArtifactType | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -499,12 +509,23 @@ export default function App() {
                         </span>
                       )}
                       {m.content && (
-                        <button
-                          onClick={() => navigator.clipboard.writeText(m.content)}
-                          className="mt-1.5 text-[11px] text-zinc-600 hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          Copy
-                        </button>
+                        <div className="mt-1.5 flex items-center gap-3">
+                          <button
+                            onClick={() => navigator.clipboard.writeText(m.content)}
+                            className="text-[11px] text-zinc-600 hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            Copy
+                          </button>
+                          {extractArtifacts(m.content).map((a, k) => (
+                            <button
+                              key={k}
+                              onClick={() => setArtifact(a)}
+                              className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-white/[0.07] transition-colors"
+                            >
+                              ⧉ Preview {a.lang}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -673,6 +694,8 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {artifact && <ArtifactPanel artifact={artifact} onClose={() => setArtifact(null)} />}
 
       {preview && (
         <div
