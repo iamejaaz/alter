@@ -12,6 +12,8 @@ Alter is a small, fast desktop chat app. It talks to any OpenAI-compatible model
 - **Streaming chat** with markdown rendering, syntax-highlighted code blocks, and copy buttons.
 - **Memory** — Alter automatically remembers lasting facts and preferences you share, and carries them into every future conversation. Review or forget any of them in Settings.
 - **File tools** — attach a working folder, then ask Alter to show a file tree, search across files (like grep), read files, or write files (writes ask for confirmation first).
+- **Attachments** — drop in images (for vision-capable models) or text/code files; they're sent along with your message.
+- **Chat search** — filter conversations by title or message content from the sidebar.
 - **Modes** — choose how Alter uses tools: **Auto** (acts freely, writes ask first), **Ask first** (confirm every action), **Plan** (describes what it would do without acting), or **Chat only** (no tools).
 - **Shows its work** — every file read, search, web fetch, or write appears as a step in the conversation as Alter takes it.
 - **Web access** — Alter can search the web and read pages to answer with current information.

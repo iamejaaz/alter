@@ -8,6 +8,7 @@ import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
+  Attachment,
   Conversation,
   MemoryItem,
   Message,
@@ -31,7 +32,9 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(!storage.loadSettings().apiKey);
   const [error, setError] = useState<string | null>(null);
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
@@ -64,13 +67,17 @@ export default function App() {
     historyOverride?: Message[];
   }) => {
     const text = (opts?.text ?? input).trim();
-    if (!text || streaming) return;
+    const atts = opts?.text ? [] : attachments;
+    if ((!text && atts.length === 0) || streaming) return;
     if (!settings.apiKey) {
       setShowSettings(true);
       return;
     }
     setError(null);
-    if (!opts?.text) setInput("");
+    if (!opts?.text) {
+      setInput("");
+      setAttachments([]);
+    }
 
     let convId = opts?.forceNew ? null : activeId;
     if (!convId) {
@@ -85,7 +92,7 @@ export default function App() {
       setActiveId(convId);
     }
 
-    const userMsg: Message = { role: "user", content: text };
+    const userMsg: Message = { role: "user", content: text, attachments: atts.length ? atts : undefined };
     const history = (opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? []).filter(
       (m) => (m.role === "user" || m.role === "assistant") && m.content
     );
@@ -99,7 +106,28 @@ export default function App() {
     const useTools = mode === "auto" || mode === "ask";
     const systemContent =
       buildSystemPrompt(memories, mode) + (folder ? `\n\nThe user's current working folder is: ${folder}` : "");
-    const payload: Message[] = [{ role: "system", content: systemContent }, ...history, userMsg];
+
+    const textFiles = atts
+      .filter((a) => a.kind === "text")
+      .map((a) => `\n\n--- Attached file: ${a.name} ---\n${a.text}`)
+      .join("");
+    const images = atts.filter((a) => a.kind === "image" && a.dataUrl);
+    const apiText = text + textFiles;
+    const apiUserMsg = images.length
+      ? {
+          role: "user",
+          content: [
+            { type: "text", text: apiText || "(see attached image)" },
+            ...images.map((a) => ({ type: "image_url", image_url: { url: a.dataUrl } })),
+          ],
+        }
+      : { role: "user", content: apiText };
+
+    const payload = [
+      { role: "system", content: systemContent },
+      ...history,
+      apiUserMsg,
+    ] as unknown as Message[];
 
     setStreaming(true);
     abortRef.current = new AbortController();
@@ -230,6 +258,32 @@ export default function App() {
     setFolder(null);
     localStorage.removeItem("alter.folder");
   };
+
+  const onFiles = async (files: FileList | null) => {
+    if (!files) return;
+    const next: Attachment[] = [];
+    for (const f of Array.from(files)) {
+      if (f.type.startsWith("image/")) {
+        if (f.size > 8_000_000) {
+          setError(`${f.name} is too large (max 8 MB).`);
+          continue;
+        }
+        const dataUrl = await new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result as string);
+          r.onerror = rej;
+          r.readAsDataURL(f);
+        });
+        next.push({ id: newId(), kind: "image", name: f.name, dataUrl });
+      } else {
+        const text = (await f.text()).slice(0, 200_000);
+        next.push({ id: newId(), kind: "text", name: f.name, text });
+      }
+    }
+    setAttachments((prev) => [...prev, ...next]);
+  };
+
+  const removeAttachment = (id: string) => setAttachments((prev) => prev.filter((a) => a.id !== id));
 
   useEffect(() => {
     void invoke("save_routine_state", {
@@ -371,8 +425,34 @@ export default function App() {
                   </div>
                 ) : m.role === "user" ? (
                   <div key={i} className="flex justify-end animate-fade-up">
-                    <div className="max-w-[80%] rounded-2xl rounded-br-md bg-zinc-800/80 px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">
-                      {m.content}
+                    <div className="max-w-[80%]">
+                      {m.attachments && m.attachments.length > 0 && (
+                        <div className="flex flex-wrap justify-end gap-2 mb-2">
+                          {m.attachments.map((a) =>
+                            a.kind === "image" ? (
+                              <img
+                                key={a.id}
+                                src={a.dataUrl}
+                                alt={a.name}
+                                className="h-24 w-24 rounded-lg object-cover border border-white/10"
+                              />
+                            ) : (
+                              <div
+                                key={a.id}
+                                className="flex items-center gap-1.5 rounded-lg bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-300"
+                              >
+                                <span>📄</span>
+                                <span className="font-mono truncate max-w-[140px]">{a.name}</span>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                      {m.content && (
+                        <div className="rounded-2xl rounded-br-md bg-zinc-800/80 px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">
+                          {m.content}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -415,6 +495,44 @@ export default function App() {
               </p>
             )}
             <div className="rounded-2xl border border-white/10 bg-zinc-900/70 shadow-xl shadow-black/20 transition-colors focus-within:border-indigo-500/40">
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-3 pt-3">
+                  {attachments.map((a) => (
+                    <div key={a.id} className="relative group">
+                      {a.kind === "image" ? (
+                        <img
+                          src={a.dataUrl}
+                          alt={a.name}
+                          className="h-14 w-14 rounded-lg object-cover border border-white/10"
+                        />
+                      ) : (
+                        <div className="flex h-14 items-center gap-1.5 rounded-lg bg-white/[0.05] border border-white/10 px-2.5 text-xs text-zinc-300">
+                          <span>📄</span>
+                          <span className="font-mono truncate max-w-[100px]">{a.name}</span>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => removeAttachment(a.id)}
+                        className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-zinc-200 text-[10px] hover:bg-zinc-600"
+                        title="Remove"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.txt,.md,.json,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.c,.cpp,.h,.css,.html,.yaml,.yml,.toml,.csv,.log"
+                className="hidden"
+                onChange={(e) => {
+                  void onFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
               <textarea
                 value={input}
                 onChange={(e) => {
@@ -470,8 +588,15 @@ export default function App() {
                     ▾
                   </span>
                 </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1 rounded-lg hover:bg-white/[0.06] px-2 py-1 text-xs text-zinc-400 transition-colors"
+                  title="Attach images or files"
+                >
+                  <span className="text-sm leading-none">📎</span>
+                </button>
                 {folder ? (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2 py-1 text-xs text-zinc-300 max-w-[180px]">
+                  <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2 py-1 text-xs text-zinc-300 max-w-[160px]">
                     <span className="text-zinc-500">📁</span>
                     <span className="font-mono truncate">{folder.split("/").pop()}</span>
                     <button onClick={clearFolder} className="text-zinc-500 hover:text-zinc-200" title="Detach">
@@ -504,7 +629,7 @@ export default function App() {
                 ) : (
                   <button
                     onClick={() => send()}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() && attachments.length === 0}
                     className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 text-white transition-colors"
                     title="Send"
                   >

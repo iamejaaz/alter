@@ -4,11 +4,20 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
+export interface Attachment {
+  id: string;
+  kind: "image" | "text";
+  name: string;
+  dataUrl?: string;
+  text?: string;
+}
+
 export interface Message {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  attachments?: Attachment[];
 }
 
 export interface Conversation {
