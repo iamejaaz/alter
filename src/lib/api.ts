@@ -1,5 +1,12 @@
-import { MemoryItem, Message, Settings, ToolCall } from "./store";
+import { MemoryItem, Message, Mode, Settings, ToolCall } from "./store";
 import { TOOL_DEFINITIONS } from "./tools";
+
+const MODE_NOTES: Record<Mode, string> = {
+  auto: "",
+  ask: "",
+  plan: "\n\nYou are in PLAN mode. Do not use any tools or take any actions. Instead, lay out a clear, numbered plan of the steps you would take, then stop and wait for the user to approve.",
+  chat: "",
+};
 
 const BASE_PROMPT = `You are Alter, the user's second self — a sharp, warm, concise desktop companion. Answer directly, skip filler, use markdown when it helps.
 
@@ -11,10 +18,13 @@ For pages that need a real browser — JavaScript-rendered content, or clicking 
 
 When the user shares a lasting fact, preference, or instruction about themselves or how you should behave, append it at the very end of your reply on its own line wrapped exactly like: <memory>the fact, stated briefly</memory>. Only save genuinely lasting things, never small talk. Do not mention that you saved a memory.`;
 
-export function buildSystemPrompt(memories: MemoryItem[]): string {
-  if (memories.length === 0) return BASE_PROMPT;
-  const facts = memories.map((m) => `- ${m.text}`).join("\n");
-  return `${BASE_PROMPT}\n\nWhat you remember about the user from past conversations:\n${facts}`;
+export function buildSystemPrompt(memories: MemoryItem[], mode: Mode = "auto"): string {
+  let prompt = BASE_PROMPT;
+  if (memories.length > 0) {
+    const facts = memories.map((m) => `- ${m.text}`).join("\n");
+    prompt += `\n\nWhat you remember about the user from past conversations:\n${facts}`;
+  }
+  return prompt + MODE_NOTES[mode];
 }
 
 export function extractMemories(text: string): { clean: string; found: string[] } {
@@ -38,7 +48,8 @@ export async function streamChat(
   settings: Settings,
   messages: Message[],
   onDelta: (text: string) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  useTools = true
 ): Promise<ChatResult> {
   const url = settings.baseUrl.replace(/\/$/, "") + "/chat/completions";
   const res = await fetch(url, {
@@ -52,7 +63,7 @@ export async function streamChat(
       model: settings.model,
       messages,
       stream: true,
-      tools: TOOL_DEFINITIONS,
+      ...(useTools ? { tools: TOOL_DEFINITIONS } : {}),
     }),
   });
 

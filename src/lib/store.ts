@@ -18,10 +18,13 @@ export interface Conversation {
   createdAt: number;
 }
 
+export type Mode = "auto" | "ask" | "plan" | "chat";
+
 export interface Settings {
   baseUrl: string;
   apiKey: string;
   model: string;
+  mode?: Mode;
 }
 
 export interface MemoryItem {
@@ -58,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   baseUrl: PROVIDER_PRESETS.DeepSeek.baseUrl,
   apiKey: "",
   model: "deepseek-chat",
+  mode: "auto",
 };
 
 function load<T>(key: string, fallback: T): T {

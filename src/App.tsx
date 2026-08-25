@@ -85,8 +85,10 @@ export default function App() {
       messages: [...c.messages, userMsg, { role: "assistant", content: "" }],
     }));
 
+    const mode = settings.mode ?? "auto";
+    const useTools = mode === "auto" || mode === "ask";
     const systemContent =
-      buildSystemPrompt(memories) + (folder ? `\n\nThe user's current working folder is: ${folder}` : "");
+      buildSystemPrompt(memories, mode) + (folder ? `\n\nThe user's current working folder is: ${folder}` : "");
     const payload: Message[] = [{ role: "system", content: systemContent }, ...history, userMsg];
 
     setStreaming(true);
@@ -103,7 +105,8 @@ export default function App() {
               messages: [...c.messages.slice(0, -1), { role: "assistant", content: partial }],
             }));
           },
-          abortRef.current.signal
+          abortRef.current.signal,
+          useTools
         );
 
         if (result.toolCalls.length === 0) {
@@ -132,7 +135,7 @@ export default function App() {
           } catch {
             args = {};
           }
-          const output = await executeTool(tc.function.name, args);
+          const output = await executeTool(tc.function.name, args, mode);
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
         }
       }
@@ -293,6 +296,26 @@ export default function App() {
           </span>
           <div className="relative">
             <select
+              value={settings.mode ?? "auto"}
+              onChange={(e) => {
+                const s = { ...settings, mode: e.target.value as typeof settings.mode };
+                setSettings(s);
+                storage.saveSettings(s);
+              }}
+              className="appearance-none rounded-lg bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 pl-3 pr-7 py-1.5 text-xs text-zinc-300 focus:outline-none cursor-pointer transition-colors"
+              title="How Alter uses tools"
+            >
+              <option value="auto" className="bg-zinc-900">Auto</option>
+              <option value="ask" className="bg-zinc-900">Ask first</option>
+              <option value="plan" className="bg-zinc-900">Plan</option>
+              <option value="chat" className="bg-zinc-900">Chat only</option>
+            </select>
+            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px]">
+              ▾
+            </span>
+          </div>
+          <div className="relative">
+            <select
               value={settings.model}
               onChange={(e) => setModel(e.target.value)}
               className="appearance-none rounded-lg bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 pl-3 pr-7 py-1.5 text-xs text-zinc-300 focus:outline-none cursor-pointer transition-colors"
@@ -364,8 +387,16 @@ export default function App() {
             <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
               {active.messages.map((m, i) =>
                 m.role === "tool" ? (
-                  <div key={i} className="flex items-center gap-2 pl-11 text-xs font-mono text-zinc-500">
-                    <span className="whitespace-pre-wrap">{m.content}</span>
+                  <div key={i} className="pl-11 space-y-1 animate-fade-up">
+                    {m.content
+                      .split("\n")
+                      .filter(Boolean)
+                      .map((line, j) => (
+                        <div key={j} className="flex items-center gap-2 text-xs text-zinc-500">
+                          <span className="h-1.5 w-1.5 rounded-full bg-indigo-400/60 shrink-0" />
+                          <span className="font-mono truncate">{line.replace(/^▸\s*/, "")}</span>
+                        </div>
+                      ))}
                   </div>
                 ) : m.role === "user" ? (
                   <div key={i} className="flex justify-end animate-fade-up">

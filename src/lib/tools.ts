@@ -145,7 +145,15 @@ export async function pickFolder(): Promise<string | null> {
   return typeof result === "string" ? result : null;
 }
 
-export async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
+export async function executeTool(
+  name: string,
+  args: Record<string, unknown>,
+  mode: "auto" | "ask" | "plan" | "chat" = "auto"
+): Promise<string> {
+  if (mode === "ask" && name !== "write_file") {
+    const ok = window.confirm(`Alter wants to run ${name}:\n${JSON.stringify(args, null, 2)}\n\nAllow?`);
+    if (!ok) return "User denied this action.";
+  }
   if (name === "write_file") {
     const path = String(args.path ?? "");
     const next = String(args.content ?? "");
