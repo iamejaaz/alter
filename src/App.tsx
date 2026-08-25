@@ -2,11 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import SettingsPanel from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
+import Logo from "./components/Logo";
 import { buildSystemPrompt, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
-import { Conversation, MemoryItem, Message, Routine, Settings, newId, storage } from "./lib/store";
+import {
+  Conversation,
+  MemoryItem,
+  Message,
+  PROVIDER_PRESETS,
+  Routine,
+  Settings,
+  newId,
+  storage,
+} from "./lib/store";
 import RoutinesPanel from "./components/RoutinesPanel";
 
 export default function App() {
@@ -244,8 +254,25 @@ export default function App() {
     if (activeId === id) setActiveId(null);
   };
 
+  const modelOptions = Array.from(
+    new Set([settings.model, ...Object.values(PROVIDER_PRESETS).flatMap((p) => p.models)])
+  ).filter(Boolean);
+  const tokenEstimate = active
+    ? Math.round(active.messages.reduce((n, m) => n + (m.content?.length ?? 0), 0) / 4)
+    : 0;
+  const setModel = (model: string) => {
+    const s = { ...settings, model };
+    setSettings(s);
+    storage.saveSettings(s);
+  };
+  const suggestions = [
+    "What can you do?",
+    "Summarize the folder I attach",
+    "Search the web for today's news",
+  ];
+
   return (
-    <div className="flex h-full">
+    <div className="flex h-full bg-[#0c0c0e] text-zinc-100">
       <Sidebar
         conversations={conversations}
         activeId={activeId}
@@ -257,81 +284,120 @@ export default function App() {
       />
 
       <main className="flex-1 flex flex-col min-w-0">
-        {active && active.messages.length > 0 && (
-          <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-2">
-            <span className="flex-1 truncate text-sm text-zinc-300">{active.title}</span>
-            <button
-              onClick={regenerate}
-              disabled={streaming}
-              className="rounded-lg border border-zinc-800 hover:bg-zinc-800/60 disabled:opacity-40 px-2.5 py-1 text-xs text-zinc-400"
+        <header
+          data-tauri-drag-region
+          className="flex items-center gap-2 h-12 px-4 shrink-0 border-b border-white/[0.06]"
+        >
+          <span className="flex-1 truncate text-sm font-medium text-zinc-300 pointer-events-none">
+            {active && active.messages.length > 0 ? active.title : ""}
+          </span>
+          <div className="relative">
+            <select
+              value={settings.model}
+              onChange={(e) => setModel(e.target.value)}
+              className="appearance-none rounded-lg bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 pl-3 pr-7 py-1.5 text-xs text-zinc-300 focus:outline-none cursor-pointer transition-colors"
             >
-              Regenerate
-            </button>
-            <button
-              onClick={exportConversation}
-              className="rounded-lg border border-zinc-800 hover:bg-zinc-800/60 px-2.5 py-1 text-xs text-zinc-400"
-            >
-              Export
-            </button>
+              {modelOptions.map((m) => (
+                <option key={m} value={m} className="bg-zinc-900">
+                  {m}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px]">
+              ▾
+            </span>
           </div>
-        )}
+          {active && active.messages.length > 0 && (
+            <>
+              <span className="hidden sm:block text-[11px] text-zinc-600 tabular-nums">
+                ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate} tokens
+              </span>
+              <button
+                onClick={regenerate}
+                disabled={streaming}
+                className="rounded-lg hover:bg-white/[0.06] disabled:opacity-40 px-2.5 py-1.5 text-xs text-zinc-400 transition-colors"
+                title="Regenerate last reply"
+              >
+                Regenerate
+              </button>
+              <button
+                onClick={exportConversation}
+                className="rounded-lg hover:bg-white/[0.06] px-2.5 py-1.5 text-xs text-zinc-400 transition-colors"
+                title="Export as markdown"
+              >
+                Export
+              </button>
+            </>
+          )}
+        </header>
+
         <div className="flex-1 overflow-y-auto">
           {!active || active.messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-8">
-              <h1 className="text-2xl font-semibold text-zinc-200">Alter</h1>
-              <p className="mt-2 text-sm text-zinc-500 max-w-sm">
-                Your second self. It remembers what matters — tell it something lasting and it keeps it across chats.
+              <Logo size={48} />
+              <h1 className="mt-5 text-[28px] font-semibold tracking-tight text-zinc-100">Alter</h1>
+              <p className="mt-2 text-[15px] text-zinc-500 max-w-md leading-relaxed">
+                Your second self. It remembers what matters, reads your files, browses the web, and keeps working while you're away.
               </p>
-              {!settings.apiKey && (
+              {settings.apiKey ? (
+                <div className="mt-7 flex flex-wrap justify-center gap-2 max-w-lg">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => send({ text: s })}
+                      className="rounded-full border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] px-3.5 py-1.5 text-[13px] text-zinc-300 transition-colors"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              ) : (
                 <button
                   onClick={() => setShowSettings(true)}
-                  className="mt-5 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium"
+                  className="mt-7 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-5 py-2.5 text-sm font-medium shadow-lg shadow-indigo-950/40 transition-colors"
                 >
                   Connect a model
                 </button>
               )}
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
+            <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
               {active.messages.map((m, i) =>
                 m.role === "tool" ? (
-                  <div key={i} className="flex justify-start">
-                    <div className="max-w-[80%] rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs font-mono text-zinc-400 whitespace-pre-wrap">
+                  <div key={i} className="flex items-center gap-2 pl-11 text-xs font-mono text-zinc-500">
+                    <span className="whitespace-pre-wrap">{m.content}</span>
+                  </div>
+                ) : m.role === "user" ? (
+                  <div key={i} className="flex justify-end animate-fade-up">
+                    <div className="max-w-[80%] rounded-2xl rounded-br-md bg-zinc-800/80 px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">
                       {m.content}
                     </div>
                   </div>
                 ) : (
-                <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
-                      m.role === "user"
-                        ? "bg-indigo-600 text-white rounded-br-sm"
-                        : "bg-zinc-800 text-zinc-100 rounded-bl-sm"
-                    }`}
-                  >
-                    {m.content ? (
-                      m.role === "assistant" ? (
+                  <div key={i} className="group flex gap-3 animate-fade-up">
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.04] border border-white/10">
+                      <Logo size={15} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      {m.content ? (
                         <Markdown text={m.content} />
                       ) : (
-                        m.content
-                      )
-                    ) : (
-                      <span className="inline-flex gap-1">
-                        <span className="animate-bounce">·</span>
-                        <span className="animate-bounce [animation-delay:120ms]">·</span>
-                        <span className="animate-bounce [animation-delay:240ms]">·</span>
-                      </span>
-                    )}
-                    {m.role === "assistant" && m.content && (
-                      <button
-                        onClick={() => navigator.clipboard.writeText(m.content)}
-                        className="mt-1.5 block text-[11px] text-zinc-500 hover:text-zinc-300"
-                      >
-                        Copy
-                      </button>
-                    )}
+                        <span className="inline-flex gap-1 text-zinc-500 py-1">
+                          <span className="animate-bounce">●</span>
+                          <span className="animate-bounce [animation-delay:150ms]">●</span>
+                          <span className="animate-bounce [animation-delay:300ms]">●</span>
+                        </span>
+                      )}
+                      {m.content && (
+                        <button
+                          onClick={() => navigator.clipboard.writeText(m.content)}
+                          className="mt-1.5 text-[11px] text-zinc-600 hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          Copy
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
                 )
               )}
               <div ref={bottomRef} />
@@ -339,61 +405,72 @@ export default function App() {
           )}
         </div>
 
-        {error && (
-          <div className="mx-auto mb-2 max-w-3xl w-full px-6">
-            <p className="rounded-lg border border-red-900 bg-red-950/60 px-3 py-2 text-xs text-red-300">{error}</p>
-          </div>
-        )}
-
-        <div className="border-t border-zinc-800 p-4">
-          <div className="max-w-3xl mx-auto mb-2 flex items-center gap-2">
-            {folder ? (
-              <div className="flex items-center gap-2 rounded-lg bg-zinc-800/60 px-2.5 py-1 text-xs text-zinc-300">
-                <span className="text-zinc-500">folder:</span>
-                <span className="font-mono truncate max-w-[280px]">{folder}</span>
-                <button onClick={clearFolder} className="text-zinc-500 hover:text-zinc-200" title="Detach">
-                  ×
-                </button>
+        <div className="px-4 pb-4 pt-1">
+          <div className="max-w-3xl mx-auto">
+            {error && (
+              <p className="mb-2 rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-xs text-red-300">
+                {error}
+              </p>
+            )}
+            <div className="rounded-2xl border border-white/10 bg-zinc-900/70 shadow-xl shadow-black/20 transition-colors focus-within:border-indigo-500/40">
+              <textarea
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                rows={1}
+                placeholder="Message Alter…"
+                className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-zinc-500"
+              />
+              <div className="flex items-center gap-1.5 px-2.5 pb-2.5">
+                {folder ? (
+                  <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2.5 py-1 text-xs text-zinc-300 max-w-[300px]">
+                    <span className="text-zinc-500">📁</span>
+                    <span className="font-mono truncate">{folder.split("/").pop()}</span>
+                    <button onClick={clearFolder} className="text-zinc-500 hover:text-zinc-200" title="Detach">
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={chooseFolder}
+                    className="flex items-center gap-1.5 rounded-lg hover:bg-white/[0.06] px-2.5 py-1 text-xs text-zinc-400 transition-colors"
+                  >
+                    <span className="text-sm leading-none">＋</span> Attach folder
+                  </button>
+                )}
+                <div className="flex-1" />
+                {streaming ? (
+                  <button
+                    onClick={stop}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 hover:bg-white/[0.06] text-zinc-300 transition-colors"
+                    title="Stop"
+                  >
+                    <span className="h-2.5 w-2.5 rounded-[2px] bg-current" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => send()}
+                    disabled={!input.trim()}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 text-white transition-colors"
+                    title="Send"
+                  >
+                    <span className="text-base leading-none">↑</span>
+                  </button>
+                )}
               </div>
-            ) : (
-              <button
-                onClick={chooseFolder}
-                className="rounded-lg border border-zinc-800 hover:bg-zinc-800/60 px-2.5 py-1 text-xs text-zinc-400"
-              >
-                + Attach folder
-              </button>
-            )}
-          </div>
-          <div className="max-w-3xl mx-auto flex items-end gap-2">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-              rows={1}
-              placeholder="Message Alter…"
-              className="flex-1 resize-none rounded-xl bg-zinc-800 border border-zinc-700 px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 placeholder:text-zinc-500"
-            />
-            {streaming ? (
-              <button
-                onClick={stop}
-                className="rounded-xl border border-zinc-700 hover:bg-zinc-800 px-4 py-3 text-sm text-zinc-300"
-              >
-                Stop
-              </button>
-            ) : (
-              <button
-                onClick={() => send()}
-                disabled={!input.trim()}
-                className="rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 px-4 py-3 text-sm font-medium"
-              >
-                Send
-              </button>
-            )}
+            </div>
+            <p className="mt-2 text-center text-[11px] text-zinc-600">
+              Alter can read files, browse the web, and remember what matters.
+            </p>
           </div>
         </div>
       </main>

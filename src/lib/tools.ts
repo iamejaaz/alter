@@ -147,7 +147,20 @@ export async function pickFolder(): Promise<string | null> {
 
 export async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
   if (name === "write_file") {
-    const ok = window.confirm(`Alter wants to write to:\n${args.path}\n\nAllow?`);
+    const path = String(args.path ?? "");
+    const next = String(args.content ?? "");
+    let existing: string | null = null;
+    try {
+      existing = await invoke<string>("read_file", { path });
+    } catch {
+      existing = null;
+    }
+    const summary =
+      existing === null
+        ? `Create new file (${next.split("\n").length} lines).`
+        : `Overwrite existing file: ${existing.split("\n").length} → ${next.split("\n").length} lines.`;
+    const preview = next.split("\n").slice(0, 12).join("\n");
+    const ok = window.confirm(`Alter wants to write:\n${path}\n\n${summary}\n\nPreview:\n${preview}\n\nAllow?`);
     if (!ok) return "User denied the write.";
   }
   try {
