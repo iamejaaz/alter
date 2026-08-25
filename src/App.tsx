@@ -33,6 +33,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [preview, setPreview] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -48,6 +49,7 @@ export default function App() {
         e.preventDefault();
         setActiveId(null);
       }
+      if (e.key === "Escape") setPreview(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -434,7 +436,8 @@ export default function App() {
                                 key={a.id}
                                 src={a.dataUrl}
                                 alt={a.name}
-                                className="h-24 w-24 rounded-lg object-cover border border-white/10"
+                                onClick={() => setPreview(a.dataUrl ?? null)}
+                                className="h-24 w-24 rounded-lg object-cover border border-white/10 cursor-zoom-in hover:opacity-90 transition-opacity"
                               />
                             ) : (
                               <div
@@ -503,7 +506,8 @@ export default function App() {
                         <img
                           src={a.dataUrl}
                           alt={a.name}
-                          className="h-14 w-14 rounded-lg object-cover border border-white/10"
+                          onClick={() => setPreview(a.dataUrl ?? null)}
+                          className="h-14 w-14 rounded-lg object-cover border border-white/10 cursor-zoom-in hover:opacity-90 transition-opacity"
                         />
                       ) : (
                         <div className="flex h-14 items-center gap-1.5 rounded-lg bg-white/[0.05] border border-white/10 px-2.5 text-xs text-zinc-300">
@@ -644,6 +648,27 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-black/85 p-10 animate-fade-up"
+          onClick={() => setPreview(null)}
+        >
+          <img
+            src={preview}
+            alt="preview"
+            className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setPreview(null)}
+            className="absolute top-5 right-5 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-zinc-200 text-lg"
+            title="Close"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {showRoutines && (
         <RoutinesPanel
