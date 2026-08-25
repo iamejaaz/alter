@@ -9,10 +9,13 @@ Alter is a small, fast desktop chat app. It talks to any OpenAI-compatible model
 ## Features
 
 - **Bring your own model** — presets for DeepSeek, Moonshot (Kimi), and the Vercel AI Gateway, or point the base URL at any OpenAI-compatible endpoint. Your API key is stored only on your device.
-- **Streaming chat** with markdown rendering, syntax-highlighted code blocks, and copy buttons.
+- **Streaming chat** with markdown, syntax-highlighted code, LaTeX math (KaTeX), copy buttons, and editable messages.
+- **Artifacts** — HTML/SVG the assistant produces opens in a live, sandboxed side-panel preview.
+- **Light & dark themes** — toggle in Settings, remembered across launches.
+- **Voice dictation** where the platform supports it.
 - **Memory** — Alter automatically remembers lasting facts and preferences you share, and carries them into every future conversation. Review or forget any of them in Settings.
 - **File tools** — attach a working folder, then ask Alter to show a file tree, search across files (like grep), read files, or write files (writes ask for confirmation first).
-- **Attachments** — drop in images (for vision-capable models) or text/code files; they're sent along with your message.
+- **Attachments** — drop in images (for vision-capable models), PDFs (text is extracted), or text/code files; click an image to view it full-size.
 - **Chat search** — filter conversations by title or message content from the sidebar.
 - **Modes** — choose how Alter uses tools: **Auto** (acts freely, writes ask first), **Ask first** (confirm every action), **Plan** (describes what it would do without acting), or **Chat only** (no tools).
 - **Shows its work** — every file read, search, web fetch, or write appears as a step in the conversation as Alter takes it.

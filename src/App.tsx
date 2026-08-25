@@ -45,8 +45,39 @@ export default function App() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<ArtifactType | null>(null);
+  const [listening, setListening] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const speechSupported =
+    typeof window !== "undefined" &&
+    // @ts-expect-error vendor-prefixed
+    !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  const toggleMic = () => {
+    // @ts-expect-error vendor-prefixed
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const rec = new SR();
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+    const base = input;
+    rec.onresult = (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => {
+      let t = "";
+      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      setInput((base ? base + " " : "") + t);
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recognitionRef.current = rec;
+    setListening(true);
+    rec.start();
+  };
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
@@ -645,6 +676,17 @@ export default function App() {
                 >
                   <span className="text-sm leading-none">📎</span>
                 </button>
+                {speechSupported && (
+                  <button
+                    onClick={toggleMic}
+                    className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+                      listening ? "bg-red-500/20 text-red-300" : "hover:bg-[var(--panel-2)] text-[var(--txt-dim)]"
+                    }`}
+                    title={listening ? "Stop dictation" : "Dictate"}
+                  >
+                    <span className="text-sm leading-none">🎤</span>
+                  </button>
+                )}
                 {folder ? (
                   <div className="flex items-center gap-1.5 rounded-lg bg-[var(--panel)] px-2 py-1 text-xs text-[var(--txt)] max-w-[160px]">
                     <span className="text-[var(--txt-faint)]">📁</span>
