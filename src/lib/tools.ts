@@ -49,6 +49,30 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "web_search",
+      description: "Search the web and return the top result titles and URLs. Use to find pages, then fetch_url to read them.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string", description: "Search query" } },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "fetch_url",
+      description: "Fetch a web page by URL and return its readable text. Use to read articles, docs, or search results.",
+      parameters: {
+        type: "object",
+        properties: { url: { type: "string", description: "Full http(s) URL" } },
+        required: ["url"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "read_file",
       description: "Read a text file from the user's computer by absolute path.",
       parameters: {
@@ -96,8 +120,9 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
 
 export function describeToolCall(name: string, argsJson: string): string {
   try {
-    const args = JSON.parse(argsJson) as { path?: string; query?: string };
+    const args = JSON.parse(argsJson) as { path?: string; query?: string; url?: string };
     if (args.query) return `${name}("${args.query}")`;
+    if (args.url) return `${name}(${args.url})`;
     return `${name}(${args.path ?? ""})`;
   } catch {
     return name;

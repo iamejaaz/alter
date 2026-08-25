@@ -4,6 +4,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
 import { buildSystemPrompt, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
+import { invoke } from "@tauri-apps/api/core";
 import { Conversation, MemoryItem, Message, Routine, Settings, newId, storage } from "./lib/store";
 import RoutinesPanel from "./components/RoutinesPanel";
 
@@ -165,19 +166,35 @@ export default function App() {
   };
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (streaming || !settings.apiKey) return;
-      const now = Date.now();
-      const due = routines.find(
-        (r) => r.enabled && (r.lastRun == null || now - r.lastRun >= r.everyMinutes * 60_000)
-      );
-      if (!due) return;
-      setRoutines((prev) => prev.map((r) => (r.id === due.id ? { ...r, lastRun: now } : r)));
-      void send({ text: due.prompt, forceNew: true, title: `⏱ ${due.name}` });
-    }, 30_000);
+    void invoke("save_routine_state", {
+      state: JSON.stringify({ settings, memories, routines }),
+    }).catch(() => {});
+  }, [settings, memories, routines]);
+
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      try {
+        const raw = await invoke<string>("take_routine_results");
+        const results: { name: string; prompt: string; content: string; at: number }[] = JSON.parse(raw);
+        if (!results.length) return;
+        setConversations((prev) => [
+          ...results.map((r) => ({
+            id: newId(),
+            title: `⏱ ${r.name}`,
+            createdAt: r.at,
+            messages: [
+              { role: "user", content: r.prompt } as Message,
+              { role: "assistant", content: r.content } as Message,
+            ],
+          })),
+          ...prev,
+        ]);
+      } catch {
+        /* not in desktop app */
+      }
+    }, 20_000);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routines, streaming, settings, memories, folder]);
+  }, []);
 
   const deleteConversation = (id: string) => {
     setConversations((prev) => prev.filter((c) => c.id !== id));

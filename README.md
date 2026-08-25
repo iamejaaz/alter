@@ -12,8 +12,9 @@ Alter is a small, fast desktop chat app. It talks to any OpenAI-compatible model
 - **Streaming chat** with markdown rendering, syntax-highlighted code blocks, and copy buttons.
 - **Memory** — Alter automatically remembers lasting facts and preferences you share, and carries them into every future conversation. Review or forget any of them in Settings.
 - **File tools** — attach a working folder, then ask Alter to show a file tree, search across files (like grep), read files, or write files (writes ask for confirmation first).
-- **Routines** — save a prompt and an interval; Alter runs it automatically and drops each result into a new conversation.
-- **Runs in the background** — a menu-bar tray keeps Alter alive when you close the window, and an optional launch-at-login means routines keep firing.
+- **Web access** — Alter can search the web and read pages to answer with current information.
+- **Routines** — save a prompt and an interval; Alter runs it automatically and drops each result into a new conversation. Scheduled runs execute in the Rust backend, so they fire even with the window closed.
+- **Runs in the background** — a menu-bar tray keeps Alter alive when you close the window, plus an optional launch-at-login.
 
 ## Stack
 
