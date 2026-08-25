@@ -40,6 +40,16 @@ export default function App() {
   useEffect(() => storage.saveMemories(memories), [memories]);
   useEffect(() => storage.saveRoutines(routines), [routines]);
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault();
+        setActiveId(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [active?.messages]);
 
@@ -294,47 +304,8 @@ export default function App() {
           <span className="flex-1 truncate text-sm font-medium text-zinc-300 pointer-events-none">
             {active && active.messages.length > 0 ? active.title : ""}
           </span>
-          <div className="relative">
-            <select
-              value={settings.mode ?? "auto"}
-              onChange={(e) => {
-                const s = { ...settings, mode: e.target.value as typeof settings.mode };
-                setSettings(s);
-                storage.saveSettings(s);
-              }}
-              className="appearance-none rounded-lg bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 pl-3 pr-7 py-1.5 text-xs text-zinc-300 focus:outline-none cursor-pointer transition-colors"
-              title="How Alter uses tools"
-            >
-              <option value="auto" className="bg-zinc-900">Auto</option>
-              <option value="ask" className="bg-zinc-900">Ask first</option>
-              <option value="plan" className="bg-zinc-900">Plan</option>
-              <option value="chat" className="bg-zinc-900">Chat only</option>
-            </select>
-            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px]">
-              ▾
-            </span>
-          </div>
-          <div className="relative">
-            <select
-              value={settings.model}
-              onChange={(e) => setModel(e.target.value)}
-              className="appearance-none rounded-lg bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 pl-3 pr-7 py-1.5 text-xs text-zinc-300 focus:outline-none cursor-pointer transition-colors"
-            >
-              {modelOptions.map((m) => (
-                <option key={m} value={m} className="bg-zinc-900">
-                  {m}
-                </option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px]">
-              ▾
-            </span>
-          </div>
           {active && active.messages.length > 0 && (
             <>
-              <span className="hidden sm:block text-[11px] text-zinc-600 tabular-nums">
-                ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate} tokens
-              </span>
               <button
                 onClick={regenerate}
                 disabled={streaming}
@@ -461,9 +432,46 @@ export default function App() {
                 placeholder="Message Alter…"
                 className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-zinc-500"
               />
-              <div className="flex items-center gap-1.5 px-2.5 pb-2.5">
+              <div className="flex items-center gap-1 px-2.5 pb-2.5">
+                <div className="relative">
+                  <select
+                    value={settings.mode ?? "auto"}
+                    onChange={(e) => {
+                      const s = { ...settings, mode: e.target.value as typeof settings.mode };
+                      setSettings(s);
+                      storage.saveSettings(s);
+                    }}
+                    className="appearance-none bg-transparent rounded-lg hover:bg-white/[0.06] pl-2 pr-6 py-1 text-xs text-zinc-300 focus:outline-none cursor-pointer transition-colors"
+                    title="How Alter uses tools"
+                  >
+                    <option value="auto" className="bg-zinc-900">⚡ Auto</option>
+                    <option value="ask" className="bg-zinc-900">✋ Ask first</option>
+                    <option value="plan" className="bg-zinc-900">📋 Plan</option>
+                    <option value="chat" className="bg-zinc-900">💬 Chat only</option>
+                  </select>
+                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-600 text-[9px]">
+                    ▾
+                  </span>
+                </div>
+                <div className="relative">
+                  <select
+                    value={settings.model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="appearance-none bg-transparent rounded-lg hover:bg-white/[0.06] pl-2 pr-6 py-1 text-xs text-zinc-300 focus:outline-none cursor-pointer transition-colors max-w-[160px] truncate"
+                    title="Model"
+                  >
+                    {modelOptions.map((m) => (
+                      <option key={m} value={m} className="bg-zinc-900">
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-600 text-[9px]">
+                    ▾
+                  </span>
+                </div>
                 {folder ? (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2.5 py-1 text-xs text-zinc-300 max-w-[300px]">
+                  <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2 py-1 text-xs text-zinc-300 max-w-[180px]">
                     <span className="text-zinc-500">📁</span>
                     <span className="font-mono truncate">{folder.split("/").pop()}</span>
                     <button onClick={clearFolder} className="text-zinc-500 hover:text-zinc-200" title="Detach">
@@ -473,12 +481,18 @@ export default function App() {
                 ) : (
                   <button
                     onClick={chooseFolder}
-                    className="flex items-center gap-1.5 rounded-lg hover:bg-white/[0.06] px-2.5 py-1 text-xs text-zinc-400 transition-colors"
+                    className="flex items-center gap-1 rounded-lg hover:bg-white/[0.06] px-2 py-1 text-xs text-zinc-400 transition-colors"
+                    title="Attach a working folder"
                   >
-                    <span className="text-sm leading-none">＋</span> Attach folder
+                    <span className="text-sm leading-none">＋</span> Folder
                   </button>
                 )}
                 <div className="flex-1" />
+                {active && active.messages.length > 0 && (
+                  <span className="text-[11px] text-zinc-600 tabular-nums mr-1">
+                    ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}
+                  </span>
+                )}
                 {streaming ? (
                   <button
                     onClick={stop}
