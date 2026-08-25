@@ -3,6 +3,8 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import "highlight.js/styles/github-dark.css";
+import renderMathInElement from "katex/contrib/auto-render";
+import "katex/dist/katex.min.css";
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -17,6 +19,19 @@ export default function Markdown({ text }: { text: string }) {
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
+    try {
+      renderMathInElement(root, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false },
+          { left: "\\(", right: "\\)", display: false },
+          { left: "\\[", right: "\\]", display: true },
+        ],
+        throwOnError: false,
+      });
+    } catch {
+      /* ignore math errors */
+    }
     root.querySelectorAll("pre code").forEach((block) => {
       const el = block as HTMLElement;
       if (el.dataset.highlighted) return;

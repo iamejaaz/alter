@@ -7,6 +7,7 @@ import { buildSystemPrompt, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
+import { extractPdfText } from "./lib/pdf";
 import {
   Attachment,
   Conversation,
@@ -224,6 +225,15 @@ export default function App() {
     void send({ text: prompt, historyOverride: prefix });
   };
 
+  const editMessage = (idx: number) => {
+    if (!active || streaming) return;
+    const m = active.messages[idx];
+    if (m.role !== "user") return;
+    updateConversation(active.id, (c) => ({ ...c, messages: c.messages.slice(0, idx) }));
+    setInput(m.content);
+    if (m.attachments) setAttachments(m.attachments);
+  };
+
   const exportConversation = async () => {
     if (!active) return;
     const md =
@@ -277,6 +287,13 @@ export default function App() {
           r.readAsDataURL(f);
         });
         next.push({ id: newId(), kind: "image", name: f.name, dataUrl });
+      } else if (f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
+        try {
+          const text = await extractPdfText(f);
+          next.push({ id: newId(), kind: "text", name: f.name, text: text.slice(0, 200_000) });
+        } catch {
+          setError(`Could not read ${f.name}.`);
+        }
       } else {
         const text = (await f.text()).slice(0, 200_000);
         next.push({ id: newId(), kind: "text", name: f.name, text });
@@ -426,7 +443,7 @@ export default function App() {
                       ))}
                   </div>
                 ) : m.role === "user" ? (
-                  <div key={i} className="flex justify-end animate-fade-up">
+                  <div key={i} className="group flex justify-end animate-fade-up">
                     <div className="max-w-[80%]">
                       {m.attachments && m.attachments.length > 0 && (
                         <div className="flex flex-wrap justify-end gap-2 mb-2">
@@ -456,6 +473,14 @@ export default function App() {
                           {m.content}
                         </div>
                       )}
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => editMessage(i)}
+                          className="mt-1 text-[11px] text-zinc-600 hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          Edit
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -530,7 +555,7 @@ export default function App() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept="image/*,.txt,.md,.json,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.c,.cpp,.h,.css,.html,.yaml,.yml,.toml,.csv,.log"
+                accept="image/*,.pdf,.txt,.md,.json,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.c,.cpp,.h,.css,.html,.yaml,.yml,.toml,.csv,.log"
                 className="hidden"
                 onChange={(e) => {
                   void onFiles(e.target.files);
