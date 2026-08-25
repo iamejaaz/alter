@@ -73,6 +73,46 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "browser_open",
+      description:
+        "Open a URL in a real automated browser and return the page's title, URL, and readable text. Use for pages that need JavaScript or interaction (fetch_url is lighter for static pages). First use may download a browser engine.",
+      parameters: {
+        type: "object",
+        properties: { url: { type: "string", description: "Full http(s) URL" } },
+        required: ["url"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_click",
+      description: "Click a link or button in the open browser by its visible text, then return the resulting page text.",
+      parameters: {
+        type: "object",
+        properties: { text: { type: "string", description: "Visible text of the link or button" } },
+        required: ["text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_type",
+      description: "Type text into an input in the open browser, identified by a CSS selector (e.g. input[name=q]).",
+      parameters: {
+        type: "object",
+        properties: {
+          selector: { type: "string", description: "CSS selector for the input" },
+          text: { type: "string", description: "Text to type" },
+        },
+        required: ["selector", "text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "read_file",
       description: "Read a text file from the user's computer by absolute path.",
       parameters: {

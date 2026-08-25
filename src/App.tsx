@@ -5,6 +5,7 @@ import Markdown from "./components/Markdown";
 import { buildSystemPrompt, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { Conversation, MemoryItem, Message, Routine, Settings, newId, storage } from "./lib/store";
 import RoutinesPanel from "./components/RoutinesPanel";
 
@@ -36,7 +37,12 @@ export default function App() {
     setConversations((prev) => prev.map((c) => (c.id === id ? fn(c) : c)));
   };
 
-  const send = async (opts?: { text?: string; forceNew?: boolean; title?: string }) => {
+  const send = async (opts?: {
+    text?: string;
+    forceNew?: boolean;
+    title?: string;
+    historyOverride?: Message[];
+  }) => {
     const text = (opts?.text ?? input).trim();
     if (!text || streaming) return;
     if (!settings.apiKey) {
@@ -60,7 +66,7 @@ export default function App() {
     }
 
     const userMsg: Message = { role: "user", content: text };
-    const history = (conversations.find((c) => c.id === convId)?.messages ?? []).filter(
+    const history = (opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? []).filter(
       (m) => (m.role === "user" || m.role === "assistant") && m.content
     );
     updateConversation(convId, (c) => ({
@@ -148,6 +154,43 @@ export default function App() {
 
   const stop = () => abortRef.current?.abort();
 
+  const regenerate = () => {
+    if (!active || streaming) return;
+    const msgs = active.messages;
+    let lastUser = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "user") {
+        lastUser = i;
+        break;
+      }
+    }
+    if (lastUser < 0) return;
+    const prompt = msgs[lastUser].content;
+    const prefix = msgs.slice(0, lastUser);
+    updateConversation(active.id, (c) => ({ ...c, messages: prefix }));
+    void send({ text: prompt, historyOverride: prefix });
+  };
+
+  const exportConversation = async () => {
+    if (!active) return;
+    const md =
+      `# ${active.title}\n\n` +
+      active.messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => `**${m.role === "user" ? "You" : "Alter"}:**\n\n${m.content}`)
+        .join("\n\n---\n\n");
+    try {
+      const path = await save({
+        defaultPath: `${active.title}.md`,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      if (path) await invoke("write_file", { path, content: md });
+    } catch {
+      await navigator.clipboard.writeText(md);
+      setError("Saved to clipboard (file dialog unavailable).");
+    }
+  };
+
   const chooseFolder = async () => {
     try {
       const dir = await pickFolder();
@@ -214,6 +257,24 @@ export default function App() {
       />
 
       <main className="flex-1 flex flex-col min-w-0">
+        {active && active.messages.length > 0 && (
+          <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-2">
+            <span className="flex-1 truncate text-sm text-zinc-300">{active.title}</span>
+            <button
+              onClick={regenerate}
+              disabled={streaming}
+              className="rounded-lg border border-zinc-800 hover:bg-zinc-800/60 disabled:opacity-40 px-2.5 py-1 text-xs text-zinc-400"
+            >
+              Regenerate
+            </button>
+            <button
+              onClick={exportConversation}
+              className="rounded-lg border border-zinc-800 hover:bg-zinc-800/60 px-2.5 py-1 text-xs text-zinc-400"
+            >
+              Export
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
           {!active || active.messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-8">

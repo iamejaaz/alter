@@ -13,6 +13,7 @@ Alter is a small, fast desktop chat app. It talks to any OpenAI-compatible model
 - **Memory** — Alter automatically remembers lasting facts and preferences you share, and carries them into every future conversation. Review or forget any of them in Settings.
 - **File tools** — attach a working folder, then ask Alter to show a file tree, search across files (like grep), read files, or write files (writes ask for confirmation first).
 - **Web access** — Alter can search the web and read pages to answer with current information.
+- **Browser mode** — for JavaScript-heavy pages or tasks that need clicking and typing, Alter drives a real browser (uses your installed Chrome, or downloads a browser engine on first use).
 - **Routines** — save a prompt and an interval; Alter runs it automatically and drops each result into a new conversation. Scheduled runs execute in the Rust backend, so they fire even with the window closed.
 - **Runs in the background** — a menu-bar tray keeps Alter alive when you close the window, plus an optional launch-at-login.
 
@@ -43,6 +44,18 @@ npm run tauri build
 
 The `.app` and `.dmg` land in `src-tauri/target/release/bundle/`.
 
+## Always-on routines (optional)
+
+By default, routines run whenever Alter is open (including minimized to the menu-bar tray). To keep them running even after you quit the app, install the background service after building:
+
+```sh
+npm run tauri build
+cp -R src-tauri/target/release/bundle/macos/Alter.app /Applications/
+./scripts/install-service.sh
+```
+
+Remove it anytime with `./scripts/uninstall-service.sh`.
+
 ## How memory works
 
 Alter's system prompt asks the model to tag durable facts as it replies. Those are extracted, stored locally, and prepended to future conversations as context. This is retrieval, not fine-tuning — nothing about the model's weights changes, and everything stays on your machine.
@@ -60,7 +73,6 @@ Everything is stored in the app's local storage on your device:
 
 ## Notes
 
-- The icon is a plain placeholder. To replace it, overwrite `app-icon.png` (1024×1024) and run `npm run tauri icon`.
 - Shell/command execution is intentionally not included — Alter can read, search, and write files, but does not run arbitrary commands.
 
 ## License

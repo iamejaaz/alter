@@ -34,7 +34,9 @@ fn list_dir(path: String) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
-fn html_to_text(html: &str) -> String {
+mod browser;
+
+pub(crate) fn html_to_text(html: &str) -> String {
     let mut out = String::with_capacity(html.len() / 2);
     let bytes = html.as_bytes();
     let mut i = 0;
@@ -330,6 +332,7 @@ use tauri_plugin_autostart::MacosLauncher;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(browser::BrowserState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -344,7 +347,13 @@ pub fn run() {
             fetch_url,
             web_search,
             save_routine_state,
-            take_routine_results
+            take_routine_results,
+            browser::browser_open,
+            browser::browser_read,
+            browser::browser_click,
+            browser::browser_type,
+            browser::browser_screenshot,
+            browser::browser_close
         ])
         .setup(|app| {
             if let Ok(dir) = app.path().app_data_dir() {
