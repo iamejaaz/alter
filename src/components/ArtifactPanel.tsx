@@ -14,16 +14,16 @@ export default function ArtifactPanel({ artifact, onClose }: { artifact: Artifac
       : artifact.code;
 
   return (
-    <aside className="w-[45%] min-w-[360px] shrink-0 flex flex-col border-l border-white/[0.06] bg-[#0c0c0e]">
-      <div className="flex items-center gap-2 h-12 px-4 shrink-0 border-b border-white/[0.06]">
-        <span className="flex-1 text-sm font-medium text-zinc-300">Preview</span>
-        <div className="flex rounded-lg bg-white/[0.04] p-0.5">
+    <aside className="w-[45%] min-w-[360px] shrink-0 flex flex-col border-l border-[var(--bd-soft)] bg-[var(--bg)]">
+      <div className="flex items-center gap-2 h-12 px-4 shrink-0 border-b border-[var(--bd-soft)]">
+        <span className="flex-1 text-sm font-medium text-[var(--txt)]">Preview</span>
+        <div className="flex rounded-lg bg-[var(--panel)] p-0.5">
           {(["preview", "code"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
               className={`rounded-md px-2.5 py-1 text-xs capitalize transition-colors ${
-                view === v ? "bg-white/[0.08] text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
+                view === v ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-dim)] hover:text-[var(--txt)]"
               }`}
             >
               {v}
@@ -32,13 +32,13 @@ export default function ArtifactPanel({ artifact, onClose }: { artifact: Artifac
         </div>
         <button
           onClick={() => navigator.clipboard.writeText(artifact.code)}
-          className="rounded-lg hover:bg-white/[0.06] px-2.5 py-1.5 text-xs text-zinc-400 transition-colors"
+          className="rounded-lg hover:bg-[var(--panel-2)] px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
         >
           Copy
         </button>
         <button
           onClick={onClose}
-          className="rounded-lg hover:bg-white/[0.06] px-2 py-1.5 text-zinc-400 transition-colors"
+          className="rounded-lg hover:bg-[var(--panel-2)] px-2 py-1.5 text-[var(--txt-dim)] transition-colors"
           title="Close"
         >
           ×
@@ -53,7 +53,7 @@ export default function ArtifactPanel({ artifact, onClose }: { artifact: Artifac
             className="h-full w-full border-0 bg-white"
           />
         ) : (
-          <pre className="h-full overflow-auto bg-zinc-950 p-4 text-xs font-mono text-zinc-200 whitespace-pre-wrap">
+          <pre className="h-full overflow-auto bg-zinc-950 p-4 text-xs font-mono text-[var(--txt)] whitespace-pre-wrap">
             {artifact.code}
           </pre>
         )}

@@ -368,7 +368,7 @@ export default function App() {
   ];
 
   return (
-    <div className="flex h-full bg-[#0c0c0e] text-zinc-100">
+    <div className="flex h-full bg-[var(--bg)] text-[var(--txt)]">
       <Sidebar
         conversations={conversations}
         activeId={activeId}
@@ -382,9 +382,9 @@ export default function App() {
       <main className="flex-1 flex flex-col min-w-0">
         <header
           data-tauri-drag-region
-          className="flex items-center gap-2 h-12 px-4 shrink-0 border-b border-white/[0.06]"
+          className="flex items-center gap-2 h-12 px-4 shrink-0 border-b border-[var(--bd-soft)]"
         >
-          <span className="flex-1 truncate text-sm font-medium text-zinc-300 pointer-events-none">
+          <span className="flex-1 truncate text-sm font-medium text-[var(--txt)] pointer-events-none">
             {active && active.messages.length > 0 ? active.title : ""}
           </span>
           {active && active.messages.length > 0 && (
@@ -392,14 +392,14 @@ export default function App() {
               <button
                 onClick={regenerate}
                 disabled={streaming}
-                className="rounded-lg hover:bg-white/[0.06] disabled:opacity-40 px-2.5 py-1.5 text-xs text-zinc-400 transition-colors"
+                className="rounded-lg hover:bg-[var(--panel-2)] disabled:opacity-40 px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
                 title="Regenerate last reply"
               >
                 Regenerate
               </button>
               <button
                 onClick={exportConversation}
-                className="rounded-lg hover:bg-white/[0.06] px-2.5 py-1.5 text-xs text-zinc-400 transition-colors"
+                className="rounded-lg hover:bg-[var(--panel-2)] px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
                 title="Export as markdown"
               >
                 Export
@@ -412,8 +412,8 @@ export default function App() {
           {!active || active.messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-8">
               <Logo size={48} />
-              <h1 className="mt-5 text-[28px] font-semibold tracking-tight text-zinc-100">Alter</h1>
-              <p className="mt-2 text-[15px] text-zinc-500 max-w-md leading-relaxed">
+              <h1 className="mt-5 text-[28px] font-semibold tracking-tight text-[var(--txt)]">Alter</h1>
+              <p className="mt-2 text-[15px] text-[var(--txt-faint)] max-w-md leading-relaxed">
                 Your second self. It remembers what matters, reads your files, browses the web, and keeps working while you're away.
               </p>
               {settings.apiKey ? (
@@ -422,7 +422,7 @@ export default function App() {
                     <button
                       key={s}
                       onClick={() => send({ text: s })}
-                      className="rounded-full border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] px-3.5 py-1.5 text-[13px] text-zinc-300 transition-colors"
+                      className="rounded-full border border-[var(--bd)] bg-[var(--panel)] hover:bg-[var(--panel-2)] px-3.5 py-1.5 text-[13px] text-[var(--txt)] transition-colors"
                     >
                       {s}
                     </button>
@@ -446,7 +446,7 @@ export default function App() {
                       .split("\n")
                       .filter(Boolean)
                       .map((line, j) => (
-                        <div key={j} className="flex items-center gap-2 text-xs text-zinc-500">
+                        <div key={j} className="flex items-center gap-2 text-xs text-[var(--txt-faint)]">
                           <span className="h-1.5 w-1.5 rounded-full bg-indigo-400/60 shrink-0" />
                           <span className="font-mono truncate">{line.replace(/^▸\s*/, "")}</span>
                         </div>
@@ -464,12 +464,12 @@ export default function App() {
                                 src={a.dataUrl}
                                 alt={a.name}
                                 onClick={() => setPreview(a.dataUrl ?? null)}
-                                className="h-24 w-24 rounded-lg object-cover border border-white/10 cursor-zoom-in hover:opacity-90 transition-opacity"
+                                className="h-24 w-24 rounded-lg object-cover border border-[var(--bd)] cursor-zoom-in hover:opacity-90 transition-opacity"
                               />
                             ) : (
                               <div
                                 key={a.id}
-                                className="flex items-center gap-1.5 rounded-lg bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-300"
+                                className="flex items-center gap-1.5 rounded-lg bg-[var(--user-bubble)] px-2.5 py-1.5 text-xs text-[var(--txt)]"
                               >
                                 <span>📄</span>
                                 <span className="font-mono truncate max-w-[140px]">{a.name}</span>
@@ -479,14 +479,14 @@ export default function App() {
                         </div>
                       )}
                       {m.content && (
-                        <div className="rounded-2xl rounded-br-md bg-zinc-800/80 px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">
+                        <div className="rounded-2xl rounded-br-md bg-[var(--user-bubble)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">
                           {m.content}
                         </div>
                       )}
                       <div className="flex justify-end">
                         <button
                           onClick={() => editMessage(i)}
-                          className="mt-1 text-[11px] text-zinc-600 hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="mt-1 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           Edit
                         </button>
@@ -495,14 +495,14 @@ export default function App() {
                   </div>
                 ) : (
                   <div key={i} className="group flex gap-3 animate-fade-up">
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.04] border border-white/10">
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--panel)] border border-[var(--bd)]">
                       <Logo size={15} />
                     </div>
                     <div className="min-w-0 flex-1">
                       {m.content ? (
                         <Markdown text={m.content} />
                       ) : (
-                        <span className="inline-flex gap-1 text-zinc-500 py-1">
+                        <span className="inline-flex gap-1 text-[var(--txt-faint)] py-1">
                           <span className="animate-bounce">●</span>
                           <span className="animate-bounce [animation-delay:150ms]">●</span>
                           <span className="animate-bounce [animation-delay:300ms]">●</span>
@@ -512,7 +512,7 @@ export default function App() {
                         <div className="mt-1.5 flex items-center gap-3">
                           <button
                             onClick={() => navigator.clipboard.writeText(m.content)}
-                            className="text-[11px] text-zinc-600 hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             Copy
                           </button>
@@ -520,7 +520,7 @@ export default function App() {
                             <button
                               key={k}
                               onClick={() => setArtifact(a)}
-                              className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-white/[0.07] transition-colors"
+                              className="flex items-center gap-1 rounded-md border border-[var(--bd)] bg-[var(--panel)] px-2 py-0.5 text-[11px] text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
                             >
                               ⧉ Preview {a.lang}
                             </button>
@@ -543,7 +543,7 @@ export default function App() {
                 {error}
               </p>
             )}
-            <div className="rounded-2xl border border-white/10 bg-zinc-900/70 shadow-xl shadow-black/20 transition-colors focus-within:border-indigo-500/40">
+            <div className="rounded-2xl border border-[var(--bd)] bg-[var(--composer)] shadow-xl shadow-black/20 transition-colors focus-within:border-indigo-500/40">
               {attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-3 pt-3">
                   {attachments.map((a) => (
@@ -553,17 +553,17 @@ export default function App() {
                           src={a.dataUrl}
                           alt={a.name}
                           onClick={() => setPreview(a.dataUrl ?? null)}
-                          className="h-14 w-14 rounded-lg object-cover border border-white/10 cursor-zoom-in hover:opacity-90 transition-opacity"
+                          className="h-14 w-14 rounded-lg object-cover border border-[var(--bd)] cursor-zoom-in hover:opacity-90 transition-opacity"
                         />
                       ) : (
-                        <div className="flex h-14 items-center gap-1.5 rounded-lg bg-white/[0.05] border border-white/10 px-2.5 text-xs text-zinc-300">
+                        <div className="flex h-14 items-center gap-1.5 rounded-lg bg-[var(--panel)] border border-[var(--bd)] px-2.5 text-xs text-[var(--txt)]">
                           <span>📄</span>
                           <span className="font-mono truncate max-w-[100px]">{a.name}</span>
                         </div>
                       )}
                       <button
                         onClick={() => removeAttachment(a.id)}
-                        className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-zinc-200 text-[10px] hover:bg-zinc-600"
+                        className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-[var(--txt)] text-[10px] hover:bg-zinc-600"
                         title="Remove"
                       >
                         ×
@@ -598,7 +598,7 @@ export default function App() {
                 }}
                 rows={1}
                 placeholder="Message Alter…"
-                className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-zinc-500"
+                className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               <div className="flex items-center gap-1 px-2.5 pb-2.5">
                 <div className="relative">
@@ -609,15 +609,15 @@ export default function App() {
                       setSettings(s);
                       storage.saveSettings(s);
                     }}
-                    className="appearance-none bg-transparent rounded-lg hover:bg-white/[0.06] pl-2 pr-6 py-1 text-xs text-zinc-300 focus:outline-none cursor-pointer transition-colors"
+                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1 text-xs text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
                     title="How Alter uses tools"
                   >
-                    <option value="auto" className="bg-zinc-900">⚡ Auto</option>
-                    <option value="ask" className="bg-zinc-900">✋ Ask first</option>
-                    <option value="plan" className="bg-zinc-900">📋 Plan</option>
-                    <option value="chat" className="bg-zinc-900">💬 Chat only</option>
+                    <option value="auto" className="bg-[var(--modal)]">⚡ Auto</option>
+                    <option value="ask" className="bg-[var(--modal)]">✋ Ask first</option>
+                    <option value="plan" className="bg-[var(--modal)]">📋 Plan</option>
+                    <option value="chat" className="bg-[var(--modal)]">💬 Chat only</option>
                   </select>
-                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-600 text-[9px]">
+                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--txt-faint)] text-[9px]">
                     ▾
                   </span>
                 </div>
@@ -625,38 +625,38 @@ export default function App() {
                   <select
                     value={settings.model}
                     onChange={(e) => setModel(e.target.value)}
-                    className="appearance-none bg-transparent rounded-lg hover:bg-white/[0.06] pl-2 pr-6 py-1 text-xs text-zinc-300 focus:outline-none cursor-pointer transition-colors max-w-[160px] truncate"
+                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1 text-xs text-[var(--txt)] focus:outline-none cursor-pointer transition-colors max-w-[160px] truncate"
                     title="Model"
                   >
                     {modelOptions.map((m) => (
-                      <option key={m} value={m} className="bg-zinc-900">
+                      <option key={m} value={m} className="bg-[var(--modal)]">
                         {m}
                       </option>
                     ))}
                   </select>
-                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-600 text-[9px]">
+                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--txt-faint)] text-[9px]">
                     ▾
                   </span>
                 </div>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1 rounded-lg hover:bg-white/[0.06] px-2 py-1 text-xs text-zinc-400 transition-colors"
+                  className="flex items-center gap-1 rounded-lg hover:bg-[var(--panel-2)] px-2 py-1 text-xs text-[var(--txt-dim)] transition-colors"
                   title="Attach images or files"
                 >
                   <span className="text-sm leading-none">📎</span>
                 </button>
                 {folder ? (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2 py-1 text-xs text-zinc-300 max-w-[160px]">
-                    <span className="text-zinc-500">📁</span>
+                  <div className="flex items-center gap-1.5 rounded-lg bg-[var(--panel)] px-2 py-1 text-xs text-[var(--txt)] max-w-[160px]">
+                    <span className="text-[var(--txt-faint)]">📁</span>
                     <span className="font-mono truncate">{folder.split("/").pop()}</span>
-                    <button onClick={clearFolder} className="text-zinc-500 hover:text-zinc-200" title="Detach">
+                    <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)]" title="Detach">
                       ×
                     </button>
                   </div>
                 ) : (
                   <button
                     onClick={chooseFolder}
-                    className="flex items-center gap-1 rounded-lg hover:bg-white/[0.06] px-2 py-1 text-xs text-zinc-400 transition-colors"
+                    className="flex items-center gap-1 rounded-lg hover:bg-[var(--panel-2)] px-2 py-1 text-xs text-[var(--txt-dim)] transition-colors"
                     title="Attach a working folder"
                   >
                     <span className="text-sm leading-none">＋</span> Folder
@@ -664,14 +664,14 @@ export default function App() {
                 )}
                 <div className="flex-1" />
                 {active && active.messages.length > 0 && (
-                  <span className="text-[11px] text-zinc-600 tabular-nums mr-1">
+                  <span className="text-[11px] text-[var(--txt-faint)] tabular-nums mr-1">
                     ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}
                   </span>
                 )}
                 {streaming ? (
                   <button
                     onClick={stop}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 hover:bg-white/[0.06] text-zinc-300 transition-colors"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] text-[var(--txt)] transition-colors"
                     title="Stop"
                   >
                     <span className="h-2.5 w-2.5 rounded-[2px] bg-current" />
@@ -688,7 +688,7 @@ export default function App() {
                 )}
               </div>
             </div>
-            <p className="mt-2 text-center text-[11px] text-zinc-600">
+            <p className="mt-2 text-center text-[11px] text-[var(--txt-faint)]">
               Alter can read files, browse the web, and remember what matters.
             </p>
           </div>
@@ -710,7 +710,7 @@ export default function App() {
           />
           <button
             onClick={() => setPreview(null)}
-            className="absolute top-5 right-5 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-zinc-200 text-lg"
+            className="absolute top-5 right-5 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-[var(--txt)] text-lg"
             title="Close"
           >
             ×

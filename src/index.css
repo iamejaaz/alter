@@ -4,6 +4,36 @@
 
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+
+  --bg: #0c0c0e;
+  --sidebar: rgba(0, 0, 0, 0.2);
+  --panel: rgba(255, 255, 255, 0.04);
+  --panel-2: rgba(255, 255, 255, 0.08);
+  --bd: rgba(255, 255, 255, 0.1);
+  --bd-soft: rgba(255, 255, 255, 0.06);
+  --txt: #e4e4e7;
+  --txt-dim: #a1a1aa;
+  --txt-faint: #71717a;
+  --user-bubble: rgba(39, 39, 42, 0.8);
+  --composer: rgba(24, 24, 27, 0.7);
+  --modal: #18181b;
+  --input: #27272a;
+}
+
+:root[data-theme="light"] {
+  --bg: #f7f7f8;
+  --sidebar: rgba(0, 0, 0, 0.03);
+  --panel: rgba(0, 0, 0, 0.04);
+  --panel-2: rgba(0, 0, 0, 0.08);
+  --bd: rgba(0, 0, 0, 0.12);
+  --bd-soft: rgba(0, 0, 0, 0.08);
+  --txt: #18181b;
+  --txt-dim: #52525b;
+  --txt-faint: #71717a;
+  --user-bubble: #e4e4e7;
+  --composer: #ffffff;
+  --modal: #ffffff;
+  --input: #f1f1f3;
 }
 
 html,
@@ -13,7 +43,9 @@ body,
 }
 
 body {
-  @apply bg-[#0c0c0e] text-zinc-100 antialiased;
+  background: var(--bg);
+  color: var(--txt);
+  @apply antialiased;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
