@@ -90,6 +90,86 @@ pub(crate) fn html_to_text(html: &str) -> String {
     text.trim().to_string()
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[derive(Default)]
+pub struct ChatCancel(pub AtomicBool);
+
+#[tauri::command]
+fn cancel_chat(state: tauri::State<ChatCancel>) {
+    state.0.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
+async fn stream_chat(
+    state: tauri::State<'_, ChatCancel>,
+    url: String,
+    api_key: String,
+    body: String,
+    on_chunk: tauri::ipc::Channel<String>,
+) -> Result<(), String> {
+    use futures_util::StreamExt;
+    state.0.store(false, Ordering::SeqCst);
+    let client = http_client()?;
+    let resp = client
+        .post(&url)
+        .bearer_auth(&api_key)
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("HTTP {} — {}", status.as_u16(), text.chars().take(400).collect::<String>()));
+    }
+    let mut stream = resp.bytes_stream();
+    let mut buffer = String::new();
+    while let Some(chunk) = stream.next().await {
+        if state.0.load(Ordering::SeqCst) {
+            break;
+        }
+        let bytes = chunk.map_err(|e| e.to_string())?;
+        buffer.push_str(&String::from_utf8_lossy(&bytes));
+        while let Some(idx) = buffer.find('\n') {
+            let line: String = buffer.drain(..=idx).collect();
+            let _ = on_chunk.send(line);
+        }
+    }
+    if !buffer.is_empty() {
+        let _ = on_chunk.send(buffer);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn test_connection(url: String, api_key: String) -> Result<String, String> {
+    let client = http_client()?;
+    let models_url = format!("{}/models", url.trim_end_matches('/'));
+    let resp = client
+        .get(&models_url)
+        .bearer_auth(&api_key)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("HTTP {} — {}", status.as_u16(), text.chars().take(300).collect::<String>()));
+    }
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::json!({}));
+    let models: Vec<String> = json["data"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|m| m["id"].as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    if models.is_empty() {
+        Ok("Connected. (No model list returned.)".into())
+    } else {
+        Ok(format!("Connected. {} models: {}", models.len(), models.join(", ")))
+    }
+}
+
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36")
@@ -333,6 +413,7 @@ use tauri_plugin_autostart::MacosLauncher;
 pub fn run() {
     tauri::Builder::default()
         .manage(browser::BrowserState::default())
+        .manage(ChatCancel::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -348,6 +429,9 @@ pub fn run() {
             web_search,
             save_routine_state,
             take_routine_results,
+            stream_chat,
+            cancel_chat,
+            test_connection,
             browser::browser_open,
             browser::browser_read,
             browser::browser_click,

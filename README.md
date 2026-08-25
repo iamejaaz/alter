@@ -8,7 +8,7 @@ Alter is a small, fast desktop chat app. It talks to any OpenAI-compatible model
 
 ## Features
 
-- **Bring your own model** — presets for DeepSeek, Moonshot (Kimi), and the Vercel AI Gateway, or point the base URL at any OpenAI-compatible endpoint. Your API key is stored only on your device.
+- **Bring your own model** — point the base URL at any OpenAI-compatible endpoint (presets for DeepSeek, Moonshot/Kimi, and the Vercel AI Gateway are just quick-fills). Requests are proxied through the Rust backend, so any host works with no allowlist. A **Test connection** button checks the endpoint and lists its models. Your API key is stored only on your device.
 - **Streaming chat** with markdown, syntax-highlighted code, LaTeX math (KaTeX), copy buttons, and editable messages.
 - **Artifacts** — HTML/SVG the assistant produces opens in a live, sandboxed side-panel preview.
 - **Light & dark themes** — toggle in Settings, remembered across launches.

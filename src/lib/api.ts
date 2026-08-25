@@ -1,3 +1,4 @@
+import { invoke, Channel } from "@tauri-apps/api/core";
 import { MemoryItem, Message, Mode, Settings, ToolCall } from "./store";
 import { TOOL_DEFINITIONS } from "./tools";
 
@@ -52,65 +53,58 @@ export async function streamChat(
   useTools = true
 ): Promise<ChatResult> {
   const url = settings.baseUrl.replace(/\/$/, "") + "/chat/completions";
-  const res = await fetch(url, {
-    method: "POST",
-    signal,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: settings.model,
-      messages,
-      stream: true,
-      ...(useTools ? { tools: TOOL_DEFINITIONS } : {}),
-    }),
+  const body = JSON.stringify({
+    model: settings.model,
+    messages,
+    stream: true,
+    ...(useTools ? { tools: TOOL_DEFINITIONS } : {}),
   });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}${body ? ` — ${body.slice(0, 300)}` : ""}`);
-  }
-
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let full = "";
   const toolCalls: ToolCall[] = [];
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const data = line.replace(/^data: /, "").trim();
-      if (!data || data === "[DONE]") continue;
-      try {
-        const json = JSON.parse(data);
-        const delta = json.choices?.[0]?.delta ?? {};
-        if (delta.content) {
-          full += delta.content;
-          onDelta(full);
-        }
-        for (const tc of delta.tool_calls ?? []) {
-          const idx = tc.index ?? 0;
-          if (!toolCalls[idx]) {
-            toolCalls[idx] = {
-              id: tc.id ?? "",
-              type: "function",
-              function: { name: "", arguments: "" },
-            };
-          }
-          if (tc.id) toolCalls[idx].id = tc.id;
-          if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
-          if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
-        }
-      } catch {
-        continue;
+  const handleLine = (line: string) => {
+    const data = line.replace(/^data: /, "").trim();
+    if (!data || data === "[DONE]") return;
+    try {
+      const json = JSON.parse(data);
+      const delta = json.choices?.[0]?.delta ?? {};
+      if (delta.content) {
+        full += delta.content;
+        onDelta(full);
       }
+      for (const tc of delta.tool_calls ?? []) {
+        const idx = tc.index ?? 0;
+        if (!toolCalls[idx]) {
+          toolCalls[idx] = { id: tc.id ?? "", type: "function", function: { name: "", arguments: "" } };
+        }
+        if (tc.id) toolCalls[idx].id = tc.id;
+        if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+        if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+      }
+    } catch {
+      /* ignore non-JSON keepalive lines */
     }
+  };
+
+  const channel = new Channel<string>();
+  channel.onmessage = handleLine;
+
+  const onAbort = () => {
+    void invoke("cancel_chat").catch(() => {});
+  };
+  signal.addEventListener("abort", onAbort);
+
+  try {
+    await invoke("stream_chat", { url, apiKey: settings.apiKey, body, onChunk: channel });
+  } finally {
+    signal.removeEventListener("abort", onAbort);
   }
+
   return { content: full, toolCalls: toolCalls.filter(Boolean) };
+}
+
+export async function testConnection(settings: Settings): Promise<string> {
+  const url = settings.baseUrl.replace(/\/$/, "");
+  return invoke<string>("test_connection", { url, apiKey: settings.apiKey });
 }

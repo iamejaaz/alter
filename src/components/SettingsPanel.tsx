@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { MemoryItem, PROVIDER_PRESETS, Settings } from "../lib/store";
+import { testConnection } from "../lib/api";
 
 interface Props {
   settings: Settings;
@@ -15,6 +16,21 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
   const [tab, setTab] = useState<"connection" | "memory">("connection");
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const runTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const msg = await testConnection(draft);
+      setTestResult({ ok: true, msg });
+    } catch (e) {
+      setTestResult({ ok: false, msg: String(e) });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const toggleTheme = () => {
     const next = !light;
@@ -132,6 +148,26 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
                 className="w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
               />
               <p className="mt-1.5 text-[11px] text-[var(--txt-faint)]">Stored only on this device.</p>
+            </div>
+            <div>
+              <button
+                onClick={runTest}
+                disabled={testing || !draft.apiKey}
+                className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] disabled:opacity-40 px-3 py-1.5 text-xs text-[var(--txt)] transition-colors"
+              >
+                {testing ? "Testing…" : "Test connection"}
+              </button>
+              {testResult && (
+                <p
+                  className={`mt-2 text-[11px] rounded-lg px-3 py-2 break-words ${
+                    testResult.ok
+                      ? "bg-green-500/10 text-green-400 border border-green-900/40"
+                      : "bg-red-500/10 text-red-400 border border-red-900/40"
+                  }`}
+                >
+                  {testResult.msg}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] px-3 py-2">
               <button
