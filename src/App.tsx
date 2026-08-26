@@ -4,6 +4,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
+import { Chevron, IconArrowUp, IconFolder, IconMic, IconPaperclip } from "./components/Icons";
 
 function extractArtifacts(content: string): ArtifactType[] {
   const arts: ArtifactType[] = [];
@@ -46,6 +47,7 @@ export default function App() {
   const [preview, setPreview] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<ArtifactType | null>(null);
   const [listening, setListening] = useState(false);
+  const [slashIdx, setSlashIdx] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
@@ -345,6 +347,24 @@ export default function App() {
 
   const removeAttachment = (id: string) => setAttachments((prev) => prev.filter((a) => a.id !== id));
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files: File[] = [];
+    for (const it of Array.from(items)) {
+      if (it.type.startsWith("image/")) {
+        const f = it.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) {
+      e.preventDefault();
+      const dt = new DataTransfer();
+      files.forEach((f) => dt.items.add(f));
+      void onFiles(dt.files);
+    }
+  };
+
   useEffect(() => {
     void invoke("save_routine_state", {
       state: JSON.stringify({ settings, memories, routines }),
@@ -391,6 +411,33 @@ export default function App() {
     const s = { ...settings, model };
     setSettings(s);
     storage.saveSettings(s);
+  };
+  const applyMode = (mode: NonNullable<Settings["mode"]>) => {
+    const s = { ...settings, mode };
+    setSettings(s);
+    storage.saveSettings(s);
+  };
+
+  const slashCommands = [
+    { cmd: "/new", desc: "Start a new chat", run: () => setActiveId(null) },
+    { cmd: "/clear", desc: "Delete this conversation", run: () => active && deleteConversation(active.id) },
+    { cmd: "/auto", desc: "Auto — act freely, writes confirm", run: () => applyMode("auto") },
+    { cmd: "/ask", desc: "Ask before every action", run: () => applyMode("ask") },
+    { cmd: "/plan", desc: "Plan only, no actions", run: () => applyMode("plan") },
+    { cmd: "/chat", desc: "Chat only, no tools", run: () => applyMode("chat") },
+    { cmd: "/folder", desc: "Attach a working folder", run: () => void chooseFolder() },
+    { cmd: "/attach", desc: "Attach images or files", run: () => fileInputRef.current?.click() },
+    { cmd: "/routines", desc: "Open routines", run: () => setShowRoutines(true) },
+    { cmd: "/settings", desc: "Open settings", run: () => setShowSettings(true) },
+  ];
+  const showSlash = input.startsWith("/") && !input.includes(" ") && !input.includes("\n");
+  const slashMatches = showSlash
+    ? slashCommands.filter((c) => c.cmd.startsWith(input.toLowerCase()))
+    : [];
+  const runSlash = (c: (typeof slashCommands)[number]) => {
+    setInput("");
+    setSlashIdx(0);
+    c.run();
   };
   const suggestions = [
     "What can you do?",
@@ -614,24 +661,65 @@ export default function App() {
                   e.target.value = "";
                 }}
               />
+              {slashMatches.length > 0 && (
+                <div className="mx-2 mt-2 rounded-xl border border-[var(--bd)] bg-[var(--modal)] shadow-xl overflow-hidden">
+                  {slashMatches.map((c, k) => (
+                    <button
+                      key={c.cmd}
+                      onMouseEnter={() => setSlashIdx(k)}
+                      onClick={() => runSlash(c)}
+                      className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
+                        k === slashIdx % slashMatches.length ? "bg-[var(--panel-2)]" : "hover:bg-[var(--panel)]"
+                      }`}
+                    >
+                      <span className="text-sm font-medium text-[var(--txt)] w-24">{c.cmd}</span>
+                      <span className="text-xs text-[var(--txt-dim)]">{c.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <textarea
                 value={input}
                 onChange={(e) => {
                   setInput(e.target.value);
+                  setSlashIdx(0);
                   e.target.style.height = "auto";
                   e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
                 }}
+                onPaste={handlePaste}
                 onKeyDown={(e) => {
+                  if (slashMatches.length > 0) {
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setSlashIdx((i) => (i + 1) % slashMatches.length);
+                      return;
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setSlashIdx((i) => (i - 1 + slashMatches.length) % slashMatches.length);
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === "Tab") {
+                      e.preventDefault();
+                      runSlash(slashMatches[slashIdx % slashMatches.length]);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setInput("");
+                      return;
+                    }
+                  }
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     send();
                   }
                 }}
                 rows={1}
-                placeholder="Message Alter…"
+                placeholder="Message Alter…  (/ for commands)"
                 className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
-              <div className="flex items-center gap-1 px-2.5 pb-2.5">
+              <div className="flex items-center gap-0.5 px-2 pb-2">
                 <div className="relative">
                   <select
                     value={settings.mode ?? "auto"}
@@ -640,73 +728,72 @@ export default function App() {
                       setSettings(s);
                       storage.saveSettings(s);
                     }}
-                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1 text-xs text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
+                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
                     title="How Alter uses tools"
                   >
-                    <option value="auto" className="bg-[var(--modal)]">⚡ Auto</option>
-                    <option value="ask" className="bg-[var(--modal)]">✋ Ask first</option>
-                    <option value="plan" className="bg-[var(--modal)]">📋 Plan</option>
-                    <option value="chat" className="bg-[var(--modal)]">💬 Chat only</option>
+                    <option value="auto" className="bg-[var(--modal)]">Auto</option>
+                    <option value="ask" className="bg-[var(--modal)]">Ask first</option>
+                    <option value="plan" className="bg-[var(--modal)]">Plan</option>
+                    <option value="chat" className="bg-[var(--modal)]">Chat only</option>
                   </select>
-                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--txt-faint)] text-[9px]">
-                    ▾
-                  </span>
+                  <Chevron />
                 </div>
                 <div className="relative">
                   <select
                     value={settings.model}
                     onChange={(e) => setModel(e.target.value)}
-                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1 text-xs text-[var(--txt)] focus:outline-none cursor-pointer transition-colors max-w-[160px] truncate"
-                    title="Model"
+                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors max-w-[200px] truncate"
+                    title={settings.model}
                   >
                     {modelOptions.map((m) => (
                       <option key={m} value={m} className="bg-[var(--modal)]">
-                        {m}
+                        {m.includes("/") ? m.split("/").pop() : m}
                       </option>
                     ))}
                   </select>
-                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--txt-faint)] text-[9px]">
-                    ▾
-                  </span>
+                  <Chevron />
                 </div>
+
+                <div className="mx-1 h-5 w-px bg-[var(--bd)]" />
+
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1 rounded-lg hover:bg-[var(--panel-2)] px-2 py-1 text-xs text-[var(--txt-dim)] transition-colors"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--panel-2)] text-[var(--txt-dim)] hover:text-[var(--txt)] transition-colors"
                   title="Attach images or files"
                 >
-                  <span className="text-sm leading-none">📎</span>
+                  <IconPaperclip />
                 </button>
                 {speechSupported && (
                   <button
                     onClick={toggleMic}
-                    className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
-                      listening ? "bg-red-500/20 text-red-300" : "hover:bg-[var(--panel-2)] text-[var(--txt-dim)]"
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                      listening ? "bg-red-500/15 text-red-400" : "hover:bg-[var(--panel-2)] text-[var(--txt-dim)] hover:text-[var(--txt)]"
                     }`}
                     title={listening ? "Stop dictation" : "Dictate"}
                   >
-                    <span className="text-sm leading-none">🎤</span>
+                    <IconMic />
                   </button>
                 )}
                 {folder ? (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-[var(--panel)] px-2 py-1 text-xs text-[var(--txt)] max-w-[160px]">
-                    <span className="text-[var(--txt-faint)]">📁</span>
+                  <div className="flex items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 py-1.5 text-xs text-[var(--txt)] max-w-[160px]">
+                    <IconFolder />
                     <span className="font-mono truncate">{folder.split("/").pop()}</span>
-                    <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)]" title="Detach">
+                    <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)] px-0.5" title="Detach">
                       ×
                     </button>
                   </div>
                 ) : (
                   <button
                     onClick={chooseFolder}
-                    className="flex items-center gap-1 rounded-lg hover:bg-[var(--panel-2)] px-2 py-1 text-xs text-[var(--txt-dim)] transition-colors"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--panel-2)] text-[var(--txt-dim)] hover:text-[var(--txt)] transition-colors"
                     title="Attach a working folder"
                   >
-                    <span className="text-sm leading-none">＋</span> Folder
+                    <IconFolder />
                   </button>
                 )}
                 <div className="flex-1" />
                 {active && active.messages.length > 0 && (
-                  <span className="text-[11px] text-[var(--txt-faint)] tabular-nums mr-1">
+                  <span className="text-[11px] text-[var(--txt-faint)] tabular-nums mr-1.5">
                     ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}
                   </span>
                 )}
@@ -725,7 +812,7 @@ export default function App() {
                     className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 text-white transition-colors"
                     title="Send"
                   >
-                    <span className="text-base leading-none">↑</span>
+                    <IconArrowUp />
                   </button>
                 )}
               </div>
