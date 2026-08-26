@@ -18,6 +18,7 @@ import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { extractPdfText } from "./lib/pdf";
+import { confirmDialog } from "./lib/confirm";
 import {
   Attachment,
   Conversation,
@@ -441,7 +442,9 @@ export default function App() {
     {
       cmd: "/clear",
       desc: "Delete this conversation",
-      run: () => active && window.confirm(`Delete "${active.title}"?`) && deleteConversation(active.id),
+      run: async () => {
+        if (active && (await confirmDialog(`Delete "${active.title}"?`))) deleteConversation(active.id);
+      },
     },
     { cmd: "/auto", desc: "Auto — act freely, writes confirm", run: () => applyMode("auto") },
     { cmd: "/ask", desc: "Ask before every action", run: () => applyMode("ask") },

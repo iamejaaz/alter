@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { confirmDialog } from "./confirm";
 
 export const TOOL_DEFINITIONS = [
   {
@@ -164,7 +165,7 @@ export async function executeTool(
   mode: "auto" | "ask" | "plan" | "chat" = "auto"
 ): Promise<string> {
   if (mode === "ask" && name !== "write_file") {
-    const ok = window.confirm(`Alter wants to run ${name}:\n${JSON.stringify(args, null, 2)}\n\nAllow?`);
+    const ok = await confirmDialog(`Alter wants to run ${name}:\n${JSON.stringify(args, null, 2)}\n\nAllow?`);
     if (!ok) return "User denied this action.";
   }
   if (name === "write_file") {
@@ -181,7 +182,7 @@ export async function executeTool(
         ? `Create new file (${next.split("\n").length} lines).`
         : `Overwrite existing file: ${existing.split("\n").length} → ${next.split("\n").length} lines.`;
     const preview = next.split("\n").slice(0, 12).join("\n");
-    const ok = window.confirm(`Alter wants to write:\n${path}\n\n${summary}\n\nPreview:\n${preview}\n\nAllow?`);
+    const ok = await confirmDialog(`Alter wants to write:\n${path}\n\n${summary}\n\nPreview:\n${preview}\n\nAllow?`);
     if (!ok) return "User denied the write.";
   }
   try {

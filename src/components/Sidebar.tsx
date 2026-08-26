@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Conversation } from "../lib/store";
+import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
 
 interface Props {
@@ -77,9 +78,9 @@ export default function Sidebar({
             >
               <span className="flex-1 truncate">{c.title}</span>
               <button
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  if (window.confirm(`Delete "${c.title}"? This can't be undone.`)) onDelete(c.id);
+                  if (await confirmDialog(`Delete "${c.title}"? This can't be undone.`)) onDelete(c.id);
                 }}
                 className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-2 transition-opacity"
                 title="Delete"

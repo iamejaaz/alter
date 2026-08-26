@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Routine, newId } from "../lib/store";
+import { confirmDialog } from "../lib/confirm";
 
 interface Props {
   routines: Routine[];
@@ -26,7 +27,9 @@ export default function RoutinesPanel({ routines, onChange, onRunNow, onClose }:
 
   const toggle = (id: string) =>
     onChange(routines.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
-  const remove = (id: string) => onChange(routines.filter((r) => r.id !== id));
+  const remove = async (id: string, name: string) => {
+    if (await confirmDialog(`Delete routine "${name}"?`)) onChange(routines.filter((r) => r.id !== id));
+  };
 
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/60" onClick={onClose}>
@@ -63,7 +66,7 @@ export default function RoutinesPanel({ routines, onChange, onRunNow, onClose }:
                 <button onClick={() => onRunNow(r)} className="text-[11px] text-indigo-400 hover:text-indigo-300">
                   Run now
                 </button>
-                <button onClick={() => remove(r.id)} className="text-[var(--txt-faint)] hover:text-[var(--txt)]">×</button>
+                <button onClick={() => remove(r.id, r.name)} className="text-[var(--txt-faint)] hover:text-[var(--txt)]">×</button>
               </div>
               <p className="mt-1 text-xs text-[var(--txt-dim)] truncate">{r.prompt}</p>
               {r.lastRun && (
