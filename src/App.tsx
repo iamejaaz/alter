@@ -151,7 +151,10 @@ export default function App() {
     const mode = settings.mode ?? "auto";
     const useTools = mode === "auto" || mode === "ask";
     const systemContent =
-      buildSystemPrompt(memories, mode) + (folder ? `\n\nThe user's current working folder is: ${folder}` : "");
+      buildSystemPrompt(memories, mode) +
+      (folder
+        ? `\n\nThe user's attached working folder is: ${folder}\nThis is "this folder" / "this project" / "here". When asked about it, immediately call list_tree on it and read key files (README, package.json, main source) to answer — do not ask the user to confirm the path.`
+        : "");
 
     const textFiles = atts
       .filter((a) => a.kind === "text")
