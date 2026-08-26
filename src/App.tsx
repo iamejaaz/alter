@@ -142,6 +142,8 @@ export default function App() {
   };
   // Turn raw provider errors into plain-English guidance.
   const humanizeError = (raw: string): string => {
+    if (/thought_signature/i.test(raw))
+      return "This Gemini model needs a special tool-call format Alter can't send. Reload the app — Gemini now runs tool-free (still reads images and writes code), or use a non-Gemini connection for file/web tools.";
     if (/image input|support image|no endpoints.*image/i.test(raw))
       return "This model can't read images — it's text-only. Switch to a vision model (e.g. google/gemma-4-31b-it:free or minimax/minimax-m3:free), then resend.";
     if (/\b429\b|rate.?limit|temporarily|overloaded|upstream|shared_pool/i.test(raw))
@@ -198,7 +200,11 @@ export default function App() {
     }));
 
     const mode = settings.mode ?? "auto";
-    const useTools = mode === "auto" || mode === "ask";
+    // Gemini reasoning models require a proprietary "thought_signature" round-trip that
+    // the OpenAI tool format can't carry, so they error on multi-turn tool use.
+    // Run them tool-free — they're excellent as chat + vision + coding models.
+    const isGemini = /generativelanguage\.googleapis\.com/i.test(settings.baseUrl);
+    const useTools = (mode === "auto" || mode === "ask") && !isGemini;
     const systemContent =
       buildSystemPrompt(memories, mode, skills) +
       (folder
