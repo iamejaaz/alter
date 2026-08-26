@@ -277,8 +277,9 @@ export default function App() {
         ]);
       }
     } catch (e: unknown) {
-      if ((e as Error).name !== "AbortError") {
-        setError((e as Error).message);
+      const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
+      if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
+        setError(msg);
         updateConversation(convId, (c) => ({
           ...c,
           messages: c.messages.filter((m, i) => !(i === c.messages.length - 1 && m.role === "assistant" && !m.content)),
