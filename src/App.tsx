@@ -131,7 +131,7 @@ export default function App() {
   // Errors that mean "this provider is busy/down — try another connection"
   const isRetryable = (msg: string) =>
     /\b(429|500|502|503|529)\b/.test(msg) ||
-    /rate.?limit|temporarily|unavailable|overloaded|provider returned error|upstream|capacity|try again|no instances/i.test(
+    /rate.?limit|temporarily|unavailable|overloaded|provider returned error|upstream|capacity|try again|no instances|timed out|timeout|no response/i.test(
       msg
     );
   const connLabel = (s: Settings) => {
