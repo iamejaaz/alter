@@ -126,6 +126,7 @@ async fn stream_chat(
     }
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
+    let mut idle: u32 = 0; // 100ms ticks with no data
     loop {
         if state.0.load(Ordering::SeqCst) {
             break;
@@ -133,8 +134,21 @@ async fn stream_chat(
         // Wait for the next chunk, but wake every 100ms to re-check the cancel
         // flag — otherwise Stop does nothing while the provider is "thinking".
         let next = match tokio::time::timeout(std::time::Duration::from_millis(100), stream.next()).await {
-            Ok(c) => c,
-            Err(_) => continue,
+            Ok(c) => {
+                idle = 0;
+                c
+            }
+            Err(_) => {
+                idle += 1;
+                // 60s with no bytes at all → the provider is hung/overloaded.
+                if idle > 600 {
+                    return Err(
+                        "No response from the model (timed out after 60s). It may be overloaded — try again or switch models."
+                            .to_string(),
+                    );
+                }
+                continue;
+            }
         };
         let chunk = match next {
             Some(c) => c,
