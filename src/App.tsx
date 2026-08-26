@@ -183,9 +183,12 @@ export default function App() {
 
     setStreaming(true);
     abortRef.current = new AbortController();
+    const MAX_ROUNDS = 6;
     try {
       let full = "";
-      for (let round = 0; round < 8; round++) {
+      let finished = false;
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        if (abortRef.current.signal.aborted) break;
         const result = await streamChat(
           settings,
           payload,
@@ -199,8 +202,11 @@ export default function App() {
           useTools
         );
 
-        if (result.toolCalls.length === 0) {
+        if (result.content) full = result.content;
+
+        if (result.toolCalls.length === 0 || abortRef.current.signal.aborted) {
           full = result.content;
+          finished = true;
           break;
         }
 
@@ -225,15 +231,20 @@ export default function App() {
           } catch {
             args = {};
           }
+          if (abortRef.current.signal.aborted) break;
           const output = await executeTool(tc.function.name, args, mode);
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
         }
       }
+      if (!finished && !full && !abortRef.current.signal.aborted) {
+        full = "I took several steps but couldn't wrap this up. Try narrowing the question, or attach the specific folder you mean.";
+      }
       const { clean, found } = extractMemories(full);
-      updateConversation(convId, (c) => ({
-        ...c,
-        messages: [...c.messages.slice(0, -1), { role: "assistant", content: clean || full }],
-      }));
+      updateConversation(convId, (c) => {
+        const msgs = c.messages.slice(0, -1);
+        if (clean || full) msgs.push({ role: "assistant", content: clean || full });
+        return { ...c, messages: msgs };
+      });
       if (found.length) {
         setMemories((prev) => [
           ...prev,
