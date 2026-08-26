@@ -126,10 +126,20 @@ async fn stream_chat(
     }
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
-    while let Some(chunk) = stream.next().await {
+    loop {
         if state.0.load(Ordering::SeqCst) {
             break;
         }
+        // Wait for the next chunk, but wake every 100ms to re-check the cancel
+        // flag — otherwise Stop does nothing while the provider is "thinking".
+        let next = match tokio::time::timeout(std::time::Duration::from_millis(100), stream.next()).await {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let chunk = match next {
+            Some(c) => c,
+            None => break,
+        };
         let bytes = chunk.map_err(|e| e.to_string())?;
         buffer.push_str(&String::from_utf8_lossy(&bytes));
         while let Some(idx) = buffer.find('\n') {
