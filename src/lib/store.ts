@@ -81,6 +81,25 @@ export const PROVIDER_PRESETS: Record<string, { baseUrl: string; models: string[
     baseUrl: "https://ai-gateway.vercel.sh/v1",
     models: ["moonshotai/kimi-k3", "deepseek/deepseek-v3.2", "anthropic/claude-sonnet-5"],
   },
+  Gemini: {
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    // gemini-flash-latest: free tier + vision. pro-preview needs billing.
+    models: ["gemini-flash-latest", "gemini-3.1-pro-preview", "gemini-2.5-flash"],
+  },
+  OpenRouter: {
+    baseUrl: "https://openrouter.ai/api/v1",
+    // Free models — they share rate-limit pools, so keep a couple as fallbacks.
+    models: [
+      "minimax/minimax-m2.7:free",
+      "minimax/minimax-m3:free",
+      "google/gemma-4-31b-it:free",
+      "z-ai/glm-5.2:free",
+    ],
+  },
+  "Frappe Gateway": {
+    baseUrl: "https://grove.local.frappe.dev/v1",
+    models: ["frappe/laguna-s-2.1-int4", "frappe/qwen3.5-4b"],
+  },
 };
 
 export const DEFAULT_SETTINGS: Settings = {

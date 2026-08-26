@@ -183,7 +183,7 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
             </div>
             <div>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Provider preset</label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {Object.keys(PROVIDER_PRESETS).map((name) => (
                   <button
                     key={name}
