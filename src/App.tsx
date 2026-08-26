@@ -437,7 +437,11 @@ export default function App() {
 
   const slashCommands = [
     { cmd: "/new", desc: "Start a new chat", run: () => setActiveId(null) },
-    { cmd: "/clear", desc: "Delete this conversation", run: () => active && deleteConversation(active.id) },
+    {
+      cmd: "/clear",
+      desc: "Delete this conversation",
+      run: () => active && window.confirm(`Delete "${active.title}"?`) && deleteConversation(active.id),
+    },
     { cmd: "/auto", desc: "Auto — act freely, writes confirm", run: () => applyMode("auto") },
     { cmd: "/ask", desc: "Ask before every action", run: () => applyMode("ask") },
     { cmd: "/plan", desc: "Plan only, no actions", run: () => applyMode("plan") },

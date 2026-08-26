@@ -79,7 +79,7 @@ export default function Sidebar({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete(c.id);
+                  if (window.confirm(`Delete "${c.title}"? This can't be undone.`)) onDelete(c.id);
                 }}
                 className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-2 transition-opacity"
                 title="Delete"
