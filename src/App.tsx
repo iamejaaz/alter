@@ -837,7 +837,7 @@ export default function App() {
                   }
                 }}
                 rows={1}
-                placeholder="Message Alter…   ( / for commands )"
+                placeholder="Reply to Alter…"
                 className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               <div className="flex items-center gap-0.5 px-2 pb-2">
