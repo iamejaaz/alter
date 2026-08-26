@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Skill, newId } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 
@@ -13,6 +13,12 @@ export default function SkillsPanel({ skills, onChange, onClose }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const reset = () => {
     setEditing(null);

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { MemoryItem, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
 import { testConnection } from "../lib/api";
+import { Chevron } from "./Icons";
 
 interface Props {
   settings: Settings;
@@ -49,6 +50,14 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
       .then(setAutostart)
       .catch(() => setAutostart(null));
   }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const toggleAutostart = async () => {
     try {
@@ -134,19 +143,24 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
             <div>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Connection</label>
               <div className="flex gap-2">
-                <select
-                  value={activeId}
-                  onChange={(e) => selectConnection(e.target.value)}
-                  className="flex-1 rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-                >
-                  {conns.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <div className="relative flex-1">
+                  <select
+                    value={activeId}
+                    onChange={(e) => selectConnection(e.target.value)}
+                    className="appearance-none w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    {conns.map((c) => (
+                      <option key={c.id} value={c.id} className="bg-[var(--modal)]">
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Chevron />
+                </div>
                 <button
                   onClick={addConnection}
                   className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] px-3 text-sm text-[var(--txt)]"
-                  title="Add connection"
+                  title="Add a new connection"
                 >
                   ＋
                 </button>
@@ -154,6 +168,7 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
                   <button
                     onClick={() => deleteConnection(activeId)}
                     className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] px-3 text-sm text-red-400"
+                    title="Delete this connection"
                   >
                     Delete
                   </button>
@@ -162,7 +177,7 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
               <input
                 value={activeConn?.name ?? ""}
                 onChange={(e) => renameConnection(e.target.value)}
-                placeholder="Connection name (e.g. Frappe Gateway, OpenRouter)"
+                placeholder="Connection name"
                 className="mt-2 w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
               />
             </div>

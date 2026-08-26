@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Routine, newId } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 
@@ -13,6 +13,12 @@ export default function RoutinesPanel({ routines, onChange, onRunNow, onClose }:
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [every, setEvery] = useState(60);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const add = () => {
     if (!name.trim() || !prompt.trim()) return;
