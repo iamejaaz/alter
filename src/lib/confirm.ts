@@ -1,13 +1,25 @@
-import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
+type Opener = (message: string) => void;
 
-export async function confirmDialog(message: string, title = "Alter"): Promise<boolean> {
-  try {
-    return await tauriConfirm(message, { title, kind: "warning" });
-  } catch {
-    try {
-      return window.confirm(message);
-    } catch {
-      return true;
+let opener: Opener | null = null;
+let resolver: ((v: boolean) => void) | null = null;
+
+export function registerConfirm(fn: Opener | null) {
+  opener = fn;
+}
+
+export function resolveConfirm(value: boolean) {
+  const r = resolver;
+  resolver = null;
+  r?.(value);
+}
+
+export function confirmDialog(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!opener) {
+      resolve(typeof window !== "undefined" ? window.confirm(message) : true);
+      return;
     }
-  }
+    resolver = resolve;
+    opener(message);
+  });
 }

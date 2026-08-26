@@ -33,6 +33,7 @@ import {
 } from "./lib/store";
 import RoutinesPanel from "./components/RoutinesPanel";
 import SkillsPanel from "./components/SkillsPanel";
+import ConfirmHost from "./components/ConfirmHost";
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(() => storage.loadSettings());
@@ -252,8 +253,15 @@ export default function App() {
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
         }
       }
-      if (!finished && !full && !abortRef.current.signal.aborted) {
-        full = "I took several steps but couldn't wrap this up. Try narrowing the question, or attach the specific folder you mean.";
+      if (!full && !abortRef.current.signal.aborted) {
+        if (images.length) {
+          full =
+            "I couldn't get a response for that image. The current model is likely text-only — switch to a vision-capable model (check the gateway's /v1/models) to analyze images.";
+        } else if (!finished) {
+          full = "I took several steps but couldn't wrap this up. Try narrowing the question, or attach the specific folder you mean.";
+        } else {
+          full = "(The model returned an empty response.)";
+        }
       }
       const { clean, found } = extractMemories(full);
       updateConversation(convId, (c) => {
@@ -900,6 +908,8 @@ export default function App() {
           </button>
         </div>
       )}
+
+      <ConfirmHost />
 
       {showSkills && <SkillsPanel skills={skills} onChange={setSkills} onClose={() => setShowSkills(false)} />}
 
