@@ -806,11 +806,14 @@ export default function App() {
                     className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors max-w-[200px] truncate"
                     title={settings.model}
                   >
-                    {connections.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-[var(--modal)]">
-                        {c.name}
-                      </option>
-                    ))}
+                    {connections.map((c) => {
+                      const short = c.model ? (c.model.includes("/") ? c.model.split("/").pop() : c.model) : "(no model)";
+                      return (
+                        <option key={c.id} value={c.id} className="bg-[var(--modal)]">
+                          {c.name === "Default" ? short : `${c.name} · ${short}`}
+                        </option>
+                      );
+                    })}
                   </select>
                   <Chevron />
                 </div>
