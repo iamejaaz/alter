@@ -144,9 +144,40 @@ async fn stream_chat(
 }
 
 #[tauri::command]
-async fn test_connection(url: String, api_key: String) -> Result<String, String> {
+async fn test_connection(url: String, api_key: String, model: String) -> Result<String, String> {
     let client = http_client()?;
-    let models_url = format!("{}/models", url.trim_end_matches('/'));
+    let base = url.trim_end_matches('/');
+
+    // If a model is set, actually try a tiny chat completion — this catches
+    // models that list fine but 404 / are unavailable on real requests.
+    if !model.trim().is_empty() {
+        let body = serde_json::json!({
+            "model": model,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+            "stream": false
+        });
+        let resp = client
+            .post(format!("{}/chat/completions", base))
+            .bearer_auth(&api_key)
+            .timeout(std::time::Duration::from_secs(25))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(format!("HTTP {} — {}", status.as_u16(), text.chars().take(400).collect::<String>()));
+        }
+        if text.contains("\"error\"") && !text.contains("\"choices\"") {
+            return Err(text.chars().take(400).collect::<String>());
+        }
+        return Ok(format!("Connected — \"{}\" responded.", model));
+    }
+
+    // No model set: just verify the endpoint lists models.
+    let models_url = format!("{}/models", base);
     let resp = client
         .get(&models_url)
         .bearer_auth(&api_key)

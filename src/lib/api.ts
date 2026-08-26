@@ -116,5 +116,5 @@ export async function streamChat(
 
 export async function testConnection(settings: Settings): Promise<string> {
   const url = settings.baseUrl.replace(/\/$/, "");
-  return invoke<string>("test_connection", { url, apiKey: settings.apiKey });
+  return invoke<string>("test_connection", { url, apiKey: settings.apiKey, model: settings.model });
 }
