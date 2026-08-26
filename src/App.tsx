@@ -13,7 +13,7 @@ function extractArtifacts(content: string): ArtifactType[] {
   while ((m = re.exec(content))) arts.push({ lang: m[1].toLowerCase(), code: m[2].trim() });
   return arts;
 }
-import { buildSystemPrompt, extractMemories, streamChat } from "./lib/api";
+import { buildSystemPrompt, ChatResult, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -47,6 +47,7 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [showSettings, setShowSettings] = useState(!storage.loadSettings().apiKey);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
@@ -115,6 +116,19 @@ export default function App() {
     setConversations((prev) => prev.map((c) => (c.id === id ? fn(c) : c)));
   };
 
+  // Errors that mean "this provider is busy/down — try another connection"
+  const isRetryable = (msg: string) =>
+    /\b(429|500|502|503|529)\b/.test(msg) ||
+    /rate.?limit|temporarily|unavailable|overloaded|provider returned error|upstream|capacity|try again|no instances/i.test(
+      msg
+    );
+  const connLabel = (s: Settings) => {
+    const list = s.connections ?? settings.connections ?? [];
+    const c = list.find((x) => x.id === s.activeConnectionId);
+    const model = s.model.includes("/") ? s.model.split("/").pop() : s.model;
+    return c && c.name !== "Default" ? `${c.name} · ${model}` : model || "model";
+  };
+
   const send = async (opts?: {
     text?: string;
     forceNew?: boolean;
@@ -129,6 +143,7 @@ export default function App() {
       return;
     }
     setError(null);
+    setInfo(null);
     atBottomRef.current = true;
     if (!opts?.text) {
       setInput("");
@@ -191,23 +206,61 @@ export default function App() {
     setStreaming(true);
     abortRef.current = new AbortController();
     const MAX_ROUNDS = 6;
+    // Try the active connection first, then every other saved connection as a fallback.
+    const fallbacks: Settings[] = [
+      settings,
+      ...(settings.connections ?? [])
+        .filter((c) => c.id !== settings.activeConnectionId)
+        .map((c) => ({ ...settings, baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, activeConnectionId: c.id })),
+    ];
+    let activeSettings = settings;
+    const writePartial = (partial: string) =>
+      updateConversation(convId!, (c) => ({
+        ...c,
+        messages: [...c.messages.slice(0, -1), { role: "assistant", content: partial }],
+      }));
     try {
       let full = "";
       let finished = false;
       for (let round = 0; round < MAX_ROUNDS; round++) {
         if (abortRef.current.signal.aborted) break;
-        const result = await streamChat(
-          settings,
-          payload,
-          (partial) => {
-            updateConversation(convId!, (c) => ({
-              ...c,
-              messages: [...c.messages.slice(0, -1), { role: "assistant", content: partial }],
-            }));
-          },
-          abortRef.current.signal,
-          useTools
-        );
+        let result: ChatResult;
+        if (round === 0 && fallbacks.length > 1) {
+          // First reply: walk connections until one actually starts responding.
+          let chosen: ChatResult | null = null;
+          for (let fi = 0; fi < fallbacks.length; fi++) {
+            const cand = fallbacks[fi];
+            let gotContent = false;
+            try {
+              chosen = await streamChat(
+                cand,
+                payload,
+                (partial) => {
+                  gotContent = true;
+                  writePartial(partial);
+                },
+                abortRef.current.signal,
+                useTools
+              );
+              activeSettings = cand;
+              if (fi > 0) {
+                setInfo(`${connLabel(fallbacks[0])} was unavailable — switched to ${connLabel(cand)}.`);
+                setSettings(cand);
+                storage.saveSettings(cand);
+              }
+              break;
+            } catch (e) {
+              const m = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
+              const aborted =
+                abortRef.current.signal.aborted || (e as Error)?.name === "AbortError" || /abort/i.test(m);
+              // Only fall through on a retryable provider error before any text streamed.
+              if (aborted || gotContent || !isRetryable(m) || fi === fallbacks.length - 1) throw e;
+            }
+          }
+          result = chosen!;
+        } else {
+          result = await streamChat(activeSettings, payload, writePartial, abortRef.current.signal, useTools);
+        }
 
         if (result.content) full = result.content;
 
@@ -683,6 +736,12 @@ export default function App() {
                 {error}
               </p>
             )}
+            {info && (
+              <p className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-2 text-xs text-[var(--txt-dim)]">
+                <span className="text-indigo-400">↻</span>
+                {info}
+              </p>
+            )}
             <div className="rounded-2xl border border-[var(--bd)] bg-[var(--composer)] shadow-xl shadow-black/20 transition-colors focus-within:border-indigo-500/40">
               {attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-3 pt-3">
@@ -778,7 +837,7 @@ export default function App() {
                   }
                 }}
                 rows={1}
-                placeholder="/ for commands"
+                placeholder="Message Alter…   ( / for commands )"
                 className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               <div className="flex items-center gap-0.5 px-2 pb-2">
