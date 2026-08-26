@@ -150,6 +150,7 @@ async fn test_connection(url: String, api_key: String) -> Result<String, String>
     let resp = client
         .get(&models_url)
         .bearer_auth(&api_key)
+        .timeout(std::time::Duration::from_secs(15))
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -172,15 +173,38 @@ async fn test_connection(url: String, api_key: String) -> Result<String, String>
 
 fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36")
         .build()
         .map_err(|e| e.to_string())
 }
 
+fn decode_entities(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&nbsp;", " ")
+}
+
+fn slice_between<'a>(s: &'a str, start: &str, end: &str) -> Option<&'a str> {
+    let i = s.find(start)? + start.len();
+    let rest = &s[i..];
+    let j = rest.find(end)?;
+    Some(&rest[..j])
+}
+
 #[tauri::command]
 async fn fetch_url(url: String) -> Result<String, String> {
     let client = http_client()?;
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let status = resp.status();
     let body = resp.text().await.map_err(|e| e.to_string())?;
     let mut text = html_to_text(&body);
@@ -191,35 +215,63 @@ async fn fetch_url(url: String) -> Result<String, String> {
     Ok(format!("HTTP {} — {}\n\n{}", status.as_u16(), url, text))
 }
 
+fn ddg_real_url(href: &str) -> String {
+    let cleaned = href.replace("&amp;", "&");
+    if let Some(start) = cleaned.find("uddg=") {
+        let rest = &cleaned[start + 5..];
+        let enc = rest.split('&').next().unwrap_or(rest);
+        return urlencoding::decode(enc).map(|s| s.into_owned()).unwrap_or_else(|_| enc.to_string());
+    }
+    if cleaned.starts_with("//") {
+        format!("https:{}", cleaned)
+    } else {
+        cleaned
+    }
+}
+
 #[tauri::command]
 async fn web_search(query: String) -> Result<String, String> {
     let client = http_client()?;
     let resp = client
-        .get("https://lite.duckduckgo.com/lite/")
+        .get("https://html.duckduckgo.com/html/")
         .query(&[("q", &query)])
+        .timeout(std::time::Duration::from_secs(15))
         .send()
         .await
         .map_err(|e| e.to_string())?;
     let html = resp.text().await.map_err(|e| e.to_string())?;
+
     let mut results = Vec::new();
-    for part in html.split("href=\"").skip(1) {
-        if let Some(end) = part.find('"') {
-            let href = &part[..end];
-            if href.starts_with("http") && !href.contains("duckduckgo.com") {
-                let title_start = part.find('>').map(|p| p + 1).unwrap_or(0);
-                let title_end = part[title_start..].find("</a>").map(|p| title_start + p);
-                if let Some(te) = title_end {
-                    let title = html_to_text(&part[title_start..te]);
-                    if !title.is_empty() {
-                        results.push(format!("{}\n{}", title, href));
-                    }
-                }
-            }
+    let mut idx = 0;
+    while let Some(pos) = html[idx..].find("class=\"result__a\"") {
+        let base = idx + pos;
+        idx = base + 17;
+        let block = &html[base..(base + 3000).min(html.len())];
+        let href = slice_between(block, "href=\"", "\"").unwrap_or("");
+        let url = ddg_real_url(href);
+        if url.is_empty() || url.contains("duckduckgo.com") {
+            continue;
         }
-        if results.len() >= 8 {
+        let title = slice_between(block, ">", "</a>")
+            .map(|t| decode_entities(&html_to_text(t)))
+            .unwrap_or_default();
+        let snippet = slice_between(&html[base..], "class=\"result__snippet\"", "</a>")
+            .and_then(|s| s.find('>').map(|p| &s[p + 1..]))
+            .map(|t| decode_entities(&html_to_text(t)))
+            .unwrap_or_default();
+        if title.is_empty() {
+            continue;
+        }
+        let mut entry = format!("{}\n{}", title, url);
+        if !snippet.is_empty() {
+            entry.push_str(&format!("\n{}", snippet.chars().take(300).collect::<String>()));
+        }
+        results.push(entry);
+        if results.len() >= 6 {
             break;
         }
     }
+
     if results.is_empty() {
         Ok(format!("No results for \"{}\".", query))
     } else {
