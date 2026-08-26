@@ -11,6 +11,7 @@ interface Props {
   onDelete: (id: string) => void;
   onOpenSettings: () => void;
   onOpenRoutines: () => void;
+  onOpenSkills: () => void;
 }
 
 export default function Sidebar({
@@ -21,6 +22,7 @@ export default function Sidebar({
   onDelete,
   onOpenSettings,
   onOpenRoutines,
+  onOpenSkills,
 }: Props) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
@@ -100,14 +102,20 @@ export default function Sidebar({
 
       <div className="flex gap-1 p-2 border-t border-[var(--bd-soft)]">
         <button
+          onClick={onOpenSkills}
+          className="flex-1 rounded-lg hover:bg-[var(--panel-2)] px-2 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)] text-center transition-colors"
+        >
+          Skills
+        </button>
+        <button
           onClick={onOpenRoutines}
-          className="flex-1 rounded-lg hover:bg-[var(--panel-2)] px-3 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)] text-left transition-colors"
+          className="flex-1 rounded-lg hover:bg-[var(--panel-2)] px-2 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)] text-center transition-colors"
         >
           Routines
         </button>
         <button
           onClick={onOpenSettings}
-          className="flex-1 rounded-lg hover:bg-[var(--panel-2)] px-3 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)] text-left transition-colors"
+          className="flex-1 rounded-lg hover:bg-[var(--panel-2)] px-2 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)] text-center transition-colors"
         >
           Settings
         </button>

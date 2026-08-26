@@ -1,5 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { MemoryItem, Message, Mode, Settings, ToolCall } from "./store";
+import { MemoryItem, Message, Mode, Settings, Skill, ToolCall } from "./store";
 import { TOOL_DEFINITIONS } from "./tools";
 
 const MODE_NOTES: Record<Mode, string> = {
@@ -25,11 +25,15 @@ For pages that need a real browser — JavaScript-rendered content, or clicking 
 
 When the user shares a lasting fact, preference, or instruction about themselves or how you should behave, append it at the very end of your reply on its own line wrapped exactly like: <memory>the fact, stated briefly</memory>. Only save genuinely lasting things, never small talk. Do not mention that you saved a memory.`;
 
-export function buildSystemPrompt(memories: MemoryItem[], mode: Mode = "auto"): string {
+export function buildSystemPrompt(memories: MemoryItem[], mode: Mode = "auto", skills: Skill[] = []): string {
   let prompt = BASE_PROMPT;
   if (memories.length > 0) {
     const facts = memories.map((m) => `- ${m.text}`).join("\n");
     prompt += `\n\nWhat you remember about the user from past conversations:\n${facts}`;
+  }
+  if (skills.length > 0) {
+    const list = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+    prompt += `\n\nThe user has these saved skills. When a request matches one, call use_skill with its exact name to load its full instructions, then follow them:\n${list}`;
   }
   return prompt + MODE_NOTES[mode];
 }

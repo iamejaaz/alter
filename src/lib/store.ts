@@ -51,6 +51,13 @@ export interface Routine {
   enabled: boolean;
 }
 
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+}
+
 export const PROVIDER_PRESETS: Record<string, { baseUrl: string; models: string[] }> = {
   DeepSeek: {
     baseUrl: "https://api.deepseek.com",
@@ -95,6 +102,8 @@ export const storage = {
   saveMemories: (m: MemoryItem[]) => save("alter.memories", m),
   loadRoutines: () => load<Routine[]>("alter.routines", []),
   saveRoutines: (r: Routine[]) => save("alter.routines", r),
+  loadSkills: () => load<Skill[]>("alter.skills", []),
+  saveSkills: (s: Skill[]) => save("alter.skills", s),
 };
 
 export function newId(): string {

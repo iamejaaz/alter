@@ -6,6 +6,19 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "use_skill",
+      description:
+        "Load the full instructions of one of the user's saved skills by its exact name, then follow them. Only the skills listed in the system prompt exist. Use when a request matches a skill.",
+      parameters: {
+        type: "object",
+        properties: { name: { type: "string", description: "Exact skill name" } },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_dir",
       description: "List entries of a directory on the user's computer. Directory names end with a slash.",
       parameters: {

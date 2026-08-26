@@ -27,10 +27,12 @@ import {
   PROVIDER_PRESETS,
   Routine,
   Settings,
+  Skill,
   newId,
   storage,
 } from "./lib/store";
 import RoutinesPanel from "./components/RoutinesPanel";
+import SkillsPanel from "./components/SkillsPanel";
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(() => storage.loadSettings());
@@ -38,6 +40,8 @@ export default function App() {
   const [memories, setMemories] = useState<MemoryItem[]>(() => storage.loadMemories());
   const [routines, setRoutines] = useState<Routine[]>(() => storage.loadRoutines());
   const [showRoutines, setShowRoutines] = useState(false);
+  const [skills, setSkills] = useState<Skill[]>(() => storage.loadSkills());
+  const [showSkills, setShowSkills] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -90,6 +94,7 @@ export default function App() {
   useEffect(() => storage.saveConversations(conversations), [conversations]);
   useEffect(() => storage.saveMemories(memories), [memories]);
   useEffect(() => storage.saveRoutines(routines), [routines]);
+  useEffect(() => storage.saveSkills(skills), [skills]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
@@ -156,7 +161,7 @@ export default function App() {
     const mode = settings.mode ?? "auto";
     const useTools = mode === "auto" || mode === "ask";
     const systemContent =
-      buildSystemPrompt(memories, mode) +
+      buildSystemPrompt(memories, mode, skills) +
       (folder
         ? `\n\nThe user's attached working folder is: ${folder}\nThis is "this folder" / "this project" / "here". When asked about it, immediately call list_tree on it and read key files (README, package.json, main source) to answer — do not ask the user to confirm the path.`
         : "");
@@ -234,7 +239,16 @@ export default function App() {
             args = {};
           }
           if (abortRef.current.signal.aborted) break;
-          const output = await executeTool(tc.function.name, args, mode);
+          let output: string;
+          if (tc.function.name === "use_skill") {
+            const wanted = String(args.name ?? "").toLowerCase();
+            const skill = skills.find((s) => s.name.toLowerCase() === wanted);
+            output = skill
+              ? `Skill "${skill.name}" instructions — follow these:\n\n${skill.instructions}`
+              : `No skill named "${args.name}". Available: ${skills.map((s) => s.name).join(", ") || "none"}.`;
+          } else {
+            output = await executeTool(tc.function.name, args, mode);
+          }
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
         }
       }
@@ -480,6 +494,7 @@ export default function App() {
         onDelete={deleteConversation}
         onOpenSettings={() => setShowSettings(true)}
         onOpenRoutines={() => setShowRoutines(true)}
+        onOpenSkills={() => setShowSkills(true)}
       />
 
       <main className="flex-1 flex flex-col min-w-0">
@@ -755,7 +770,7 @@ export default function App() {
                   }
                 }}
                 rows={1}
-                placeholder="Message Alter…  (/ for commands)"
+                placeholder="/ for commands"
                 className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               <div className="flex items-center gap-0.5 px-2 pb-2">
@@ -885,6 +900,8 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {showSkills && <SkillsPanel skills={skills} onChange={setSkills} onClose={() => setShowSkills(false)} />}
 
       {showRoutines && (
         <RoutinesPanel
