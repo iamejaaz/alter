@@ -83,10 +83,22 @@ export default function App() {
       setInput((base ? base + " " : "") + t);
     };
     rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.onerror = (e: { error?: string }) => {
+      setListening(false);
+      setError(
+        e?.error === "not-allowed" || e?.error === "service-not-allowed"
+          ? "Microphone access is blocked. Allow it in System Settings › Privacy & Security › Microphone."
+          : "Voice dictation isn't supported in this app's webview yet."
+      );
+    };
     recognitionRef.current = rec;
     setListening(true);
-    rec.start();
+    try {
+      rec.start();
+    } catch {
+      setListening(false);
+      setError("Voice dictation isn't supported in this app's webview yet.");
+    }
   };
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -127,6 +139,18 @@ export default function App() {
     const c = list.find((x) => x.id === s.activeConnectionId);
     const model = s.model.includes("/") ? s.model.split("/").pop() : s.model;
     return c && c.name !== "Default" ? `${c.name} · ${model}` : model || "model";
+  };
+  // Turn raw provider errors into plain-English guidance.
+  const humanizeError = (raw: string): string => {
+    if (/image input|support image|no endpoints.*image/i.test(raw))
+      return "This model can't read images — it's text-only. Switch to a vision model (e.g. google/gemma-4-31b-it:free or minimax/minimax-m3:free), then resend.";
+    if (/\b429\b|rate.?limit|temporarily|overloaded|upstream|shared_pool/i.test(raw))
+      return "The model is rate-limited right now. Try again in a moment, switch to another connection, or add your own OpenRouter key for higher limits.";
+    if (/\b401\b|invalid.?api|unauthor|no auth/i.test(raw))
+      return "The API key was rejected. Check the key for this connection in Settings.";
+    if (/\b404\b/.test(raw))
+      return "That model id wasn't found on this provider. Check the model slug in Settings.";
+    return raw.length > 240 ? raw.slice(0, 240) + "…" : raw;
   };
 
   const send = async (opts?: {
@@ -219,11 +243,17 @@ export default function App() {
         ...c,
         messages: [...c.messages.slice(0, -1), { role: "assistant", content: partial }],
       }));
+    const deadline = Date.now() + 90_000; // hard cap: stop tool-looping after 90s
     try {
       let full = "";
       let finished = false;
+      let cappedOut = false;
       for (let round = 0; round < MAX_ROUNDS; round++) {
         if (abortRef.current.signal.aborted) break;
+        if (Date.now() > deadline) {
+          cappedOut = true;
+          break;
+        }
         let result: ChatResult;
         if (round === 0 && fallbacks.length > 1) {
           // First reply: walk connections until one actually starts responding.
@@ -292,6 +322,10 @@ export default function App() {
             args = {};
           }
           if (abortRef.current.signal.aborted) break;
+          if (Date.now() > deadline) {
+            cappedOut = true;
+            break;
+          }
           let output: string;
           if (tc.function.name === "use_skill") {
             const wanted = String(args.name ?? "").toLowerCase();
@@ -304,9 +338,13 @@ export default function App() {
           }
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
         }
+        if (cappedOut) break;
       }
       if (!full && !abortRef.current.signal.aborted) {
-        if (images.length) {
+        if (cappedOut) {
+          full =
+            "Stopped — the model kept running tools for over 90 seconds without finishing. Try a sharper request, or switch to a stronger model.";
+        } else if (images.length) {
           full =
             "I couldn't get a response for that image. The current model is likely text-only — switch to a vision-capable model (check the gateway's /v1/models) to analyze images.";
         } else if (!finished) {
@@ -332,7 +370,7 @@ export default function App() {
     } catch (e: unknown) {
       const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
       if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
-        setError(msg);
+        setError(humanizeError(msg));
         updateConversation(convId, (c) => ({
           ...c,
           messages: c.messages.filter((m, i) => !(i === c.messages.length - 1 && m.role === "assistant" && !m.content)),
@@ -837,7 +875,7 @@ export default function App() {
                   }
                 }}
                 rows={1}
-                placeholder="Reply to Alter…"
+                placeholder="Type / for commands"
                 className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               <div className="flex items-center gap-0.5 px-2 pb-2">
