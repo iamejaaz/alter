@@ -113,6 +113,19 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "which_command",
+      description:
+        "Check whether a command-line tool is installed by locating its executable across the whole PATH and common bin directories. Use this to answer 'is X installed' / 'do I have X' — do not guess by listing a few folders.",
+      parameters: {
+        type: "object",
+        properties: { name: { type: "string", description: "Plain command name, e.g. 'git' or 'frappectl'" } },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "read_file",
       description: "Read a text file from the user's computer by absolute path.",
       parameters: {

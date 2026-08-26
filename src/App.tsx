@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import SettingsPanel from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
@@ -100,8 +100,9 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  useEffect(() => {
-    if (atBottomRef.current) bottomRef.current?.scrollIntoView({ block: "end" });
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [active?.messages]);
 
   const updateConversation = (id: string, fn: (c: Conversation) => Conversation) => {
@@ -509,6 +510,13 @@ export default function App() {
 
         <div
           ref={scrollRef}
+          onWheel={(e) => {
+            if (e.deltaY < 0) atBottomRef.current = false;
+          }}
+          onTouchMove={() => {
+            const el = scrollRef.current;
+            if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+          }}
           onScroll={() => {
             const el = scrollRef.current;
             if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;

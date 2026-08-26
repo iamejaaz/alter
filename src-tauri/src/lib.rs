@@ -406,6 +406,48 @@ fn walk(dir: &std::path::Path, prefix: &str, depth: usize, out: &mut Vec<String>
 }
 
 #[tauri::command]
+fn which_command(name: String) -> Result<String, String> {
+    if name.is_empty() || name.contains('/') || name.contains(char::is_whitespace) {
+        return Err("Pass a plain command name (no slashes or spaces).".into());
+    }
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(path) = std::env::var("PATH") {
+        for d in path.split(':').filter(|d| !d.is_empty()) {
+            dirs.push(std::path::PathBuf::from(d));
+        }
+    }
+    for common in [
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ] {
+        dirs.push(std::path::PathBuf::from(common));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        for extra in [".local/bin", "bin", ".cargo/bin", ".pyenv/shims", ".volta/bin", "go/bin"] {
+            dirs.push(std::path::Path::new(&home).join(extra));
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    for dir in dirs {
+        if !seen.insert(dir.clone()) {
+            continue;
+        }
+        let candidate = dir.join(&name);
+        if candidate.is_file() {
+            return Ok(format!("{} is installed at {}", name, candidate.display()));
+        }
+    }
+    Ok(format!(
+        "{} was not found on PATH or common bin directories. (Note: tools inside an unactivated virtualenv or a shell alias won't be detected this way.)",
+        name
+    ))
+}
+
+#[tauri::command]
 fn list_tree(path: String, depth: Option<usize>) -> Result<String, String> {
     let root = std::path::Path::new(&path);
     if !root.is_dir() {
@@ -477,6 +519,7 @@ pub fn run() {
             list_dir,
             list_tree,
             search_files,
+            which_command,
             fetch_url,
             web_search,
             save_routine_state,
