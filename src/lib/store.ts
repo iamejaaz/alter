@@ -29,11 +29,21 @@ export interface Conversation {
 
 export type Mode = "auto" | "ask" | "plan" | "chat";
 
+export interface Connection {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
 export interface Settings {
   baseUrl: string;
   apiKey: string;
   model: string;
   mode?: Mode;
+  connections?: Connection[];
+  activeConnectionId?: string;
 }
 
 export interface MemoryItem {
@@ -94,7 +104,24 @@ function save(key: string, value: unknown) {
 }
 
 export const storage = {
-  loadSettings: () => load<Settings>("alter.settings", DEFAULT_SETTINGS),
+  loadSettings: () => {
+    const s = load<Settings>("alter.settings", DEFAULT_SETTINGS);
+    if (!s.connections || s.connections.length === 0) {
+      const conn: Connection = {
+        id: newId(),
+        name: "Default",
+        baseUrl: s.baseUrl,
+        apiKey: s.apiKey,
+        model: s.model,
+      };
+      s.connections = [conn];
+      s.activeConnectionId = conn.id;
+    }
+    if (!s.activeConnectionId || !s.connections.some((c) => c.id === s.activeConnectionId)) {
+      s.activeConnectionId = s.connections[0].id;
+    }
+    return s;
+  },
   saveSettings: (s: Settings) => save("alter.settings", s),
   loadConversations: () => load<Conversation[]>("alter.conversations", []),
   saveConversations: (c: Conversation[]) => save("alter.conversations", c),

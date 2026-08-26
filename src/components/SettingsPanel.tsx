@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { MemoryItem, PROVIDER_PRESETS, Settings } from "../lib/store";
+import { MemoryItem, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
 import { testConnection } from "../lib/api";
 
 interface Props {
@@ -69,6 +69,41 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
     if (preset) setDraft({ ...draft, baseUrl: preset.baseUrl, model: preset.models[0] });
   };
 
+  const conns = draft.connections ?? [];
+  const activeId = draft.activeConnectionId ?? conns[0]?.id;
+  const activeConn = conns.find((c) => c.id === activeId);
+  const syncedConnections = () =>
+    conns.map((c) =>
+      c.id === activeId ? { ...c, baseUrl: draft.baseUrl, apiKey: draft.apiKey, model: draft.model } : c
+    );
+
+  const selectConnection = (id: string) => {
+    const synced = syncedConnections();
+    const target = synced.find((c) => c.id === id);
+    if (!target) return;
+    setDraft({ ...draft, connections: synced, activeConnectionId: id, baseUrl: target.baseUrl, apiKey: target.apiKey, model: target.model });
+    setTestResult(null);
+  };
+  const addConnection = () => {
+    const synced = syncedConnections();
+    const conn = { id: newId(), name: "New connection", baseUrl: "", apiKey: "", model: "" };
+    setDraft({ ...draft, connections: [...synced, conn], activeConnectionId: conn.id, baseUrl: "", apiKey: "", model: "" });
+    setTestResult(null);
+  };
+  const deleteConnection = (id: string) => {
+    const remaining = conns.filter((c) => c.id !== id);
+    if (remaining.length === 0) return;
+    const next = remaining[0];
+    setDraft({ ...draft, connections: remaining, activeConnectionId: next.id, baseUrl: next.baseUrl, apiKey: next.apiKey, model: next.model });
+  };
+  const renameConnection = (name: string) => {
+    setDraft({ ...draft, connections: conns.map((c) => (c.id === activeId ? { ...c, name } : c)) });
+  };
+  const save = () => {
+    onSave({ ...draft, connections: syncedConnections() });
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
@@ -96,6 +131,41 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
 
         {tab === "connection" && (
           <div className="space-y-4">
+            <div>
+              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Connection</label>
+              <div className="flex gap-2">
+                <select
+                  value={activeId}
+                  onChange={(e) => selectConnection(e.target.value)}
+                  className="flex-1 rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+                >
+                  {conns.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={addConnection}
+                  className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] px-3 text-sm text-[var(--txt)]"
+                  title="Add connection"
+                >
+                  ＋
+                </button>
+                {conns.length > 1 && (
+                  <button
+                    onClick={() => deleteConnection(activeId)}
+                    className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] px-3 text-sm text-red-400"
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+              <input
+                value={activeConn?.name ?? ""}
+                onChange={(e) => renameConnection(e.target.value)}
+                placeholder="Connection name (e.g. Frappe Gateway, OpenRouter)"
+                className="mt-2 w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+              />
+            </div>
             <div>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Provider preset</label>
               <div className="flex gap-2">
@@ -205,10 +275,7 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  onSave(draft);
-                  onClose();
-                }}
+                onClick={save}
                 className="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium"
               >
                 Save

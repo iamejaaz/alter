@@ -24,7 +24,6 @@ import {
   Conversation,
   MemoryItem,
   Message,
-  PROVIDER_PRESETS,
   Routine,
   Settings,
   Skill,
@@ -442,14 +441,14 @@ export default function App() {
     if (activeId === id) setActiveId(null);
   };
 
-  const modelOptions = Array.from(
-    new Set([settings.model, ...Object.values(PROVIDER_PRESETS).flatMap((p) => p.models)])
-  ).filter(Boolean);
   const tokenEstimate = active
     ? Math.round(active.messages.reduce((n, m) => n + (m.content?.length ?? 0), 0) / 4)
     : 0;
-  const setModel = (model: string) => {
-    const s = { ...settings, model };
+  const connections = settings.connections ?? [];
+  const switchConnection = (id: string) => {
+    const conn = connections.find((c) => c.id === id);
+    if (!conn) return;
+    const s = { ...settings, activeConnectionId: id, baseUrl: conn.baseUrl, apiKey: conn.apiKey, model: conn.model };
     setSettings(s);
     storage.saveSettings(s);
   };
@@ -802,14 +801,14 @@ export default function App() {
                 </div>
                 <div className="relative">
                   <select
-                    value={settings.model}
-                    onChange={(e) => setModel(e.target.value)}
+                    value={settings.activeConnectionId ?? ""}
+                    onChange={(e) => switchConnection(e.target.value)}
                     className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors max-w-[200px] truncate"
                     title={settings.model}
                   >
-                    {modelOptions.map((m) => (
-                      <option key={m} value={m} className="bg-[var(--modal)]">
-                        {m.includes("/") ? m.split("/").pop() : m}
+                    {connections.map((c) => (
+                      <option key={c.id} value={c.id} className="bg-[var(--modal)]">
+                        {c.name}
                       </option>
                     ))}
                   </select>
