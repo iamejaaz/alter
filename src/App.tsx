@@ -51,6 +51,8 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
   const speechSupported =
     typeof window !== "undefined" &&
     // @ts-expect-error vendor-prefixed
@@ -99,7 +101,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (atBottomRef.current) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [active?.messages]);
 
   const updateConversation = (id: string, fn: (c: Conversation) => Conversation) => {
@@ -120,6 +122,7 @@ export default function App() {
       return;
     }
     setError(null);
+    atBottomRef.current = true;
     if (!opts?.text) {
       setInput("");
       setAttachments([]);
@@ -489,7 +492,14 @@ export default function App() {
           )}
         </header>
 
-        <div className="flex-1 overflow-y-auto">
+        <div
+          ref={scrollRef}
+          onScroll={() => {
+            const el = scrollRef.current;
+            if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+          }}
+          className="flex-1 overflow-y-auto"
+        >
           {!active || active.messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-8">
               <Logo size={48} />
