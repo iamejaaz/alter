@@ -104,6 +104,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [sharedMemory, setSharedMemory] = useState(""); // ~/.claude/CLAUDE.md — shared with Claude Code
+  const [pr, setPr] = useState<{ number: number; title: string; url: string } | null>(null);
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
@@ -164,6 +165,16 @@ export default function App() {
   useEffect(() => {
     void invoke<string>("read_user_memory").then(setSharedMemory).catch(() => {});
   }, []);
+  // Surface the open PR for the working folder's branch (like Claude Code shows above the input).
+  useEffect(() => {
+    if (!folder) {
+      setPr(null);
+      return;
+    }
+    void invoke<string>("git_pr", { cwd: folder })
+      .then((raw) => setPr(raw ? JSON.parse(raw) : null))
+      .catch(() => setPr(null));
+  }, [folder]);
   // Open http(s) links in the default browser, never inside the app webview.
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -1038,6 +1049,17 @@ export default function App() {
                 <span className="text-indigo-400">↻</span>
                 {info}
               </p>
+            )}
+            {pr && (
+              <a
+                href={pr.url}
+                className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-1.5 text-xs text-[var(--txt-dim)] hover:text-[var(--txt)] hover:border-zinc-600 transition-colors w-fit"
+                title={pr.url}
+              >
+                <span className="text-green-400">⑃</span>
+                <span className="font-medium">#{pr.number}</span>
+                <span className="truncate max-w-[420px]">{pr.title}</span>
+              </a>
             )}
             <div className="rounded-2xl border border-[var(--bd)] bg-[var(--composer)] shadow-xl shadow-black/20 transition-colors focus-within:border-indigo-500/40">
               {attachments.length > 0 && (

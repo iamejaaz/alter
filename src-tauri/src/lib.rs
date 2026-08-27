@@ -263,6 +263,24 @@ fn open_external(url: String) -> Result<(), String> {
     Ok(())
 }
 
+// If the working folder is a git repo with an open PR for the current branch,
+// return its {number,title,url} JSON (empty string otherwise) via `gh`.
+#[tauri::command]
+fn git_pr(cwd: String) -> Result<String, String> {
+    use std::process::Command;
+    if cwd.is_empty() {
+        return Ok(String::new());
+    }
+    let out = Command::new("gh")
+        .args(["pr", "view", "--json", "number,title,url"])
+        .current_dir(&cwd)
+        .output();
+    match out {
+        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).trim().to_string()),
+        _ => Ok(String::new()), // no PR, not a repo, or gh unavailable
+    }
+}
+
 // Generate a short chat title from the first message (HTTP providers).
 #[tauri::command]
 async fn quick_complete(url: String, api_key: String, model: String, prompt: String) -> Result<String, String> {
@@ -896,6 +914,7 @@ pub fn run() {
             open_external,
             quick_complete,
             claude_title,
+            git_pr,
             browser::browser_open,
             browser::browser_read,
             browser::browser_click,
