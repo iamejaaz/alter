@@ -125,6 +125,7 @@ export async function testConnection(settings: Settings): Promise<string> {
 export async function claudeCodeChat(
   prompt: string,
   cwd: string | null,
+  convId: string,
   sessionId: string | null,
   model: string | null,
   onDelta: (text: string) => void,
@@ -161,7 +162,7 @@ export async function claudeCodeChat(
   const onAbort = () => void invoke("cancel_chat").catch(() => {});
   signal.addEventListener("abort", onAbort);
   try {
-    await invoke("claude_code", { prompt, cwd, sessionId, model, onChunk: channel });
+    await invoke("claude_code", { prompt, cwd, convId, sessionId, model, onChunk: channel });
   } finally {
     signal.removeEventListener("abort", onAbort);
   }

@@ -95,6 +95,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[derive(Default)]
 pub struct ChatCancel(pub AtomicBool);
 
+// A warm, long-lived Claude Code process bound to one conversation/model/cwd.
+// Kept alive between messages so follow-up turns skip the cold start + cache rebuild.
+struct ClaudeProc {
+    conv_id: String,
+    model: String,
+    cwd: String,
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    rx: std::sync::mpsc::Receiver<String>,
+}
+#[derive(Default)]
+pub struct ClaudeState(pub std::sync::Mutex<Option<ClaudeProc>>);
+
 #[tauri::command]
 fn cancel_chat(state: tauri::State<ChatCancel>) {
     state.0.store(true, Ordering::SeqCst);
@@ -191,69 +204,129 @@ fn claude_version() -> Result<String, String> {
 
 #[tauri::command]
 fn claude_code(
-    state: tauri::State<'_, ChatCancel>,
+    cancel: tauri::State<'_, ChatCancel>,
+    procs: tauri::State<'_, ClaudeState>,
     prompt: String,
     cwd: Option<String>,
+    conv_id: String,
     session_id: Option<String>,
     model: Option<String>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
-    use std::io::{BufRead, BufReader, Read};
+    use std::io::{BufRead, BufReader, Write};
     use std::process::{Command, Stdio};
-    state.0.store(false, Ordering::SeqCst);
+    use std::sync::mpsc::RecvTimeoutError;
+    cancel.0.store(false, Ordering::SeqCst);
 
-    let mut cmd = Command::new("claude");
-    cmd.arg("-p")
-        .arg(&prompt)
-        .arg("--output-format")
-        .arg("stream-json")
-        .arg("--verbose")
-        .arg("--permission-mode")
-        .arg("acceptEdits");
-    // Optional model override (e.g. "sonnet" for speed). "claude-code" is the
-    // preset placeholder meaning "use Claude Code's own default model".
-    if let Some(m) = model.as_ref().filter(|m| !m.is_empty() && m.as_str() != "claude-code") {
-        cmd.arg("--model").arg(m);
-    }
-    if let Some(sid) = session_id.as_ref().filter(|s| !s.is_empty()) {
-        cmd.arg("--resume").arg(sid);
-    }
-    if let Some(dir) = cwd.as_ref().filter(|s| !s.is_empty()) {
-        cmd.current_dir(dir);
-    }
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let model = model.unwrap_or_default();
+    let cwd = cwd.unwrap_or_default();
+    let mut guard = procs.0.lock().map_err(|e| e.to_string())?;
 
-    let mut child = cmd.spawn().map_err(|e| {
-        format!("Couldn't start Claude Code — is the `claude` CLI installed and on your PATH? ({e})")
-    })?;
-    let stdout = child.stdout.take().ok_or("no stdout from claude")?;
-    let mut stderr = child.stderr.take();
-    let reader = BufReader::new(stdout);
+    // Reuse the warm process only if conversation, model and folder all still match
+    // and it hasn't died — otherwise spawn a fresh one (the only slow turn).
+    let reuse = match guard.as_mut() {
+        Some(p) => {
+            let alive = matches!(p.child.try_wait(), Ok(None));
+            alive && p.conv_id == conv_id && p.model == model && p.cwd == cwd
+        }
+        None => false,
+    };
 
-    for line in reader.lines() {
-        if state.0.load(Ordering::SeqCst) {
-            let _ = child.kill();
+    if !reuse {
+        if let Some(mut old) = guard.take() {
+            let _ = old.child.kill();
+        }
+        let mut cmd = Command::new("claude");
+        cmd.arg("-p")
+            .arg("--input-format").arg("stream-json")
+            .arg("--output-format").arg("stream-json")
+            .arg("--verbose")
+            .arg("--permission-mode").arg("acceptEdits");
+        if !model.is_empty() && model != "claude-code" {
+            cmd.arg("--model").arg(&model);
+        }
+        // Resume prior context when respawning (model switch / returning to a chat).
+        if let Some(sid) = session_id.as_ref().filter(|s| !s.is_empty()) {
+            cmd.arg("--resume").arg(sid);
+        }
+        if !cwd.is_empty() {
+            cmd.current_dir(&cwd);
+        }
+        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+
+        let mut child = cmd.spawn().map_err(|e| {
+            format!("Couldn't start Claude Code — is the `claude` CLI installed and on your PATH? ({e})")
+        })?;
+        let stdin = child.stdin.take().ok_or("no stdin")?;
+        let stdout = child.stdout.take().ok_or("no stdout")?;
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                match line {
+                    Ok(l) => {
+                        if tx.send(l).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        *guard = Some(ClaudeProc {
+            conv_id: conv_id.clone(),
+            model: model.clone(),
+            cwd: cwd.clone(),
+            child,
+            stdin,
+            rx,
+        });
+    }
+
+    // Send this turn's user message on the (possibly warm) process's stdin.
+    {
+        let p = guard.as_mut().unwrap();
+        let msg = serde_json::json!({
+            "type": "user",
+            "message": { "role": "user", "content": [{ "type": "text", "text": prompt }] }
+        });
+        if writeln!(p.stdin, "{}", msg).and_then(|_| p.stdin.flush()).is_err() {
+            let _ = guard.take();
+            return Err("Claude Code process closed — try again.".to_string());
+        }
+    }
+
+    // Forward events until this turn's `result` event; keep the process alive after.
+    loop {
+        if cancel.0.load(Ordering::SeqCst) {
+            if let Some(mut old) = guard.take() {
+                let _ = old.child.kill();
+            }
             break;
         }
-        let line = line.map_err(|e| e.to_string())?;
-        if !line.trim().is_empty() {
-            let _ = on_chunk.send(line);
-        }
-    }
-
-    let status = child.wait();
-    if let Ok(st) = status {
-        if !st.success() && !state.0.load(Ordering::SeqCst) {
-            let mut buf = String::new();
-            if let Some(mut e) = stderr.take() {
-                let _ = e.read_to_string(&mut buf);
+        let recv = guard
+            .as_ref()
+            .unwrap()
+            .rx
+            .recv_timeout(std::time::Duration::from_millis(100));
+        match recv {
+            Ok(line) => {
+                let done = line.contains("\"type\":\"result\"");
+                if !line.trim().is_empty() {
+                    let _ = on_chunk.send(line);
+                }
+                if done {
+                    break;
+                }
             }
-            let msg = buf.trim();
-            return Err(if msg.is_empty() {
-                "Claude Code exited with an error. Make sure you're logged in (`claude` in a terminal).".to_string()
-            } else {
-                msg.chars().take(500).collect()
-            });
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => {
+                let _ = guard.take();
+                return Err(
+                    "Claude Code stopped unexpectedly — check `claude` in a terminal (login / usage limits)."
+                        .to_string(),
+                );
+            }
         }
     }
     Ok(())
@@ -655,6 +728,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(browser::BrowserState::default())
         .manage(ChatCancel::default())
+        .manage(ClaudeState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,

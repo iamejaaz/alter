@@ -245,6 +245,7 @@ export default function App() {
         const { content, sessionId } = await claudeCodeChat(
           apiText,
           folder,
+          convId,
           prior,
           settings.model,
           (partial) =>
@@ -601,6 +602,22 @@ export default function App() {
     setSettings(s);
     storage.saveSettings(s);
   };
+  // For Claude Code mode: change the model on the active connection (respawns warm on next send).
+  const setClaudeModel = (model: string) => {
+    const conns2 = (settings.connections ?? []).map((c) =>
+      c.id === settings.activeConnectionId ? { ...c, model } : c
+    );
+    const s = { ...settings, model, connections: conns2 };
+    setSettings(s);
+    storage.saveSettings(s);
+  };
+  const CLAUDE_MODELS = [
+    { id: "claude-code", label: "Default" },
+    { id: "opus", label: "Opus 5" },
+    { id: "sonnet", label: "Sonnet 5" },
+    { id: "haiku", label: "Haiku" },
+  ];
+  const claudeCodeActive = isClaudeCodeUrl(settings.baseUrl);
 
   const slashCommands = [
     { cmd: "/new", desc: "Start a new chat", run: () => setActiveId(null) },
@@ -967,6 +984,23 @@ export default function App() {
                   </select>
                   <Chevron />
                 </div>
+                {claudeCodeActive && (
+                  <div className="relative">
+                    <select
+                      value={CLAUDE_MODELS.some((m) => m.id === settings.model) ? settings.model : "claude-code"}
+                      onChange={(e) => setClaudeModel(e.target.value)}
+                      className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
+                      title="Claude Code model"
+                    >
+                      {CLAUDE_MODELS.map((m) => (
+                        <option key={m.id} value={m.id} className="bg-[var(--modal)]">
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    <Chevron />
+                  </div>
+                )}
 
                 <div className="mx-1 h-5 w-px bg-[var(--bd)]" />
 
