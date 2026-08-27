@@ -1282,6 +1282,12 @@ export default function App() {
                   </select>
                   <Chevron />
                 </div>
+                {activeStreaming && (
+                  <span
+                    className="mx-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[var(--txt-faint)] border-t-transparent animate-spin"
+                    title="Working…"
+                  />
+                )}
                 {active && active.messages.length > 0 && (
                   <span className="text-[11px] text-[var(--txt-faint)] tabular-nums mx-1">
                     ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}
