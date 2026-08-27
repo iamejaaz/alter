@@ -171,6 +171,38 @@ function makeSmoother(render: (text: string) => void) {
   };
 }
 
+// Turn a Claude Code tool call into a readable step line, e.g. "Bash: git status".
+function toolLabel(name: string, input: Record<string, unknown>): string {
+  const clip = (v: unknown, n = 60) => {
+    const t = String(v ?? "").replace(/\s+/g, " ").trim();
+    return t.length > n ? t.slice(0, n) + "…" : t;
+  };
+  const path = (p: unknown) => clip(String(p ?? "").split("/").slice(-2).join("/"), 48);
+  switch (name) {
+    case "Bash":
+      return `Bash: ${clip(input.command)}`;
+    case "Read":
+      return `Read ${path(input.file_path)}`;
+    case "Edit":
+    case "MultiEdit":
+      return `Edit ${path(input.file_path)}`;
+    case "Write":
+      return `Write ${path(input.file_path)}`;
+    case "Grep":
+      return `Grep "${clip(input.pattern, 40)}"`;
+    case "Glob":
+      return `Glob ${clip(input.pattern, 40)}`;
+    case "WebFetch":
+      return `Fetch ${clip(input.url, 48)}`;
+    case "WebSearch":
+      return `Search "${clip(input.query, 48)}"`;
+    case "Task":
+      return `Task: ${clip(input.description ?? input.subagent_type, 48)}`;
+    default:
+      return name;
+  }
+}
+
 // Claude Code (local): drive the `claude` CLI headlessly. Returns the final
 // answer plus the session id, so follow-up turns can --resume the same session.
 export async function claudeCodeChat(
@@ -186,6 +218,7 @@ export async function claudeCodeChat(
   let streamed = ""; // text of the current segment (reset at each tool boundary)
   let result = ""; // authoritative final answer from the result event
   let sid: string | null = sessionId;
+  let pending: { name: string; input: string } | null = null; // tool call being built
   const smoother = makeSmoother(onDelta);
 
   const channel = new Channel<string>();
@@ -195,24 +228,39 @@ export async function claudeCodeChat(
       if (ev.session_id) sid = ev.session_id;
 
       if (ev.type === "stream_event" && ev.event?.type === "content_block_start") {
-        // Claude started a tool call — show it as a step, and start a fresh text segment.
         const cb = ev.event.content_block;
         if (cb?.type === "tool_use" && cb.name) {
-          if (streamed) onDelta(streamed); // ensure the prior segment is fully painted
-          onActivity(String(cb.name));
-          streamed = "";
-          smoother.reset();
+          // A tool call is starting — collect its streamed input, emit the step at stop.
+          pending = { name: String(cb.name), input: "" };
         }
         return;
       }
 
-      // Live token stream (from --include-partial-messages), revealed smoothly.
+      // Deltas: text tokens (streamed smoothly) or a tool's input JSON (accumulated).
       if (ev.type === "stream_event" && ev.event?.type === "content_block_delta") {
         const d = ev.event.delta;
         if (d?.type === "text_delta" && typeof d.text === "string") {
           streamed += d.text;
           smoother.push(streamed);
+        } else if (d?.type === "input_json_delta" && pending) {
+          pending.input += d.partial_json ?? "";
         }
+        return;
+      }
+
+      // A tool block finished — show it as a step with the real command/file.
+      if (ev.type === "stream_event" && ev.event?.type === "content_block_stop" && pending) {
+        if (streamed) onDelta(streamed); // fully paint the text before this tool
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse(pending.input || "{}");
+        } catch {
+          /* partial/empty input */
+        }
+        onActivity(toolLabel(pending.name, parsed));
+        pending = null;
+        streamed = "";
+        smoother.reset();
         return;
       }
 
