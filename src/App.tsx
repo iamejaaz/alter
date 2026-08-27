@@ -818,6 +818,20 @@ export default function App() {
     { cmd: "/routines", desc: "Open routines", run: () => setShowRoutines(true) },
     { cmd: "/settings", desc: "Open settings", run: () => setShowSettings(true) },
   ];
+  // Ghost-text autocomplete: complete from a recent message that starts with the current input.
+  const ghost = (() => {
+    const val = input;
+    if (val.trim().length < 2 || val.includes("\n") || val.startsWith("/")) return "";
+    const lower = val.toLowerCase();
+    for (const c of conversations) {
+      for (const m of c.messages) {
+        if (m.role === "user" && m.content.length > val.length && m.content.toLowerCase().startsWith(lower)) {
+          return m.content.slice(val.length);
+        }
+      }
+    }
+    return "";
+  })();
   const showSlash = input.startsWith("/") && !input.includes(" ") && !input.includes("\n");
   const slashMatches = showSlash
     ? slashCommands.filter((c) => c.cmd.startsWith(input.toLowerCase()))
@@ -1118,7 +1132,17 @@ export default function App() {
                   ))}
                 </div>
               )}
-              <textarea
+              <div className="relative">
+                {ghost && (
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 px-4 pt-3.5 pb-1 text-[15px] leading-relaxed whitespace-pre-wrap break-words"
+                  >
+                    <span className="invisible">{input}</span>
+                    <span className="text-[var(--txt-faint)]">{ghost}</span>
+                  </div>
+                )}
+                <textarea
                 value={input}
                 onChange={(e) => {
                   setInput(e.target.value);
@@ -1128,6 +1152,11 @@ export default function App() {
                 }}
                 onPaste={handlePaste}
                 onKeyDown={(e) => {
+                  if (ghost && e.key === "Tab" && slashMatches.length === 0) {
+                    e.preventDefault();
+                    setInput((v) => v + ghost);
+                    return;
+                  }
                   if (slashMatches.length > 0) {
                     if (e.key === "ArrowDown") {
                       e.preventDefault();
@@ -1157,8 +1186,9 @@ export default function App() {
                 }}
                 rows={1}
                 placeholder="Type / for commands"
-                className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
+                className="relative w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
+              </div>
               <div className="flex items-center gap-0.5 px-2 pb-2">
                 <div className="relative">
                   <select
