@@ -263,6 +263,56 @@ fn open_external(url: String) -> Result<(), String> {
     Ok(())
 }
 
+// Generate a short chat title from the first message (HTTP providers).
+#[tauri::command]
+async fn quick_complete(url: String, api_key: String, model: String, prompt: String) -> Result<String, String> {
+    let client = http_client()?;
+    let base = url.trim_end_matches('/');
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 24,
+        "stream": false
+    });
+    let resp = client
+        .post(format!("{}/chat/completions", base))
+        .bearer_auth(&api_key)
+        .timeout(std::time::Duration::from_secs(20))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let text = resp.text().await.unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    Ok(v["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string())
+}
+
+// Generate a short chat title via a cheap Claude Code (haiku) call.
+#[tauri::command]
+fn claude_title(text: String) -> Result<String, String> {
+    use std::process::Command;
+    let snippet: String = text.chars().take(500).collect();
+    let prompt = format!(
+        "Generate a 3-6 word title in Title Case (no quotes, no trailing punctuation) for a chat that starts with this message. Reply with ONLY the title.\n\nMessage: {snippet}"
+    );
+    let out = Command::new("claude")
+        .arg("-p")
+        .arg(&prompt)
+        .arg("--model")
+        .arg("haiku")
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
 #[tauri::command]
 fn claude_version() -> Result<String, String> {
     use std::process::Command;
@@ -844,6 +894,8 @@ pub fn run() {
             read_user_memory,
             append_user_memory,
             open_external,
+            quick_complete,
+            claude_title,
             browser::browser_open,
             browser::browser_read,
             browser::browser_click,

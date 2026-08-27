@@ -146,6 +146,28 @@ export default function App() {
     setConversations((prev) => prev.map((c) => (c.id === id ? fn(c) : c)));
   };
 
+  // Generate a concise chat title from the first message (like Claude Code does),
+  // instead of using the raw first 40 characters.
+  const generateTitle = async (cid: string, firstMessage: string) => {
+    try {
+      let title = "";
+      if (isClaudeCodeUrl(settings.baseUrl)) {
+        title = await invoke<string>("claude_title", { text: firstMessage });
+      } else if (settings.apiKey) {
+        title = await invoke<string>("quick_complete", {
+          url: settings.baseUrl.replace(/\/$/, ""),
+          apiKey: settings.apiKey,
+          model: settings.model,
+          prompt: `Generate a 3-6 word title in Title Case (no quotes, no trailing punctuation) for a chat that starts with this message. Reply with ONLY the title.\n\nMessage: ${firstMessage.slice(0, 500)}`,
+        });
+      }
+      title = title.split("\n")[0].replace(/^["']|["'.]$/g, "").trim().slice(0, 60);
+      if (title) updateConversation(cid, (c) => ({ ...c, title }));
+    } catch {
+      /* keep the fallback title */
+    }
+  };
+
   // Errors that mean "this provider is busy/down — try another connection"
   const isRetryable = (msg: string) =>
     /\b(429|500|502|503|529)\b/.test(msg) ||
@@ -197,8 +219,10 @@ export default function App() {
     }
 
     let convId = opts?.forceNew ? null : activeId;
+    let freshConv = false;
     if (!convId) {
       convId = newId();
+      freshConv = true;
       const conv: Conversation = {
         id: convId,
         title: opts?.title ?? text.slice(0, 40),
@@ -319,6 +343,7 @@ export default function App() {
             ...(content ? [{ role: "assistant", content } as Message] : []),
           ],
         }));
+        if (freshConv && !opts?.title) void generateTitle(convId, text);
       } catch (e: unknown) {
         const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
         if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
@@ -467,6 +492,7 @@ export default function App() {
         if (clean || full) msgs.push({ role: "assistant", content: clean || full });
         return { ...c, messages: msgs };
       });
+      if (freshConv && !opts?.title) void generateTitle(convId, text);
       if (found.length) {
         const fresh = found.filter((f) => !memories.some((m) => m.text === f));
         setMemories((prev) => [
