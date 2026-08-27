@@ -120,6 +120,57 @@ export async function testConnection(settings: Settings): Promise<string> {
   return invoke<string>("test_connection", { url, apiKey: settings.apiKey, model: settings.model });
 }
 
+// Typewriter smoothing: providers deliver text in uneven bursts (a 2-char token,
+// then a 160-char sentence). This reveals whatever has arrived at a steady, readable
+// pace via requestAnimationFrame, so the display types out smoothly regardless.
+function makeSmoother(render: (text: string) => void) {
+  let target = "";
+  let shown = 0;
+  let running = false;
+  let ended = false;
+  let resolveEnd: (() => void) | null = null;
+
+  const tick = () => {
+    const gap = target.length - shown;
+    if (gap > 0) {
+      const step = Math.min(40, Math.max(2, Math.ceil(gap / 8))); // catch up fast, stay smooth
+      shown = Math.min(target.length, shown + step);
+      render(target.slice(0, shown));
+    }
+    if (shown >= target.length) {
+      running = false;
+      if (ended && resolveEnd) {
+        resolveEnd();
+        resolveEnd = null;
+      }
+      return; // idle until next push (or done)
+    }
+    requestAnimationFrame(tick);
+  };
+  const ensure = () => {
+    if (!running) {
+      running = true;
+      requestAnimationFrame(tick);
+    }
+  };
+  return {
+    push(full: string) {
+      target = full;
+      ensure();
+    },
+    reset() {
+      target = "";
+      shown = 0;
+    },
+    finish(): Promise<void> {
+      ended = true;
+      if (shown >= target.length) return Promise.resolve();
+      ensure();
+      return new Promise((res) => (resolveEnd = res));
+    },
+  };
+}
+
 // Claude Code (local): drive the `claude` CLI headlessly. Returns the final
 // answer plus the session id, so follow-up turns can --resume the same session.
 export async function claudeCodeChat(
@@ -135,6 +186,7 @@ export async function claudeCodeChat(
   let streamed = ""; // text of the current segment (reset at each tool boundary)
   let result = ""; // authoritative final answer from the result event
   let sid: string | null = sessionId;
+  const smoother = makeSmoother(onDelta);
 
   const channel = new Channel<string>();
   channel.onmessage = (line: string) => {
@@ -146,18 +198,20 @@ export async function claudeCodeChat(
         // Claude started a tool call — show it as a step, and start a fresh text segment.
         const cb = ev.event.content_block;
         if (cb?.type === "tool_use" && cb.name) {
+          if (streamed) onDelta(streamed); // ensure the prior segment is fully painted
           onActivity(String(cb.name));
           streamed = "";
+          smoother.reset();
         }
         return;
       }
 
-      // Live token stream (from --include-partial-messages).
+      // Live token stream (from --include-partial-messages), revealed smoothly.
       if (ev.type === "stream_event" && ev.event?.type === "content_block_delta") {
         const d = ev.event.delta;
         if (d?.type === "text_delta" && typeof d.text === "string") {
           streamed += d.text;
-          onDelta(streamed);
+          smoother.push(streamed);
         }
         return;
       }
@@ -168,13 +222,19 @@ export async function claudeCodeChat(
           .filter((c: { type: string }) => c.type === "text")
           .map((c: { text: string }) => c.text)
           .join("");
-        if (text) onDelta(text);
+        if (text) {
+          streamed = text;
+          smoother.push(streamed);
+        }
       }
 
       // Final answer — only paint it if nothing streamed (else keep what the user watched).
       if (ev.type === "result" && typeof ev.result === "string") {
         result = ev.result;
-        if (!streamed) onDelta(result);
+        if (!streamed) {
+          streamed = result;
+          smoother.push(streamed);
+        }
       }
     } catch {
       /* ignore non-JSON lines */
@@ -188,5 +248,6 @@ export async function claudeCodeChat(
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
+  await smoother.finish(); // let the last burst finish typing out
   return { content: streamed || result, sessionId: sid };
 }
