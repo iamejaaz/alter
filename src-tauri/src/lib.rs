@@ -195,6 +195,7 @@ fn claude_code(
     prompt: String,
     cwd: Option<String>,
     session_id: Option<String>,
+    model: Option<String>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use std::io::{BufRead, BufReader, Read};
@@ -209,6 +210,11 @@ fn claude_code(
         .arg("--verbose")
         .arg("--permission-mode")
         .arg("acceptEdits");
+    // Optional model override (e.g. "sonnet" for speed). "claude-code" is the
+    // preset placeholder meaning "use Claude Code's own default model".
+    if let Some(m) = model.as_ref().filter(|m| !m.is_empty() && m.as_str() != "claude-code") {
+        cmd.arg("--model").arg(m);
+    }
     if let Some(sid) = session_id.as_ref().filter(|s| !s.is_empty()) {
         cmd.arg("--resume").arg(sid);
     }

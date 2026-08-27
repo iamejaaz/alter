@@ -246,6 +246,7 @@ export default function App() {
           apiText,
           folder,
           prior,
+          settings.model,
           (partial) =>
             updateConversation(convId!, (c) => ({
               ...c,
