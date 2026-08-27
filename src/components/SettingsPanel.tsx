@@ -73,11 +73,6 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
     }
   };
 
-  const applyPreset = (name: string) => {
-    const preset = PROVIDER_PRESETS[name];
-    if (preset) setDraft({ ...draft, baseUrl: preset.baseUrl, model: preset.models[0] });
-  };
-
   const conns = draft.connections ?? [];
   const activeId = draft.activeConnectionId ?? conns[0]?.id;
   const activeConn = conns.find((c) => c.id === activeId);
@@ -107,6 +102,25 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
   };
   const renameConnection = (name: string) => {
     setDraft({ ...draft, connections: conns.map((c) => (c.id === activeId ? { ...c, name } : c)) });
+  };
+  // A preset spins up its own connection (or fills the current empty one) so it
+  // never overwrites a configured connection like a gateway or Claude Code.
+  const applyPreset = (name: string) => {
+    const preset = PROVIDER_PRESETS[name];
+    if (!preset) return;
+    const [baseUrl, model] = [preset.baseUrl, preset.models[0]];
+    if (!draft.baseUrl && !draft.model) {
+      setDraft({
+        ...draft,
+        baseUrl,
+        model,
+        connections: conns.map((c) => (c.id === activeId ? { ...c, name, baseUrl, model } : c)),
+      });
+    } else {
+      const conn = { id: newId(), name, baseUrl, apiKey: "", model };
+      setDraft({ ...draft, connections: [...syncedConnections(), conn], activeConnectionId: conn.id, baseUrl, apiKey: "", model });
+    }
+    setTestResult(null);
   };
   const save = () => {
     onSave({ ...draft, connections: syncedConnections() });
@@ -182,17 +196,13 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Provider preset</label>
+              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Quick-fill from a provider</label>
               <div className="flex flex-wrap gap-2">
                 {Object.keys(PROVIDER_PRESETS).map((name) => (
                   <button
                     key={name}
                     onClick={() => applyPreset(name)}
-                    className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
-                      draft.baseUrl === PROVIDER_PRESETS[name].baseUrl
-                        ? "border-indigo-500 text-indigo-300"
-                        : "border-[var(--bd)] text-[var(--txt)] hover:border-zinc-500"
-                    }`}
+                    className="rounded-lg border border-[var(--bd)] px-3 py-1.5 text-sm text-[var(--txt)] transition-colors hover:border-zinc-500"
                   >
                     {name}
                   </button>

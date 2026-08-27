@@ -165,6 +165,28 @@ export default function App() {
   useEffect(() => {
     void invoke<string>("read_user_memory").then(setSharedMemory).catch(() => {});
   }, []);
+  // Opening a chat restores the model/connection it was last using — each chat
+  // remembers its own, instead of sharing one global selection.
+  useEffect(() => {
+    if (!activeId) return;
+    const conv = conversations.find((c) => c.id === activeId);
+    if (!conv?.connectionId) return;
+    const conn = (settings.connections ?? []).find((c) => c.id === conv.connectionId);
+    if (!conn) return;
+    setSettings((s) => {
+      const next = {
+        ...s,
+        activeConnectionId: conn.id,
+        baseUrl: conn.baseUrl,
+        apiKey: conn.apiKey,
+        model: conv.model ?? conn.model,
+        effort: conv.effort,
+      };
+      storage.saveSettings(next);
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
   // Surface the open PR for the working folder's branch (like Claude Code shows above the input).
   useEffect(() => {
     if (!folder) {
@@ -242,6 +264,7 @@ export default function App() {
   const connLabel = (s: Settings) => {
     const list = s.connections ?? settings.connections ?? [];
     const c = list.find((x) => x.id === s.activeConnectionId);
+    if (c && isClaudeCodeUrl(c.baseUrl)) return "Claude Code";
     const model = s.model.includes("/") ? s.model.split("/").pop() : s.model;
     return c && c.name !== "Default" ? `${c.name} · ${model}` : model || "model";
   };
@@ -302,6 +325,9 @@ export default function App() {
         title: opts?.title ?? text.slice(0, 40),
         messages: [],
         createdAt: Date.now(),
+        connectionId: settings.activeConnectionId,
+        model: settings.model,
+        effort: settings.effort,
       };
       setConversations((prev) => [conv, ...prev]);
       setActiveId(convId);
@@ -772,6 +798,7 @@ export default function App() {
     const s = { ...settings, activeConnectionId: id, baseUrl: conn.baseUrl, apiKey: conn.apiKey, model: conn.model };
     setSettings(s);
     storage.saveSettings(s);
+    if (activeId) updateConversation(activeId, (c) => ({ ...c, connectionId: id, model: conn.model }));
   };
   const applyMode = (mode: NonNullable<Settings["mode"]>) => {
     const s = { ...settings, mode };
@@ -786,6 +813,7 @@ export default function App() {
     const s = { ...settings, model, connections: conns2 };
     setSettings(s);
     storage.saveSettings(s);
+    if (activeId) updateConversation(activeId, (c) => ({ ...c, model }));
   };
   const CLAUDE_MODELS = [
     { id: "claude-code", label: "Default" },
@@ -795,9 +823,11 @@ export default function App() {
   ];
   const claudeCodeActive = isClaudeCodeUrl(settings.baseUrl);
   const setEffort = (effort: string) => {
-    const s = { ...settings, effort: effort ? (effort as NonNullable<Settings["effort"]>) : undefined };
+    const e = effort ? (effort as NonNullable<Settings["effort"]>) : undefined;
+    const s = { ...settings, effort: e };
     setSettings(s);
     storage.saveSettings(s);
+    if (activeId) updateConversation(activeId, (c) => ({ ...c, effort: e }));
   };
 
   const slashCommands = [
@@ -855,6 +885,7 @@ export default function App() {
         onSelect={setActiveId}
         onNew={() => setActiveId(null)}
         onDelete={deleteConversation}
+        onRename={(id, title) => updateConversation(id, (c) => ({ ...c, title }))}
         onOpenSettings={() => setShowSettings(true)}
         onOpenRoutines={() => setShowRoutines(true)}
         onOpenSkills={() => setShowSkills(true)}
@@ -1228,9 +1259,7 @@ export default function App() {
                   </button>
                 )}
 
-                <div className="flex-1" />
-
-                {/* Right: model · (claude model) · effort · tokens · send */}
+                {/* model · (claude model) · effort · tokens — grouped next to the tools */}
                 <div className="relative">
                   <select
                     value={settings.activeConnectionId ?? ""}
@@ -1240,9 +1269,14 @@ export default function App() {
                   >
                     {connections.map((c) => {
                       const short = c.model ? (c.model.includes("/") ? c.model.split("/").pop() : c.model) : "(no model)";
+                      const label = isClaudeCodeUrl(c.baseUrl)
+                        ? "Claude Code"
+                        : c.name === "Default"
+                          ? short
+                          : `${c.name} · ${short}`;
                       return (
                         <option key={c.id} value={c.id} className="bg-[var(--modal)]">
-                          {c.name === "Default" ? short : `${c.name} · ${short}`}
+                          {label}
                         </option>
                       );
                     })}
@@ -1293,6 +1327,9 @@ export default function App() {
                     ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}
                   </span>
                 )}
+
+                <div className="flex-1" />
+
                 {activeStreaming ? (
                   <button
                     onClick={stop}

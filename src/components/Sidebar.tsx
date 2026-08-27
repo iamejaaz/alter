@@ -9,6 +9,7 @@ interface Props {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
   onOpenSettings: () => void;
   onOpenRoutines: () => void;
   onOpenSkills: () => void;
@@ -20,11 +21,25 @@ export default function Sidebar({
   onSelect,
   onNew,
   onDelete,
+  onRename,
   onOpenSettings,
   onOpenRoutines,
   onOpenSkills,
 }: Props) {
   const [query, setQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const startRename = (c: Conversation) => {
+    setEditingId(c.id);
+    setDraftTitle(c.title);
+  };
+  const commitRename = () => {
+    if (editingId) {
+      const t = draftTitle.trim();
+      if (t) onRename(editingId, t);
+    }
+    setEditingId(null);
+  };
   const q = query.trim().toLowerCase();
   const filtered = q
     ? conversations.filter(
@@ -76,15 +91,41 @@ export default function Sidebar({
                   ? "bg-[var(--panel-2)] text-[var(--txt)]"
                   : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
               }`}
-              onClick={() => onSelect(c.id)}
+              onClick={() => editingId !== c.id && onSelect(c.id)}
+              onDoubleClick={() => startRename(c)}
             >
-              <span className="flex-1 truncate">{c.title}</span>
+              {editingId === c.id ? (
+                <input
+                  autoFocus
+                  value={draftTitle}
+                  onChange={(e) => setDraftTitle(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitRename();
+                    if (e.key === "Escape") setEditingId(null);
+                  }}
+                  className="flex-1 min-w-0 bg-transparent border-b border-[var(--bd)] focus:border-zinc-500 text-[var(--txt)] focus:outline-none"
+                />
+              ) : (
+                <span className="flex-1 truncate">{c.title}</span>
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startRename(c);
+                }}
+                className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-2 transition-opacity"
+                title="Rename"
+              >
+                ✎
+              </button>
               <button
                 onClick={async (e) => {
                   e.stopPropagation();
                   if (await confirmDialog(`Delete "${c.title}"? This can't be undone.`)) onDelete(c.id);
                 }}
-                className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-2 transition-opacity"
+                className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-1.5 transition-opacity"
                 title="Delete"
               >
                 ×

@@ -26,6 +26,9 @@ export interface Conversation {
   messages: Message[];
   createdAt: number;
   claudeSessionId?: string; // Claude Code (local) session, for conversation continuity
+  connectionId?: string; // which connection this chat uses (per-chat, not global)
+  model?: string; // resolved model for this chat (e.g. Claude Code sub-model)
+  effort?: Effort;
 }
 
 // Sentinel base URL that routes a connection to the local `claude` CLI instead of HTTP.
@@ -84,10 +87,6 @@ export const PROVIDER_PRESETS: Record<string, { baseUrl: string; models: string[
   Moonshot: {
     baseUrl: "https://api.moonshot.ai/v1",
     models: ["kimi-k2-turbo-preview", "moonshot-v1-8k"],
-  },
-  "Vercel AI Gateway": {
-    baseUrl: "https://ai-gateway.vercel.sh/v1",
-    models: ["moonshotai/kimi-k3", "deepseek/deepseek-v3.2", "anthropic/claude-sonnet-5"],
   },
   Gemini: {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -151,6 +150,11 @@ export const storage = {
     if (!s.activeConnectionId || !s.connections.some((c) => c.id === s.activeConnectionId)) {
       s.activeConnectionId = s.connections[0].id;
     }
+    // Heal stale labels: a Claude Code connection has one fixed identity, so its
+    // name can never legitimately read like some other provider/model.
+    s.connections = s.connections.map((c) =>
+      isClaudeCodeUrl(c.baseUrl) && c.name !== "Claude Code" ? { ...c, name: "Claude Code", model: "claude-code" } : c
+    );
     return s;
   },
   saveSettings: (s: Settings) => save("alter.settings", s),
