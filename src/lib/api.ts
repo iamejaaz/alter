@@ -67,6 +67,7 @@ export async function streamChat(
     model: settings.model,
     messages,
     stream: true,
+    ...(settings.effort ? { reasoning_effort: settings.effort } : {}),
     ...(useTools ? { tools: TOOL_DEFINITIONS } : {}),
   });
 
@@ -211,6 +212,7 @@ export async function claudeCodeChat(
   convId: string,
   sessionId: string | null,
   model: string | null,
+  effort: string | null,
   onDelta: (text: string) => void,
   onActivity: (label: string) => void,
   signal: AbortSignal
@@ -292,7 +294,7 @@ export async function claudeCodeChat(
   const onAbort = () => void invoke("cancel_chat").catch(() => {});
   signal.addEventListener("abort", onAbort);
   try {
-    await invoke("claude_code", { prompt, cwd, convId, sessionId, model, onChunk: channel });
+    await invoke("claude_code", { prompt, cwd, convId, sessionId, model, effort, onChunk: channel });
   } finally {
     signal.removeEventListener("abort", onAbort);
   }

@@ -263,6 +263,7 @@ export default function App() {
           convId,
           prior,
           settings.model,
+          settings.effort ?? null,
           (partial) =>
             updateConversation(convId!, (c) => ({
               ...c,
@@ -651,6 +652,11 @@ export default function App() {
     { id: "haiku", label: "Haiku" },
   ];
   const claudeCodeActive = isClaudeCodeUrl(settings.baseUrl);
+  const setEffort = (effort: string) => {
+    const s = { ...settings, effort: effort ? (effort as NonNullable<Settings["effort"]>) : undefined };
+    setSettings(s);
+    storage.saveSettings(s);
+  };
 
   const slashCommands = [
     { cmd: "/new", desc: "Start a new chat", run: () => setActiveId(null) },
@@ -996,6 +1002,22 @@ export default function App() {
                     <option value="ask" className="bg-[var(--modal)]">Ask first</option>
                     <option value="plan" className="bg-[var(--modal)]">Plan</option>
                     <option value="chat" className="bg-[var(--modal)]">Chat only</option>
+                  </select>
+                  <Chevron />
+                </div>
+                <div className="relative">
+                  <select
+                    value={settings.effort ?? ""}
+                    onChange={(e) => setEffort(e.target.value)}
+                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
+                    title="Reasoning effort"
+                  >
+                    <option value="" className="bg-[var(--modal)]">Effort: Auto</option>
+                    <option value="low" className="bg-[var(--modal)]">Effort: Low</option>
+                    <option value="medium" className="bg-[var(--modal)]">Effort: Medium</option>
+                    <option value="high" className="bg-[var(--modal)]">Effort: High</option>
+                    <option value="xhigh" className="bg-[var(--modal)]">Effort: X-High</option>
+                    <option value="max" className="bg-[var(--modal)]">Effort: Max</option>
                   </select>
                   <Chevron />
                 </div>

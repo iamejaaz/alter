@@ -101,6 +101,7 @@ struct ClaudeProc {
     conv_id: String,
     model: String,
     cwd: String,
+    effort: String,
     child: tokio::process::Child,
     stdin: tokio::process::ChildStdin,
     rx: tokio::sync::mpsc::UnboundedReceiver<String>,
@@ -239,6 +240,7 @@ async fn claude_code(
     conv_id: String,
     session_id: Option<String>,
     model: Option<String>,
+    effort: Option<String>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -247,14 +249,15 @@ async fn claude_code(
 
     let model = model.unwrap_or_default();
     let cwd = cwd.unwrap_or_default();
+    let effort = effort.unwrap_or_default();
     let mut guard = procs.0.lock().await;
 
-    // Reuse the warm process only if conversation, model and folder all still match
+    // Reuse the warm process only if conversation, model, folder and effort all match
     // and it hasn't died — otherwise spawn a fresh one (the only slow turn).
     let reuse = match guard.as_mut() {
         Some(p) => {
             let alive = matches!(p.child.try_wait(), Ok(None));
-            alive && p.conv_id == conv_id && p.model == model && p.cwd == cwd
+            alive && p.conv_id == conv_id && p.model == model && p.cwd == cwd && p.effort == effort
         }
         None => false,
     };
@@ -272,6 +275,9 @@ async fn claude_code(
             .arg("--permission-mode").arg("acceptEdits");
         if !model.is_empty() && model != "claude-code" {
             cmd.arg("--model").arg(&model);
+        }
+        if matches!(effort.as_str(), "low" | "medium" | "high" | "xhigh" | "max") {
+            cmd.arg("--effort").arg(&effort);
         }
         // Resume prior context when respawning (model switch / returning to a chat).
         if let Some(sid) = session_id.as_ref().filter(|s| !s.is_empty()) {
@@ -303,6 +309,7 @@ async fn claude_code(
             conv_id: conv_id.clone(),
             model: model.clone(),
             cwd: cwd.clone(),
+            effort: effort.clone(),
             child,
             stdin,
             rx,

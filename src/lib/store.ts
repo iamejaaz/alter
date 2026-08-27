@@ -42,11 +42,14 @@ export interface Connection {
   model: string;
 }
 
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
 export interface Settings {
   baseUrl: string;
   apiKey: string;
   model: string;
   mode?: Mode;
+  effort?: Effort; // reasoning effort — Claude Code --effort / HTTP reasoning_effort
   connections?: Connection[];
   activeConnectionId?: string;
 }
