@@ -235,6 +235,34 @@ fn append_user_memory(fact: String) -> Result<(), String> {
     Ok(())
 }
 
+// Open an http(s) link in the user's default browser (never inside the app webview).
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("Only http(s) links can be opened.".into());
+    }
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(target_os = "linux")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", &url]);
+        c
+    };
+    cmd.spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn claude_version() -> Result<String, String> {
     use std::process::Command;
@@ -815,6 +843,7 @@ pub fn run() {
             claude_version,
             read_user_memory,
             append_user_memory,
+            open_external,
             browser::browser_open,
             browser::browser_read,
             browser::browser_click,

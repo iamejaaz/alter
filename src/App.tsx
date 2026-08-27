@@ -110,6 +110,18 @@ export default function App() {
   useEffect(() => {
     void invoke<string>("read_user_memory").then(setSharedMemory).catch(() => {});
   }, []);
+  // Open http(s) links in the default browser, never inside the app webview.
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest?.("a") as HTMLAnchorElement | null;
+      if (a && /^https?:\/\//i.test(a.href)) {
+        e.preventDefault();
+        void invoke("open_external", { url: a.href }).catch(() => {});
+      }
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
   useEffect(() => storage.saveConversations(conversations), [conversations]);
   useEffect(() => storage.saveMemories(memories), [memories]);
   useEffect(() => storage.saveRoutines(routines), [routines]);
