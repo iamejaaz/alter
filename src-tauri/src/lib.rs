@@ -793,6 +793,20 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Kill any warm Claude Code process when the app actually exits.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(mut proc) = app_handle
+                    .state::<ClaudeState>()
+                    .0
+                    .lock()
+                    .ok()
+                    .and_then(|mut g| g.take())
+                {
+                    let _ = proc.child.kill();
+                }
+            }
+        });
 }
