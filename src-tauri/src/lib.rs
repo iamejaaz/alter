@@ -106,7 +106,7 @@ struct ClaudeProc {
     rx: tokio::sync::mpsc::UnboundedReceiver<String>,
 }
 #[derive(Default)]
-pub struct ClaudeState(pub tokio::sync::Mutex<Option<ClaudeProc>>);
+pub struct ClaudeState(tokio::sync::Mutex<Option<ClaudeProc>>);
 
 #[tauri::command]
 fn cancel_chat(state: tauri::State<ChatCancel>) {
