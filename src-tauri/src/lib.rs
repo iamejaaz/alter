@@ -185,6 +185,34 @@ async fn stream_chat(
 // the user's Claude Code subscription as a backend. Only ever runs the `claude`
 // binary with fixed flags — never an arbitrary shell command.
 
+// The user-level memory Claude Code loads for every session. Alter reads it so
+// non-Claude models (Gemini/OpenRouter) share the same facts — train once.
+#[tauri::command]
+fn read_user_memory() -> Result<String, String> {
+    let home = std::env::var("HOME").map_err(|_| "no HOME".to_string())?;
+    let path = std::path::Path::new(&home).join(".claude/CLAUDE.md");
+    match std::fs::read_to_string(&path) {
+        Ok(s) => Ok(s.chars().take(8000).collect()),
+        Err(_) => Ok(String::new()),
+    }
+}
+
+#[tauri::command]
+fn append_user_memory(fact: String) -> Result<(), String> {
+    use std::io::Write;
+    let home = std::env::var("HOME").map_err(|_| "no HOME".to_string())?;
+    let dir = std::path::Path::new(&home).join(".claude");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("CLAUDE.md");
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    writeln!(f, "\n- {}", fact.trim()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn claude_version() -> Result<String, String> {
     use std::process::Command;
@@ -746,6 +774,8 @@ pub fn run() {
             test_connection,
             claude_code,
             claude_version,
+            read_user_memory,
+            append_user_memory,
             browser::browser_open,
             browser::browser_read,
             browser::browser_click,

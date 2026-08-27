@@ -49,6 +49,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(!storage.loadSettings().apiKey);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [sharedMemory, setSharedMemory] = useState(""); // ~/.claude/CLAUDE.md — shared with Claude Code
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
@@ -105,6 +106,9 @@ export default function App() {
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
 
+  useEffect(() => {
+    void invoke<string>("read_user_memory").then(setSharedMemory).catch(() => {});
+  }, []);
   useEffect(() => storage.saveConversations(conversations), [conversations]);
   useEffect(() => storage.saveMemories(memories), [memories]);
   useEffect(() => storage.saveRoutines(routines), [routines]);
@@ -210,6 +214,9 @@ export default function App() {
       buildSystemPrompt(memories, mode, skills) +
       (folder
         ? `\n\nThe user's attached working folder is: ${folder}\nThis is "this folder" / "this project" / "here". When asked about it, immediately call list_tree on it and read key files (README, package.json, main source) to answer — do not ask the user to confirm the path.`
+        : "") +
+      (sharedMemory
+        ? `\n\nShared memory (from the user's ~/.claude/CLAUDE.md — the same facts Claude Code uses; treat as authoritative background):\n${sharedMemory}`
         : "");
 
     const textFiles = atts
@@ -242,8 +249,16 @@ export default function App() {
       abortRef.current = new AbortController();
       try {
         const prior = conversations.find((c) => c.id === convId)?.claudeSessionId ?? null;
+        // Teach-once: inject Alter's remembered facts into a new Claude Code session,
+        // so what you told Alter applies here too (Claude Code already loads its own
+        // CLAUDE.md + memory automatically).
+        let ccPrompt = apiText;
+        if (!prior && memories.length > 0) {
+          const facts = memories.map((m) => `- ${m.text}`).join("\n");
+          ccPrompt = `<context note="Things I've told you before — keep these in mind; don't reply to this block">\n${facts}\n</context>\n\n${apiText}`;
+        }
         const { content, sessionId } = await claudeCodeChat(
-          apiText,
+          ccPrompt,
           folder,
           convId,
           prior,
@@ -427,12 +442,16 @@ export default function App() {
         return { ...c, messages: msgs };
       });
       if (found.length) {
+        const fresh = found.filter((f) => !memories.some((m) => m.text === f));
         setMemories((prev) => [
           ...prev,
-          ...found
+          ...fresh
             .filter((f) => !prev.some((m) => m.text === f))
             .map((f) => ({ id: newId(), text: f, createdAt: Date.now() })),
         ]);
+        // Also persist to the shared memory file so Claude Code (everywhere) learns it too.
+        for (const f of fresh) void invoke("append_user_memory", { fact: f }).catch(() => {});
+        if (fresh.length) setSharedMemory((s) => s + fresh.map((f) => `\n- ${f}`).join(""));
       }
     } catch (e: unknown) {
       const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
