@@ -253,6 +253,20 @@ export default function App() {
               ...c,
               messages: [...c.messages.slice(0, -1), { role: "assistant", content: partial }],
             })),
+          (label) =>
+            updateConversation(convId!, (c) => {
+              const msgs = [...c.messages];
+              const last = msgs[msgs.length - 1];
+              const step = { role: "tool", content: `▸ ${label}` } as Message;
+              if (last && last.role === "assistant" && !last.content) {
+                // No text yet — slot the step in above the live (empty) bubble.
+                msgs.splice(msgs.length - 1, 0, step);
+              } else {
+                // Freeze the streamed text, add the step, open a fresh bubble.
+                msgs.push(step, { role: "assistant", content: "" } as Message);
+              }
+              return { ...c, messages: msgs };
+            }),
           abortRef.current.signal
         );
         updateConversation(convId, (c) => ({

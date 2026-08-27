@@ -129,9 +129,10 @@ export async function claudeCodeChat(
   sessionId: string | null,
   model: string | null,
   onDelta: (text: string) => void,
+  onActivity: (label: string) => void,
   signal: AbortSignal
 ): Promise<{ content: string; sessionId: string | null }> {
-  let streamed = ""; // accumulated intermediate assistant text
+  let streamed = ""; // text of the current segment (reset at each tool boundary)
   let result = ""; // authoritative final answer from the result event
   let sid: string | null = sessionId;
 
@@ -140,6 +141,16 @@ export async function claudeCodeChat(
     try {
       const ev = JSON.parse(line);
       if (ev.session_id) sid = ev.session_id;
+
+      if (ev.type === "stream_event" && ev.event?.type === "content_block_start") {
+        // Claude started a tool call — show it as a step, and start a fresh text segment.
+        const cb = ev.event.content_block;
+        if (cb?.type === "tool_use" && cb.name) {
+          onActivity(String(cb.name));
+          streamed = "";
+        }
+        return;
+      }
 
       // Live token stream (from --include-partial-messages).
       if (ev.type === "stream_event" && ev.event?.type === "content_block_delta") {
