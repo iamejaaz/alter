@@ -99,6 +99,7 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
   const [input, setInput] = useState("");
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
+  const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
   const [showSettings, setShowSettings] = useState(!storage.loadSettings().apiKey);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -253,12 +254,21 @@ export default function App() {
     forceNew?: boolean;
     title?: string;
     historyOverride?: Message[];
+    targetConvId?: string; // internal: drain a queued message into this conversation
   }) => {
     const text = (opts?.text ?? input).trim();
     const atts = opts?.text ? [] : attachments;
     if (!text && atts.length === 0) return;
-    // Only block re-sending into a conversation that's already generating — other chats are free.
-    if (!opts?.forceNew && activeId && streamingIds.includes(activeId)) return;
+    const targetId = opts?.targetConvId ?? (opts?.forceNew ? null : activeId);
+    // If that conversation is mid-generation, queue this message to auto-send when it finishes.
+    if (!opts?.targetConvId && targetId && streamingIds.includes(targetId)) {
+      setQueued((q) => ({ ...q, [targetId]: [...(q[targetId] || []), text] }));
+      if (!opts?.text) {
+        setInput("");
+        setAttachments([]);
+      }
+      return;
+    }
     if (!settings.apiKey && !isClaudeCodeUrl(settings.baseUrl)) {
       setShowSettings(true);
       return;
@@ -271,7 +281,7 @@ export default function App() {
       setAttachments([]);
     }
 
-    let convId = opts?.forceNew ? null : activeId;
+    let convId = opts?.targetConvId ?? (opts?.forceNew ? null : activeId);
     let freshConv = false;
     if (!convId) {
       convId = newId();
@@ -575,6 +585,17 @@ export default function App() {
   const stop = () => {
     if (activeId) abortsRef.current[activeId]?.abort();
   };
+
+  // Auto-send queued messages once their conversation finishes generating.
+  useEffect(() => {
+    const entry = Object.entries(queued).find(([cid, msgs]) => msgs.length && !streamingIds.includes(cid));
+    if (!entry) return;
+    const [cid, msgs] = entry;
+    const [next, ...rest] = msgs;
+    setQueued((q) => ({ ...q, [cid]: rest }));
+    void send({ text: next, targetConvId: cid });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamingIds, queued]);
 
   const regenerate = () => {
     if (!active || activeStreaming) return;
@@ -991,6 +1012,15 @@ export default function App() {
                   </div>
                 ))(item.m, item.i)
               )}
+              {activeId &&
+                (queued[activeId] || []).map((q, k) => (
+                  <div key={`q${k}`} className="flex justify-end animate-fade-up">
+                    <div className="max-w-[80%] rounded-2xl rounded-br-md border border-dashed border-[var(--bd)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--txt-dim)]">
+                      <span className="mb-0.5 block text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">Queued</span>
+                      {q}
+                    </div>
+                  </div>
+                ))}
               <div ref={bottomRef} />
             </div>
           )}
