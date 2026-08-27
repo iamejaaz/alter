@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { MemoryItem, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
+import { isClaudeCodeUrl, MemoryItem, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
 import { testConnection } from "../lib/api";
 import { Chevron } from "./Icons";
 
@@ -199,6 +199,12 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
                 ))}
               </div>
             </div>
+            {isClaudeCodeUrl(draft.baseUrl) && (
+              <p className="rounded-lg border border-indigo-900/40 bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-300">
+                Uses your local Claude Code (your subscription) — no API key or model needed. Make sure{" "}
+                <span className="font-mono">claude</span> is installed and you're logged in. Attach a folder to let it work in that project.
+              </p>
+            )}
             <div>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Base URL</label>
               <input
@@ -237,7 +243,7 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
             <div>
               <button
                 onClick={runTest}
-                disabled={testing || !draft.apiKey}
+                disabled={testing || (!draft.apiKey && !isClaudeCodeUrl(draft.baseUrl))}
                 className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] disabled:opacity-40 px-3 py-1.5 text-xs text-[var(--txt)] transition-colors"
               >
                 {testing ? "Testing…" : "Test connection"}

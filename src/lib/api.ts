@@ -1,5 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { MemoryItem, Message, Mode, Settings, Skill, ToolCall } from "./store";
+import { isClaudeCodeUrl, MemoryItem, Message, Mode, Settings, Skill, ToolCall } from "./store";
 import { TOOL_DEFINITIONS } from "./tools";
 
 const MODE_NOTES: Record<Mode, string> = {
@@ -115,6 +115,54 @@ export async function streamChat(
 }
 
 export async function testConnection(settings: Settings): Promise<string> {
+  if (isClaudeCodeUrl(settings.baseUrl)) return invoke<string>("claude_version");
   const url = settings.baseUrl.replace(/\/$/, "");
   return invoke<string>("test_connection", { url, apiKey: settings.apiKey, model: settings.model });
+}
+
+// Claude Code (local): drive the `claude` CLI headlessly. Returns the final
+// answer plus the session id, so follow-up turns can --resume the same session.
+export async function claudeCodeChat(
+  prompt: string,
+  cwd: string | null,
+  sessionId: string | null,
+  onDelta: (text: string) => void,
+  signal: AbortSignal
+): Promise<{ content: string; sessionId: string | null }> {
+  let streamed = ""; // accumulated intermediate assistant text
+  let result = ""; // authoritative final answer from the result event
+  let sid: string | null = sessionId;
+
+  const channel = new Channel<string>();
+  channel.onmessage = (line: string) => {
+    try {
+      const ev = JSON.parse(line);
+      if (ev.session_id) sid = ev.session_id;
+      if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
+        const text = ev.message.content
+          .filter((c: { type: string }) => c.type === "text")
+          .map((c: { text: string }) => c.text)
+          .join("");
+        if (text) {
+          streamed += (streamed ? "\n\n" : "") + text;
+          onDelta(streamed);
+        }
+      }
+      if (ev.type === "result" && typeof ev.result === "string") {
+        result = ev.result;
+        onDelta(result);
+      }
+    } catch {
+      /* ignore non-JSON lines */
+    }
+  };
+
+  const onAbort = () => void invoke("cancel_chat").catch(() => {});
+  signal.addEventListener("abort", onAbort);
+  try {
+    await invoke("claude_code", { prompt, cwd, sessionId, onChunk: channel });
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+  return { content: result || streamed, sessionId: sid };
 }

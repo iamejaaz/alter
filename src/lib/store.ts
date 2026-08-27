@@ -25,7 +25,12 @@ export interface Conversation {
   title: string;
   messages: Message[];
   createdAt: number;
+  claudeSessionId?: string; // Claude Code (local) session, for conversation continuity
 }
+
+// Sentinel base URL that routes a connection to the local `claude` CLI instead of HTTP.
+export const CLAUDE_CODE_URL = "claude-code://local";
+export const isClaudeCodeUrl = (u: string) => u.startsWith("claude-code");
 
 export type Mode = "auto" | "ask" | "plan" | "chat";
 
@@ -99,6 +104,10 @@ export const PROVIDER_PRESETS: Record<string, { baseUrl: string; models: string[
   "Frappe Gateway": {
     baseUrl: "https://grove.local.frappe.dev/v1",
     models: ["frappe/laguna-s-2.1-int4", "frappe/qwen3.5-4b"],
+  },
+  "Claude Code (local)": {
+    baseUrl: CLAUDE_CODE_URL,
+    models: ["claude-code"],
   },
 };
 

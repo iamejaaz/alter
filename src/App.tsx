@@ -13,7 +13,7 @@ function extractArtifacts(content: string): ArtifactType[] {
   while ((m = re.exec(content))) arts.push({ lang: m[1].toLowerCase(), code: m[2].trim() });
   return arts;
 }
-import { buildSystemPrompt, ChatResult, extractMemories, streamChat } from "./lib/api";
+import { buildSystemPrompt, ChatResult, claudeCodeChat, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -27,6 +27,7 @@ import {
   Routine,
   Settings,
   Skill,
+  isClaudeCodeUrl,
   newId,
   storage,
 } from "./lib/store";
@@ -164,7 +165,7 @@ export default function App() {
     const text = (opts?.text ?? input).trim();
     const atts = opts?.text ? [] : attachments;
     if ((!text && atts.length === 0) || streaming) return;
-    if (!settings.apiKey) {
+    if (!settings.apiKey && !isClaudeCodeUrl(settings.baseUrl)) {
       setShowSettings(true);
       return;
     }
@@ -232,6 +233,50 @@ export default function App() {
       ...history,
       apiUserMsg,
     ] as unknown as Message[];
+
+    // Claude Code (local): drive the `claude` CLI instead of an HTTP provider.
+    // Claude Code is its own agent (own tools + folder access), so Alter just
+    // sends the user's message and shows the reply — no HTTP, no Alter tool loop.
+    if (isClaudeCodeUrl(settings.baseUrl)) {
+      setStreaming(true);
+      abortRef.current = new AbortController();
+      try {
+        const prior = conversations.find((c) => c.id === convId)?.claudeSessionId ?? null;
+        const { content, sessionId } = await claudeCodeChat(
+          apiText,
+          folder,
+          prior,
+          (partial) =>
+            updateConversation(convId!, (c) => ({
+              ...c,
+              messages: [...c.messages.slice(0, -1), { role: "assistant", content: partial }],
+            })),
+          abortRef.current.signal
+        );
+        updateConversation(convId, (c) => ({
+          ...c,
+          claudeSessionId: sessionId ?? c.claudeSessionId,
+          messages: [
+            ...c.messages.slice(0, -1),
+            ...(content ? [{ role: "assistant", content } as Message] : []),
+          ],
+        }));
+      } catch (e: unknown) {
+        const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
+        if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
+          setError(humanizeError(msg));
+          updateConversation(convId, (c) => ({
+            ...c,
+            messages: c.messages.filter(
+              (m, i) => !(i === c.messages.length - 1 && m.role === "assistant" && !m.content)
+            ),
+          }));
+        }
+      } finally {
+        setStreaming(false);
+      }
+      return;
+    }
 
     setStreaming(true);
     abortRef.current = new AbortController();
@@ -653,7 +698,7 @@ export default function App() {
               <p className="mt-2 text-[15px] text-[var(--txt-faint)] max-w-md leading-relaxed">
                 Your second self. It remembers what matters, reads your files, browses the web, and keeps working while you're away.
               </p>
-              {settings.apiKey ? (
+              {settings.apiKey || isClaudeCodeUrl(settings.baseUrl) ? (
                 <div className="mt-7 flex flex-wrap justify-center gap-2 max-w-lg">
                   {suggestions.map((s) => (
                     <button

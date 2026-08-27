@@ -167,6 +167,92 @@ async fn stream_chat(
     Ok(())
 }
 
+// ---- Claude Code (local) mode ---------------------------------------------
+// Drives the locally-installed `claude` CLI in headless mode so Alter can use
+// the user's Claude Code subscription as a backend. Only ever runs the `claude`
+// binary with fixed flags — never an arbitrary shell command.
+
+#[tauri::command]
+fn claude_version() -> Result<String, String> {
+    use std::process::Command;
+    let out = Command::new("claude")
+        .arg("--version")
+        .output()
+        .map_err(|e| format!("Couldn't run the `claude` CLI — is Claude Code installed and on your PATH? ({e})"))?;
+    if out.status.success() {
+        Ok(format!(
+            "Claude Code ready — {}",
+            String::from_utf8_lossy(&out.stdout).trim()
+        ))
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+#[tauri::command]
+fn claude_code(
+    state: tauri::State<'_, ChatCancel>,
+    prompt: String,
+    cwd: Option<String>,
+    session_id: Option<String>,
+    on_chunk: tauri::ipc::Channel<String>,
+) -> Result<(), String> {
+    use std::io::{BufRead, BufReader, Read};
+    use std::process::{Command, Stdio};
+    state.0.store(false, Ordering::SeqCst);
+
+    let mut cmd = Command::new("claude");
+    cmd.arg("-p")
+        .arg(&prompt)
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--verbose")
+        .arg("--permission-mode")
+        .arg("acceptEdits");
+    if let Some(sid) = session_id.as_ref().filter(|s| !s.is_empty()) {
+        cmd.arg("--resume").arg(sid);
+    }
+    if let Some(dir) = cwd.as_ref().filter(|s| !s.is_empty()) {
+        cmd.current_dir(dir);
+    }
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| {
+        format!("Couldn't start Claude Code — is the `claude` CLI installed and on your PATH? ({e})")
+    })?;
+    let stdout = child.stdout.take().ok_or("no stdout from claude")?;
+    let mut stderr = child.stderr.take();
+    let reader = BufReader::new(stdout);
+
+    for line in reader.lines() {
+        if state.0.load(Ordering::SeqCst) {
+            let _ = child.kill();
+            break;
+        }
+        let line = line.map_err(|e| e.to_string())?;
+        if !line.trim().is_empty() {
+            let _ = on_chunk.send(line);
+        }
+    }
+
+    let status = child.wait();
+    if let Ok(st) = status {
+        if !st.success() && !state.0.load(Ordering::SeqCst) {
+            let mut buf = String::new();
+            if let Some(mut e) = stderr.take() {
+                let _ = e.read_to_string(&mut buf);
+            }
+            let msg = buf.trim();
+            return Err(if msg.is_empty() {
+                "Claude Code exited with an error. Make sure you're logged in (`claude` in a terminal).".to_string()
+            } else {
+                msg.chars().take(500).collect()
+            });
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn test_connection(url: String, api_key: String, model: String) -> Result<String, String> {
     let client = http_client()?;
@@ -582,6 +668,8 @@ pub fn run() {
             stream_chat,
             cancel_chat,
             test_connection,
+            claude_code,
+            claude_version,
             browser::browser_open,
             browser::browser_read,
             browser::browser_click,
