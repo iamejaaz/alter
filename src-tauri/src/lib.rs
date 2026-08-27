@@ -121,6 +121,7 @@ struct ClaudeProc {
     model: String,
     cwd: String,
     effort: String,
+    perm: String,
     child: tokio::process::Child,
     stdin: tokio::process::ChildStdin,
     rx: tokio::sync::mpsc::UnboundedReceiver<String>,
@@ -261,6 +262,7 @@ async fn claude_code(
     session_id: Option<String>,
     model: Option<String>,
     effort: Option<String>,
+    permission_mode: Option<String>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -270,14 +272,23 @@ async fn claude_code(
     let model = model.unwrap_or_default();
     let cwd = cwd.unwrap_or_default();
     let effort = effort.unwrap_or_default();
+    let perm = match permission_mode.as_deref() {
+        Some(m @ ("default" | "acceptEdits" | "bypassPermissions" | "plan")) => m.to_string(),
+        _ => "bypassPermissions".to_string(), // default: act freely on the user's own machine
+    };
     let mut guard = procs.0.lock().await;
 
-    // Reuse the warm process only if conversation, model, folder and effort all match
-    // and it hasn't died — otherwise spawn a fresh one (the only slow turn).
+    // Reuse the warm process only if conversation, model, folder, effort and permission
+    // mode all match and it hasn't died — otherwise spawn a fresh one.
     let reuse = match guard.as_mut() {
         Some(p) => {
             let alive = matches!(p.child.try_wait(), Ok(None));
-            alive && p.conv_id == conv_id && p.model == model && p.cwd == cwd && p.effort == effort
+            alive
+                && p.conv_id == conv_id
+                && p.model == model
+                && p.cwd == cwd
+                && p.effort == effort
+                && p.perm == perm
         }
         None => false,
     };
@@ -292,7 +303,7 @@ async fn claude_code(
             .arg("--output-format").arg("stream-json")
             .arg("--verbose")
             .arg("--include-partial-messages") // stream tokens as they arrive
-            .arg("--permission-mode").arg("acceptEdits");
+            .arg("--permission-mode").arg(&perm);
         if !model.is_empty() && model != "claude-code" {
             cmd.arg("--model").arg(&model);
         }
@@ -330,6 +341,7 @@ async fn claude_code(
             model: model.clone(),
             cwd: cwd.clone(),
             effort: effort.clone(),
+            perm: perm.clone(),
             child,
             stdin,
             rx,

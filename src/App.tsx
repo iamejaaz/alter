@@ -274,6 +274,10 @@ export default function App() {
           prior,
           settings.model,
           settings.effort ?? null,
+          // Map Alter's mode to Claude Code's permission mode.
+          { auto: "bypassPermissions", ask: "acceptEdits", plan: "plan", chat: "default" }[
+            settings.mode ?? "auto"
+          ],
           (partial) =>
             updateConversation(convId!, (c) => ({
               ...c,
@@ -1027,12 +1031,12 @@ export default function App() {
                     className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
                     title="Reasoning effort"
                   >
-                    <option value="" className="bg-[var(--modal)]">Effort: Auto</option>
-                    <option value="low" className="bg-[var(--modal)]">Effort: Low</option>
-                    <option value="medium" className="bg-[var(--modal)]">Effort: Medium</option>
-                    <option value="high" className="bg-[var(--modal)]">Effort: High</option>
-                    <option value="xhigh" className="bg-[var(--modal)]">Effort: X-High</option>
-                    <option value="max" className="bg-[var(--modal)]">Effort: Max</option>
+                    <option value="" className="bg-[var(--modal)]">Effort</option>
+                    <option value="low" className="bg-[var(--modal)]">Low</option>
+                    <option value="medium" className="bg-[var(--modal)]">Medium</option>
+                    <option value="high" className="bg-[var(--modal)]">High</option>
+                    <option value="xhigh" className="bg-[var(--modal)]">X-High</option>
+                    <option value="max" className="bg-[var(--modal)]">Max</option>
                   </select>
                   <Chevron />
                 </div>

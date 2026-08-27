@@ -214,6 +214,7 @@ export async function claudeCodeChat(
   sessionId: string | null,
   model: string | null,
   effort: string | null,
+  permissionMode: string | null,
   onDelta: (text: string) => void,
   onActivity: (label: string) => void,
   signal: AbortSignal
@@ -282,7 +283,20 @@ export async function claudeCodeChat(
       // Final answer — only paint it if nothing streamed (else keep what the user watched).
       if (ev.type === "result" && typeof ev.result === "string") {
         result = ev.result;
-        if (!streamed) {
+        // Blocked by permissions (Ask/Plan modes) — tell the user how to allow it.
+        const denials = Array.isArray(ev.permission_denials) ? ev.permission_denials : [];
+        if (denials.length) {
+          const what = denials
+            .map((d: { tool_name?: string; tool_input?: { command?: string; file_path?: string } }) =>
+              d.tool_input?.command || d.tool_input?.file_path || d.tool_name || "a tool"
+            )
+            .slice(0, 3)
+            .join(", ");
+          result =
+            `🔒 Claude needs permission to run: ${what}\n\n` +
+            `Switch the mode to **Auto** (bottom-left) to let it act freely, then resend.`;
+        }
+        if (!streamed || denials.length) {
           streamed = result;
           smoother.push(streamed);
         }
@@ -295,7 +309,7 @@ export async function claudeCodeChat(
   const onAbort = () => void invoke("cancel_chat", { id: convId }).catch(() => {});
   signal.addEventListener("abort", onAbort);
   try {
-    await invoke("claude_code", { prompt, cwd, convId, sessionId, model, effort, onChunk: channel });
+    await invoke("claude_code", { prompt, cwd, convId, sessionId, model, effort, permissionMode, onChunk: channel });
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
