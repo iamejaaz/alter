@@ -1189,7 +1189,8 @@ export default function App() {
                 className="relative w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               </div>
-              <div className="flex items-center gap-0.5 px-2 pb-2">
+              <div className="flex items-center gap-0.5 px-2 pb-2 text-xs">
+                {/* Left: mode + attach + mic */}
                 <div className="relative">
                   <select
                     value={settings.mode ?? "auto"}
@@ -1198,8 +1199,8 @@ export default function App() {
                       setSettings(s);
                       storage.saveSettings(s);
                     }}
-                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
-                    title="How Alter uses tools"
+                    className="appearance-none bg-transparent rounded-md hover:bg-[var(--panel-2)] pl-1.5 pr-5 py-1 font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
+                    title="How Alter uses tools / permissions"
                   >
                     <option value="auto" className="bg-[var(--modal)]">Auto</option>
                     <option value="ask" className="bg-[var(--modal)]">Ask first</option>
@@ -1208,27 +1209,33 @@ export default function App() {
                   </select>
                   <Chevron />
                 </div>
-                <div className="relative">
-                  <select
-                    value={settings.effort ?? ""}
-                    onChange={(e) => setEffort(e.target.value)}
-                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
-                    title="Reasoning effort"
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-[var(--panel-2)] text-[var(--txt-faint)] hover:text-[var(--txt)] transition-colors"
+                  title="Attach images or files"
+                >
+                  <IconPaperclip />
+                </button>
+                {speechSupported && (
+                  <button
+                    onClick={toggleMic}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                      listening ? "bg-red-500/15 text-red-400" : "hover:bg-[var(--panel-2)] text-[var(--txt-faint)] hover:text-[var(--txt)]"
+                    }`}
+                    title={listening ? "Stop dictation" : "Dictate"}
                   >
-                    <option value="" className="bg-[var(--modal)]">Effort</option>
-                    <option value="low" className="bg-[var(--modal)]">Low</option>
-                    <option value="medium" className="bg-[var(--modal)]">Medium</option>
-                    <option value="high" className="bg-[var(--modal)]">High</option>
-                    <option value="xhigh" className="bg-[var(--modal)]">X-High</option>
-                    <option value="max" className="bg-[var(--modal)]">Max</option>
-                  </select>
-                  <Chevron />
-                </div>
+                    <IconMic />
+                  </button>
+                )}
+
+                <div className="flex-1" />
+
+                {/* Right: model · (claude model) · effort · tokens · send */}
                 <div className="relative">
                   <select
                     value={settings.activeConnectionId ?? ""}
                     onChange={(e) => switchConnection(e.target.value)}
-                    className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors max-w-[200px] truncate"
+                    className="appearance-none bg-transparent rounded-md hover:bg-[var(--panel-2)] pl-1.5 pr-5 py-1 font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors max-w-[150px] truncate"
                     title={settings.model}
                   >
                     {connections.map((c) => {
@@ -1247,7 +1254,7 @@ export default function App() {
                     <select
                       value={CLAUDE_MODELS.some((m) => m.id === settings.model) ? settings.model : "claude-code"}
                       onChange={(e) => setClaudeModel(e.target.value)}
-                      className="appearance-none bg-transparent rounded-lg hover:bg-[var(--panel-2)] pl-2 pr-6 py-1.5 text-xs font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
+                      className="appearance-none bg-transparent rounded-md hover:bg-[var(--panel-2)] pl-1.5 pr-5 py-1 font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
                       title="Claude Code model"
                     >
                       {CLAUDE_MODELS.map((m) => (
@@ -1259,37 +1266,31 @@ export default function App() {
                     <Chevron />
                   </div>
                 )}
-
-                <div className="mx-1 h-5 w-px bg-[var(--bd)]" />
-
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--panel-2)] text-[var(--txt-dim)] hover:text-[var(--txt)] transition-colors"
-                  title="Attach images or files"
-                >
-                  <IconPaperclip />
-                </button>
-                {speechSupported && (
-                  <button
-                    onClick={toggleMic}
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                      listening ? "bg-red-500/15 text-red-400" : "hover:bg-[var(--panel-2)] text-[var(--txt-dim)] hover:text-[var(--txt)]"
-                    }`}
-                    title={listening ? "Stop dictation" : "Dictate"}
+                <div className="relative">
+                  <select
+                    value={settings.effort ?? ""}
+                    onChange={(e) => setEffort(e.target.value)}
+                    className="appearance-none bg-transparent rounded-md hover:bg-[var(--panel-2)] pl-1.5 pr-5 py-1 font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
+                    title="Reasoning effort"
                   >
-                    <IconMic />
-                  </button>
-                )}
-                <div className="flex-1" />
+                    <option value="" className="bg-[var(--modal)]">Effort</option>
+                    <option value="low" className="bg-[var(--modal)]">Low</option>
+                    <option value="medium" className="bg-[var(--modal)]">Medium</option>
+                    <option value="high" className="bg-[var(--modal)]">High</option>
+                    <option value="xhigh" className="bg-[var(--modal)]">X-High</option>
+                    <option value="max" className="bg-[var(--modal)]">Max</option>
+                  </select>
+                  <Chevron />
+                </div>
                 {active && active.messages.length > 0 && (
-                  <span className="text-[11px] text-[var(--txt-faint)] tabular-nums mr-1.5">
+                  <span className="text-[11px] text-[var(--txt-faint)] tabular-nums mx-1">
                     ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}
                   </span>
                 )}
                 {activeStreaming ? (
                   <button
                     onClick={stop}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] text-[var(--txt)] transition-colors"
+                    className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--bd)] hover:bg-[var(--panel-2)] text-[var(--txt)] transition-colors ml-0.5"
                     title="Stop"
                   >
                     <span className="h-2.5 w-2.5 rounded-[2px] bg-current" />
@@ -1298,7 +1299,7 @@ export default function App() {
                   <button
                     onClick={() => send()}
                     disabled={!input.trim() && attachments.length === 0}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 text-white transition-colors"
+                    className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 text-white transition-colors ml-0.5"
                     title="Send"
                   >
                     <IconArrowUp />
