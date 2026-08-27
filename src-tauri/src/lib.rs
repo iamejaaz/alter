@@ -241,6 +241,7 @@ fn claude_code(
             .arg("--input-format").arg("stream-json")
             .arg("--output-format").arg("stream-json")
             .arg("--verbose")
+            .arg("--include-partial-messages") // stream tokens as they arrive
             .arg("--permission-mode").arg("acceptEdits");
         if !model.is_empty() && model != "claude-code" {
             cmd.arg("--model").arg(&model);

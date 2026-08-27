@@ -140,19 +140,30 @@ export async function claudeCodeChat(
     try {
       const ev = JSON.parse(line);
       if (ev.session_id) sid = ev.session_id;
-      if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
+
+      // Live token stream (from --include-partial-messages).
+      if (ev.type === "stream_event" && ev.event?.type === "content_block_delta") {
+        const d = ev.event.delta;
+        if (d?.type === "text_delta" && typeof d.text === "string") {
+          streamed += d.text;
+          onDelta(streamed);
+        }
+        return;
+      }
+
+      // Fallback: a whole assistant message (if partial streaming is unavailable).
+      if (ev.type === "assistant" && Array.isArray(ev.message?.content) && !streamed) {
         const text = ev.message.content
           .filter((c: { type: string }) => c.type === "text")
           .map((c: { text: string }) => c.text)
           .join("");
-        if (text) {
-          streamed += (streamed ? "\n\n" : "") + text;
-          onDelta(streamed);
-        }
+        if (text) onDelta(text);
       }
+
+      // Final answer — only paint it if nothing streamed (else keep what the user watched).
       if (ev.type === "result" && typeof ev.result === "string") {
         result = ev.result;
-        onDelta(result);
+        if (!streamed) onDelta(result);
       }
     } catch {
       /* ignore non-JSON lines */
@@ -166,5 +177,5 @@ export async function claudeCodeChat(
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
-  return { content: result || streamed, sessionId: sid };
+  return { content: streamed || result, sessionId: sid };
 }
