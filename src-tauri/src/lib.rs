@@ -101,12 +101,12 @@ struct ClaudeProc {
     conv_id: String,
     model: String,
     cwd: String,
-    child: std::process::Child,
-    stdin: std::process::ChildStdin,
-    rx: std::sync::mpsc::Receiver<String>,
+    child: tokio::process::Child,
+    stdin: tokio::process::ChildStdin,
+    rx: tokio::sync::mpsc::UnboundedReceiver<String>,
 }
 #[derive(Default)]
-pub struct ClaudeState(pub std::sync::Mutex<Option<ClaudeProc>>);
+pub struct ClaudeState(pub tokio::sync::Mutex<Option<ClaudeProc>>);
 
 #[tauri::command]
 fn cancel_chat(state: tauri::State<ChatCancel>) {
@@ -203,7 +203,7 @@ fn claude_version() -> Result<String, String> {
 }
 
 #[tauri::command]
-fn claude_code(
+async fn claude_code(
     cancel: tauri::State<'_, ChatCancel>,
     procs: tauri::State<'_, ClaudeState>,
     prompt: String,
@@ -213,14 +213,13 @@ fn claude_code(
     model: Option<String>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
-    use std::io::{BufRead, BufReader, Write};
-    use std::process::{Command, Stdio};
-    use std::sync::mpsc::RecvTimeoutError;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::process::Command;
     cancel.0.store(false, Ordering::SeqCst);
 
     let model = model.unwrap_or_default();
     let cwd = cwd.unwrap_or_default();
-    let mut guard = procs.0.lock().map_err(|e| e.to_string())?;
+    let mut guard = procs.0.lock().await;
 
     // Reuse the warm process only if conversation, model and folder all still match
     // and it hasn't died — otherwise spawn a fresh one (the only slow turn).
@@ -234,7 +233,7 @@ fn claude_code(
 
     if !reuse {
         if let Some(mut old) = guard.take() {
-            let _ = old.child.kill();
+            let _ = old.child.kill().await;
         }
         let mut cmd = Command::new("claude");
         cmd.arg("-p")
@@ -253,24 +252,22 @@ fn claude_code(
         if !cwd.is_empty() {
             cmd.current_dir(&cwd);
         }
-        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
 
         let mut child = cmd.spawn().map_err(|e| {
             format!("Couldn't start Claude Code — is the `claude` CLI installed and on your PATH? ({e})")
         })?;
         let stdin = child.stdin.take().ok_or("no stdin")?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => {
-                        if tx.send(l).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(l)) = lines.next_line().await {
+                if tx.send(l).is_err() {
+                    break;
                 }
             }
         });
@@ -287,31 +284,29 @@ fn claude_code(
     // Send this turn's user message on the (possibly warm) process's stdin.
     {
         let p = guard.as_mut().unwrap();
-        let msg = serde_json::json!({
+        let mut msg = serde_json::json!({
             "type": "user",
             "message": { "role": "user", "content": [{ "type": "text", "text": prompt }] }
-        });
-        if writeln!(p.stdin, "{}", msg).and_then(|_| p.stdin.flush()).is_err() {
+        })
+        .to_string();
+        msg.push('\n');
+        if p.stdin.write_all(msg.as_bytes()).await.is_err() || p.stdin.flush().await.is_err() {
             let _ = guard.take();
             return Err("Claude Code process closed — try again.".to_string());
         }
     }
 
-    // Forward events until this turn's `result` event; keep the process alive after.
+    // Forward events as they arrive, until this turn's `result` event.
     loop {
         if cancel.0.load(Ordering::SeqCst) {
             if let Some(mut old) = guard.take() {
-                let _ = old.child.kill();
+                let _ = old.child.kill().await;
             }
             break;
         }
-        let recv = guard
-            .as_ref()
-            .unwrap()
-            .rx
-            .recv_timeout(std::time::Duration::from_millis(100));
-        match recv {
-            Ok(line) => {
+        let p = guard.as_mut().unwrap();
+        match tokio::time::timeout(std::time::Duration::from_millis(100), p.rx.recv()).await {
+            Ok(Some(line)) => {
                 let done = line.contains("\"type\":\"result\"");
                 if !line.trim().is_empty() {
                     let _ = on_chunk.send(line);
@@ -320,14 +315,14 @@ fn claude_code(
                     break;
                 }
             }
-            Err(RecvTimeoutError::Timeout) => continue,
-            Err(RecvTimeoutError::Disconnected) => {
+            Ok(None) => {
                 let _ = guard.take();
                 return Err(
                     "Claude Code stopped unexpectedly — check `claude` in a terminal (login / usage limits)."
                         .to_string(),
                 );
             }
+            Err(_) => continue, // 100ms tick — re-check cancel
         }
     }
     Ok(())
@@ -794,20 +789,7 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            // Kill any warm Claude Code process when the app actually exits.
-            if let tauri::RunEvent::Exit = event {
-                if let Some(mut proc) = app_handle
-                    .state::<ClaudeState>()
-                    .0
-                    .lock()
-                    .ok()
-                    .and_then(|mut g| g.take())
-                {
-                    let _ = proc.child.kill();
-                }
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+    // Warm Claude Code process is killed automatically via kill_on_drop.
 }
