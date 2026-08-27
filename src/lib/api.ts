@@ -60,7 +60,8 @@ export async function streamChat(
   messages: Message[],
   onDelta: (text: string) => void,
   signal: AbortSignal,
-  useTools = true
+  useTools = true,
+  cancelId = "default"
 ): Promise<ChatResult> {
   const url = settings.baseUrl.replace(/\/$/, "") + "/chat/completions";
   const body = JSON.stringify({
@@ -102,12 +103,12 @@ export async function streamChat(
   channel.onmessage = handleLine;
 
   const onAbort = () => {
-    void invoke("cancel_chat").catch(() => {});
+    void invoke("cancel_chat", { id: cancelId }).catch(() => {});
   };
   signal.addEventListener("abort", onAbort);
 
   try {
-    await invoke("stream_chat", { url, apiKey: settings.apiKey, body, onChunk: channel });
+    await invoke("stream_chat", { id: cancelId, url, apiKey: settings.apiKey, body, onChunk: channel });
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
@@ -291,7 +292,7 @@ export async function claudeCodeChat(
     }
   };
 
-  const onAbort = () => void invoke("cancel_chat").catch(() => {});
+  const onAbort = () => void invoke("cancel_chat", { id: convId }).catch(() => {});
   signal.addEventListener("abort", onAbort);
   try {
     await invoke("claude_code", { prompt, cwd, convId, sessionId, model, effort, onChunk: channel });

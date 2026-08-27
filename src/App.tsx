@@ -45,7 +45,7 @@ export default function App() {
   const [showSkills, setShowSkills] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
+  const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [showSettings, setShowSettings] = useState(!storage.loadSettings().apiKey);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -56,7 +56,7 @@ export default function App() {
   const [artifact, setArtifact] = useState<ArtifactType | null>(null);
   const [listening, setListening] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
-  const abortRef = useRef<AbortController | null>(null);
+  const abortsRef = useRef<Record<string, AbortController>>({}); // one per streaming conversation
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -105,6 +105,7 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
+  const activeStreaming = !!activeId && streamingIds.includes(activeId);
 
   useEffect(() => {
     void invoke<string>("read_user_memory").then(setSharedMemory).catch(() => {});
@@ -168,7 +169,9 @@ export default function App() {
   }) => {
     const text = (opts?.text ?? input).trim();
     const atts = opts?.text ? [] : attachments;
-    if ((!text && atts.length === 0) || streaming) return;
+    if (!text && atts.length === 0) return;
+    // Only block re-sending into a conversation that's already generating — other chats are free.
+    if (!opts?.forceNew && activeId && streamingIds.includes(activeId)) return;
     if (!settings.apiKey && !isClaudeCodeUrl(settings.baseUrl)) {
       setShowSettings(true);
       return;
@@ -241,12 +244,19 @@ export default function App() {
       apiUserMsg,
     ] as unknown as Message[];
 
+    // One AbortController per conversation so multiple chats can generate at once.
+    const controller = new AbortController();
+    abortsRef.current[convId] = controller;
+    setStreamingIds((ids) => (ids.includes(convId!) ? ids : [...ids, convId!]));
+    const endStream = () => {
+      setStreamingIds((ids) => ids.filter((x) => x !== convId));
+      delete abortsRef.current[convId!];
+    };
+
     // Claude Code (local): drive the `claude` CLI instead of an HTTP provider.
     // Claude Code is its own agent (own tools + folder access), so Alter just
     // sends the user's message and shows the reply — no HTTP, no Alter tool loop.
     if (isClaudeCodeUrl(settings.baseUrl)) {
-      setStreaming(true);
-      abortRef.current = new AbortController();
       try {
         const prior = conversations.find((c) => c.id === convId)?.claudeSessionId ?? null;
         // Teach-once: inject Alter's remembered facts into a new Claude Code session,
@@ -283,7 +293,7 @@ export default function App() {
               }
               return { ...c, messages: msgs };
             }),
-          abortRef.current.signal
+          controller.signal
         );
         updateConversation(convId, (c) => ({
           ...c,
@@ -305,13 +315,11 @@ export default function App() {
           }));
         }
       } finally {
-        setStreaming(false);
+        endStream();
       }
       return;
     }
 
-    setStreaming(true);
-    abortRef.current = new AbortController();
     const MAX_ROUNDS = 6;
     // Try the active connection first, then every other saved connection as a fallback.
     const fallbacks: Settings[] = [
@@ -332,7 +340,7 @@ export default function App() {
       let finished = false;
       let cappedOut = false;
       for (let round = 0; round < MAX_ROUNDS; round++) {
-        if (abortRef.current.signal.aborted) break;
+        if (controller.signal.aborted) break;
         if (Date.now() > deadline) {
           cappedOut = true;
           break;
@@ -352,8 +360,9 @@ export default function App() {
                   gotContent = true;
                   writePartial(partial);
                 },
-                abortRef.current.signal,
-                useTools
+                controller.signal,
+                useTools,
+                convId
               );
               activeSettings = cand;
               if (fi > 0) {
@@ -365,19 +374,19 @@ export default function App() {
             } catch (e) {
               const m = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
               const aborted =
-                abortRef.current.signal.aborted || (e as Error)?.name === "AbortError" || /abort/i.test(m);
+                controller.signal.aborted || (e as Error)?.name === "AbortError" || /abort/i.test(m);
               // Only fall through on a retryable provider error before any text streamed.
               if (aborted || gotContent || !isRetryable(m) || fi === fallbacks.length - 1) throw e;
             }
           }
           result = chosen!;
         } else {
-          result = await streamChat(activeSettings, payload, writePartial, abortRef.current.signal, useTools);
+          result = await streamChat(activeSettings, payload, writePartial, controller.signal, useTools, convId);
         }
 
         if (result.content) full = result.content;
 
-        if (result.toolCalls.length === 0 || abortRef.current.signal.aborted) {
+        if (result.toolCalls.length === 0 || controller.signal.aborted) {
           full = result.content;
           finished = true;
           break;
@@ -404,7 +413,7 @@ export default function App() {
           } catch {
             args = {};
           }
-          if (abortRef.current.signal.aborted) break;
+          if (controller.signal.aborted) break;
           if (Date.now() > deadline) {
             cappedOut = true;
             break;
@@ -423,7 +432,7 @@ export default function App() {
         }
         if (cappedOut) break;
       }
-      if (!full && !abortRef.current.signal.aborted) {
+      if (!full && !controller.signal.aborted) {
         if (cappedOut) {
           full =
             "Stopped — the model kept running tools for over 90 seconds without finishing. Try a sharper request, or switch to a stronger model.";
@@ -464,14 +473,16 @@ export default function App() {
         }));
       }
     } finally {
-      setStreaming(false);
+      endStream();
     }
   };
 
-  const stop = () => abortRef.current?.abort();
+  const stop = () => {
+    if (activeId) abortsRef.current[activeId]?.abort();
+  };
 
   const regenerate = () => {
-    if (!active || streaming) return;
+    if (!active || activeStreaming) return;
     const msgs = active.messages;
     let lastUser = -1;
     for (let i = msgs.length - 1; i >= 0; i--) {
@@ -488,7 +499,7 @@ export default function App() {
   };
 
   const editMessage = (idx: number) => {
-    if (!active || streaming) return;
+    if (!active || activeStreaming) return;
     const m = active.messages[idx];
     if (m.role !== "user") return;
     updateConversation(active.id, (c) => ({ ...c, messages: c.messages.slice(0, idx) }));
@@ -616,6 +627,10 @@ export default function App() {
   }, []);
 
   const deleteConversation = (id: string) => {
+    // If it's mid-generation, stop that stream so it doesn't orphan.
+    abortsRef.current[id]?.abort();
+    delete abortsRef.current[id];
+    setStreamingIds((ids) => ids.filter((x) => x !== id));
     setConversations((prev) => prev.filter((c) => c.id !== id));
     if (activeId === id) setActiveId(null);
   };
@@ -716,7 +731,7 @@ export default function App() {
             <>
               <button
                 onClick={regenerate}
-                disabled={streaming}
+                disabled={activeStreaming}
                 className="rounded-lg hover:bg-[var(--panel-2)] disabled:opacity-40 px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
                 title="Regenerate last reply"
               >
@@ -1100,7 +1115,7 @@ export default function App() {
                     ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}
                   </span>
                 )}
-                {streaming ? (
+                {activeStreaming ? (
                   <button
                     onClick={stop}
                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] text-[var(--txt)] transition-colors"

@@ -90,10 +90,29 @@ pub(crate) fn html_to_text(html: &str) -> String {
     text.trim().to_string()
 }
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashSet;
+use std::sync::Mutex;
 
+// Per-conversation cancellation: a set of conversation ids whose stream should stop.
+// Keyed by id so stopping one chat never affects another running concurrently.
 #[derive(Default)]
-pub struct ChatCancel(pub AtomicBool);
+pub struct ChatCancel(pub Mutex<HashSet<String>>);
+
+impl ChatCancel {
+    fn request(&self, id: &str) {
+        if let Ok(mut s) = self.0.lock() {
+            s.insert(id.to_string());
+        }
+    }
+    fn clear(&self, id: &str) {
+        if let Ok(mut s) = self.0.lock() {
+            s.remove(id);
+        }
+    }
+    fn is_cancelled(&self, id: &str) -> bool {
+        self.0.lock().map(|s| s.contains(id)).unwrap_or(false)
+    }
+}
 
 // A warm, long-lived Claude Code process bound to one conversation/model/cwd.
 // Kept alive between messages so follow-up turns skip the cold start + cache rebuild.
@@ -110,20 +129,21 @@ struct ClaudeProc {
 pub struct ClaudeState(tokio::sync::Mutex<Option<ClaudeProc>>);
 
 #[tauri::command]
-fn cancel_chat(state: tauri::State<ChatCancel>) {
-    state.0.store(true, Ordering::SeqCst);
+fn cancel_chat(state: tauri::State<ChatCancel>, id: String) {
+    state.request(&id);
 }
 
 #[tauri::command]
 async fn stream_chat(
     state: tauri::State<'_, ChatCancel>,
+    id: String,
     url: String,
     api_key: String,
     body: String,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use futures_util::StreamExt;
-    state.0.store(false, Ordering::SeqCst);
+    state.clear(&id);
     let client = http_client()?;
     let resp = client
         .post(&url)
@@ -142,7 +162,7 @@ async fn stream_chat(
     let mut buffer = String::new();
     let mut idle: u32 = 0; // 100ms ticks with no data
     loop {
-        if state.0.load(Ordering::SeqCst) {
+        if state.is_cancelled(&id) {
             break;
         }
         // Wait for the next chunk, but wake every 100ms to re-check the cancel
@@ -245,7 +265,7 @@ async fn claude_code(
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::process::Command;
-    cancel.0.store(false, Ordering::SeqCst);
+    cancel.clear(&conv_id);
 
     let model = model.unwrap_or_default();
     let cwd = cwd.unwrap_or_default();
@@ -333,7 +353,7 @@ async fn claude_code(
 
     // Forward events as they arrive, until this turn's `result` event.
     loop {
-        if cancel.0.load(Ordering::SeqCst) {
+        if cancel.is_cancelled(&conv_id) {
             if let Some(mut old) = guard.take() {
                 let _ = old.child.kill().await;
             }
