@@ -113,6 +113,7 @@ export default function App() {
   const [slashIdx, setSlashIdx] = useState(0);
   const abortsRef = useRef<Record<string, AbortController>>({}); // one per streaming conversation
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
@@ -165,6 +166,10 @@ export default function App() {
   useEffect(() => {
     void invoke<string>("read_user_memory").then(setSharedMemory).catch(() => {});
   }, []);
+  // Collapse the auto-grown composer back to one line once it's emptied (after send).
+  useEffect(() => {
+    if (input === "" && composerRef.current) composerRef.current.style.height = "auto";
+  }, [input]);
   // Opening a chat restores the model/connection it was last using — each chat
   // remembers its own, instead of sharing one global selection.
   useEffect(() => {
@@ -248,7 +253,13 @@ export default function App() {
           prompt: `Generate a 3-6 word title in Title Case (no quotes, no trailing punctuation) for a chat that starts with this message. Reply with ONLY the title.\n\nMessage: ${firstMessage.slice(0, 500)}`,
         });
       }
-      title = title.split("\n")[0].replace(/^["']|["'.]$/g, "").trim().slice(0, 60);
+      title = title
+        .replace(/<think>[\s\S]*?<\/think>/gi, "")
+        .replace(/<\/?think>/gi, "");
+      title = (title.split("\n").map((s) => s.trim()).find(Boolean) ?? "")
+        .replace(/^["']|["'.]$/g, "")
+        .trim()
+        .slice(0, 60);
       if (title) updateConversation(cid, (c) => ({ ...c, title }));
     } catch {
       /* keep the fallback title */
@@ -1174,6 +1185,7 @@ export default function App() {
                   </div>
                 )}
                 <textarea
+                ref={composerRef}
                 value={input}
                 onChange={(e) => {
                   setInput(e.target.value);
