@@ -13,6 +13,59 @@ function extractArtifacts(content: string): ArtifactType[] {
   while ((m = re.exec(content))) arts.push({ lang: m[1].toLowerCase(), code: m[2].trim() });
   return arts;
 }
+
+// Collapse a run of tool-step lines into one expandable block (collapsed by default).
+function ToolSteps({ lines }: { lines: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (lines.length === 0) return null;
+  const summary = lines[lines.length - 1];
+  return (
+    <div className="pl-11 animate-fade-up">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 text-xs text-[var(--txt-faint)] hover:text-[var(--txt-dim)] transition-colors max-w-full"
+      >
+        <span className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+        {open ? (
+          <span>{lines.length} step{lines.length > 1 ? "s" : ""}</span>
+        ) : (
+          <span className="font-mono truncate">
+            {summary}
+            {lines.length > 1 ? `  · +${lines.length - 1}` : ""}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="mt-1 space-y-1 border-l border-[var(--bd-soft)] ml-[3px] pl-3">
+          {lines.map((l, j) => (
+            <div key={j} className="flex items-start gap-2 text-xs text-[var(--txt-faint)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-indigo-400/60 shrink-0 mt-1.5" />
+              <span className="font-mono break-all">{l}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type RenderItem = { kind: "tools"; lines: string[]; key: string } | { kind: "msg"; m: Message; i: number };
+
+// Merge consecutive tool messages so their steps render as one collapsible group.
+function groupMessages(messages: Message[]): RenderItem[] {
+  const items: RenderItem[] = [];
+  messages.forEach((m, i) => {
+    if (m.role === "tool") {
+      const lines = m.content.split("\n").filter(Boolean).map((l) => l.replace(/^▸\s*/, ""));
+      const last = items[items.length - 1];
+      if (last && last.kind === "tools") last.lines.push(...lines);
+      else items.push({ kind: "tools", lines, key: `t${i}` });
+    } else {
+      items.push({ kind: "msg", m, i });
+    }
+  });
+  return items;
+}
 import { buildSystemPrompt, ChatResult, claudeCodeChat, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
@@ -766,9 +819,29 @@ export default function App() {
           data-tauri-drag-region
           className="flex items-center gap-2 h-12 px-4 shrink-0 border-b border-[var(--bd-soft)]"
         >
-          <span className="flex-1 truncate text-sm font-medium text-[var(--txt)] pointer-events-none">
+          <span className="truncate text-sm font-medium text-[var(--txt)] pointer-events-none max-w-[40%]">
             {active && active.messages.length > 0 ? active.title : ""}
           </span>
+          {/* Working folder lives here (like Claude Code shows the cwd after the title). */}
+          {folder ? (
+            <div className="flex items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 py-1 text-xs text-[var(--txt-dim)] max-w-[240px]">
+              <IconFolder />
+              <span className="font-mono truncate">{folder.split("/").pop()}</span>
+              <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)] px-0.5" title="Detach folder">
+                ×
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={chooseFolder}
+              className="flex items-center gap-1.5 rounded-lg hover:bg-[var(--panel-2)] px-2 py-1 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)] transition-colors"
+              title="Attach a working folder"
+            >
+              <IconFolder />
+              <span>Add folder</span>
+            </button>
+          )}
+          <div className="flex-1" />
           {active && active.messages.length > 0 && (
             <>
               <button
@@ -835,20 +908,11 @@ export default function App() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-              {active.messages.map((m, i) =>
-                m.role === "tool" ? (
-                  <div key={i} className="pl-11 space-y-1 animate-fade-up">
-                    {m.content
-                      .split("\n")
-                      .filter(Boolean)
-                      .map((line, j) => (
-                        <div key={j} className="flex items-center gap-2 text-xs text-[var(--txt-faint)]">
-                          <span className="h-1.5 w-1.5 rounded-full bg-indigo-400/60 shrink-0" />
-                          <span className="font-mono truncate">{line.replace(/^▸\s*/, "")}</span>
-                        </div>
-                      ))}
-                  </div>
-                ) : m.role === "user" ? (
+              {groupMessages(active.messages).map((item) =>
+                item.kind === "tools" ? (
+                  <ToolSteps key={item.key} lines={item.lines} />
+                ) : ((m, i) =>
+                  m.role === "user" ? (
                   <div key={i} className="group flex justify-end animate-fade-up">
                     <div className="max-w-[80%]">
                       {m.attachments && m.attachments.length > 0 && (
@@ -925,7 +989,7 @@ export default function App() {
                       )}
                     </div>
                   </div>
-                )
+                ))(item.m, item.i)
               )}
               <div ref={bottomRef} />
             </div>
@@ -1132,23 +1196,6 @@ export default function App() {
                     title={listening ? "Stop dictation" : "Dictate"}
                   >
                     <IconMic />
-                  </button>
-                )}
-                {folder ? (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 py-1.5 text-xs text-[var(--txt)] max-w-[160px]">
-                    <IconFolder />
-                    <span className="font-mono truncate">{folder.split("/").pop()}</span>
-                    <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)] px-0.5" title="Detach">
-                      ×
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={chooseFolder}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--panel-2)] text-[var(--txt-dim)] hover:text-[var(--txt)] transition-colors"
-                    title="Attach a working folder"
-                  >
-                    <IconFolder />
                   </button>
                 )}
                 <div className="flex-1" />
