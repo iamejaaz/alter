@@ -113,6 +113,9 @@ export default function App() {
   const [listening, setListening] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
   const [showPalette, setShowPalette] = useState(false);
+  const [theme, setTheme] = useState<"system" | "light" | "dark">(
+    () => (localStorage.getItem("alter.theme") as "system" | "light" | "dark") || "system"
+  );
   const abortsRef = useRef<Record<string, AbortController>>({}); // one per streaming conversation
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -172,6 +175,16 @@ export default function App() {
   useEffect(() => {
     if (input === "" && composerRef.current) composerRef.current.style.height = "auto";
   }, [input]);
+  useEffect(() => {
+    localStorage.setItem("alter.theme", theme);
+    const mq = window.matchMedia("(prefers-color-scheme: light)");
+    const apply = () =>
+      document.documentElement.setAttribute("data-theme", theme === "system" ? (mq.matches ? "light" : "dark") : theme);
+    apply();
+    if (theme !== "system") return;
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [theme]);
   // Opening a chat restores the model/connection it was last using — each chat
   // remembers its own, instead of sharing one global selection.
   useEffect(() => {
@@ -919,6 +932,13 @@ export default function App() {
       label: `Mode: ${m}`,
       section: "Mode",
       run: () => applyMode(m),
+    })),
+    ...(["system", "light", "dark"] as const).map((t) => ({
+      id: `theme-${t}`,
+      label: `Theme: ${t}`,
+      hint: theme === t ? "current" : undefined,
+      section: "Theme",
+      run: () => setTheme(t),
     })),
     ...connections.map((c) => ({
       id: `conn-${c.id}`,
