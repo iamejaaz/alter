@@ -63,14 +63,50 @@ struct RunReq {
     run_id: Option<String>,
 }
 
-// Read/inspect tools the agent may run WITHOUT asking. fr: only the read-only
-// subcommands. Anything that changes data is not here — it's explicitly denied
-// below and surfaced to the human to approve.
-const AGENT_ALLOWED_TOOLS: &str = "Read Grep Glob WebFetch Bash(fr query:*) Bash(fr guide:*) Bash(fr doc get:*) Bash(fr doc list:*) Bash(fr doctype list:*) Bash(fr doctype show:*) Bash(fr report run:*) Bash(fr method search:*) Bash(fr method list:*) Bash(fr method show:*) Bash(fr file download:*) Bash(fr auth whoami:*) Bash(fr auth list:*) Bash(git show:*) Bash(git log:*) Bash(git grep:*) Bash(git diff:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(gh issue view:*) Bash(gh issue list:*) Bash(gh search:*)";
+// fr read subcommands the agent may run WITHOUT asking, and the write ones that
+// are hard-denied. Claude Code matches Bash rules by literal prefix, so a global
+// flag like `-s <profile>` injected before the subcommand (fr -s x doc get …)
+// won't match `Bash(fr doc get:*)` — we emit each verb in the bare form and the
+// site-flag forms the agent actually uses so reads never stall on approval.
+const FR_READ_VERBS: &[&str] = &[
+    "query", "guide", "doc get", "doc list", "doctype list", "doctype show", "report run",
+    "method search", "method list", "method show", "file download", "auth whoami", "auth list",
+];
+const FR_WRITE_VERBS: &[&str] = &[
+    "doc create", "doc update", "doc delete", "doc submit", "doc cancel", "doc amend",
+    "method call", "api", "file upload", "update", "assistant", "auth login", "auth logout",
+    "auth default", "auth configure",
+];
+const AGENT_SITE: &str = "support.frappe.io";
 
-// Mutating fr subcommands — hard-denied so a write fails cleanly (headless has no
-// interactive prompt). The agent proposes these for the human to approve instead.
-const AGENT_DISALLOWED_TOOLS: &str = "Bash(fr doc create:*) Bash(fr doc update:*) Bash(fr doc delete:*) Bash(fr doc submit:*) Bash(fr doc cancel:*) Bash(fr doc amend:*) Bash(fr method call:*) Bash(fr api:*) Bash(fr file upload:*) Bash(fr update:*) Bash(fr assistant:*) Bash(fr auth login:*) Bash(fr auth logout:*) Bash(fr auth default:*) Bash(fr auth configure:*)";
+fn fr_rules(verbs: &[&str]) -> Vec<String> {
+    verbs
+        .iter()
+        .flat_map(|v| {
+            [
+                format!("Bash(fr {v}:*)"),
+                format!("Bash(fr -s {AGENT_SITE} {v}:*)"),
+                format!("Bash(fr --site {AGENT_SITE} {v}:*)"),
+            ]
+        })
+        .collect()
+}
+
+fn agent_allowed_tools() -> String {
+    let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch"].iter().map(|s| s.to_string()).collect();
+    t.extend(fr_rules(FR_READ_VERBS));
+    for g in [
+        "git show", "git log", "git grep", "git diff",
+        "gh pr view", "gh pr list", "gh issue view", "gh issue list", "gh search",
+    ] {
+        t.push(format!("Bash({g}:*)"));
+    }
+    t.join(" ")
+}
+
+fn agent_disallowed_tools() -> String {
+    fr_rules(FR_WRITE_VERBS).join(" ")
+}
 
 fn agent_workdir() -> String {
     std::env::var("ALTER_AGENT_WORKDIR").unwrap_or_else(|_| {
@@ -141,8 +177,8 @@ async fn run_completion(
             if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
                 cmd.current_dir(&dir);
             }
-            cmd.arg("--allowedTools").arg(AGENT_ALLOWED_TOOLS);
-            cmd.arg("--disallowedTools").arg(AGENT_DISALLOWED_TOOLS);
+            cmd.arg("--allowedTools").arg(agent_allowed_tools());
+            cmd.arg("--disallowedTools").arg(agent_disallowed_tools());
             cmd.arg("--permission-mode").arg("default");
         }
         // Spawn in its own process group so Stop can signal the whole tree
@@ -424,7 +460,8 @@ fn produce_claude(conn: &BridgeConn, system: &str, prompt: &str, agent: bool, tx
         if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
             cmd.current_dir(&dir);
         }
-        cmd.arg("--allowedTools").arg(AGENT_ALLOWED_TOOLS);
+        cmd.arg("--allowedTools").arg(agent_allowed_tools());
+        cmd.arg("--disallowedTools").arg(agent_disallowed_tools());
         cmd.arg("--permission-mode").arg("default");
     }
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
