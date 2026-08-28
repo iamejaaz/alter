@@ -181,50 +181,55 @@ pub fn start(app: AppHandle) {
                 return;
             }
         };
-        for mut req in server.incoming_requests() {
-            let method = req.method().clone();
-            let url = req.url().to_string();
-            let path = url.split('?').next().unwrap_or("").to_string();
-
-            if method == tiny_http::Method::Options {
-                let _ = req.respond(cors_empty(204));
-                continue;
-            }
-
-            // Token gate.
-            let auth = req
-                .headers()
-                .iter()
-                .find(|h| h.field.equiv("Authorization"))
-                .map(|h| h.value.as_str().to_string())
-                .unwrap_or_default();
-            let expected = app
-                .try_state::<BridgeState>()
-                .map(|s| s.token.lock().unwrap().clone())
-                .unwrap_or_default();
-            let ok = !expected.is_empty() && auth == format!("Bearer {expected}");
-            if !ok {
-                let _ = req.respond(json_response(401, "{\"error\":\"unauthorized\"}".into()));
-                continue;
-            }
-
-            let body = if method == tiny_http::Method::Get {
-                String::new()
-            } else {
-                let mut b = String::new();
-                let _ = req.as_reader().read_to_string(&mut b);
-                b
-            };
-
-            if method == tiny_http::Method::Post && path == "/run-stream" {
-                stream_run(req, &app, &body);
-                continue;
-            }
-
-            let response = handle(&app, &method, &path, &body);
-            let _ = req.respond(json_response(response.0, response.1));
+        // One thread per request: a long streaming response must not block the
+        // rest (posting, follow-ups, /connections) while it runs.
+        for req in server.incoming_requests() {
+            let app = app.clone();
+            std::thread::spawn(move || serve(req, app));
         }
     });
+}
+
+fn serve(mut req: tiny_http::Request, app: AppHandle) {
+    let method = req.method().clone();
+    let url = req.url().to_string();
+    let path = url.split('?').next().unwrap_or("").to_string();
+
+    if method == tiny_http::Method::Options {
+        let _ = req.respond(cors_empty(204));
+        return;
+    }
+
+    let auth = req
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Authorization"))
+        .map(|h| h.value.as_str().to_string())
+        .unwrap_or_default();
+    let expected = app
+        .try_state::<BridgeState>()
+        .map(|s| s.token.lock().unwrap().clone())
+        .unwrap_or_default();
+    if expected.is_empty() || auth != format!("Bearer {expected}") {
+        let _ = req.respond(json_response(401, "{\"error\":\"unauthorized\"}".into()));
+        return;
+    }
+
+    let body = if method == tiny_http::Method::Get {
+        String::new()
+    } else {
+        let mut b = String::new();
+        let _ = req.as_reader().read_to_string(&mut b);
+        b
+    };
+
+    if method == tiny_http::Method::Post && path == "/run-stream" {
+        stream_run(req, &app, &body);
+        return;
+    }
+
+    let response = handle(&app, &method, &path, &body);
+    let _ = req.respond(json_response(response.0, response.1));
 }
 
 // A Read that pulls bytes from a channel — lets tiny_http write the response
@@ -472,6 +477,37 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             match result {
                 Ok(content) => (200, serde_json::json!({ "content": strip_think(&content) }).to_string()),
                 Err(e) => (502, serde_json::json!({ "error": e }).to_string()),
+            }
+        }
+        (tiny_http::Method::Post, "/gh") => {
+            #[derive(serde::Deserialize)]
+            struct GhReq {
+                repo: String,
+                num: String,
+                body: String,
+                event: String,
+            }
+            let req: GhReq = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
+            };
+            // Post via the user's own `gh` auth — no GitHub token in the browser.
+            let args: Vec<String> = match req.event.as_str() {
+                "comment" => vec!["pr".into(), "comment".into(), req.num, "-R".into(), req.repo, "--body".into(), req.body],
+                "request_changes" => vec!["pr".into(), "review".into(), req.num, "-R".into(), req.repo, "--request-changes".into(), "--body".into(), req.body],
+                "approve" => vec!["pr".into(), "review".into(), req.num, "-R".into(), req.repo, "--approve".into(), "--body".into(), req.body],
+                _ => return (400, "{\"error\":\"bad event\"}".into()),
+            };
+            match std::process::Command::new("gh").args(&args).output() {
+                Ok(out) if out.status.success() => (
+                    200,
+                    serde_json::json!({ "ok": true, "output": String::from_utf8_lossy(&out.stdout).trim() }).to_string(),
+                ),
+                Ok(out) => (
+                    502,
+                    serde_json::json!({ "error": String::from_utf8_lossy(&out.stderr).trim() }).to_string(),
+                ),
+                Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
             }
         }
         _ => (404, "{\"error\":\"not found\"}".into()),
