@@ -99,6 +99,15 @@
 #alter-panel-body .alter-err {
   color: #f87171;
 }
+#alter-panel-body .alter-banner {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .alter-msg {
   padding: 8px 0;
 }
