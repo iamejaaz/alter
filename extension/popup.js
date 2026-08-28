@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const ACTIONS = ["prReview", "grammar", "summarize"];
+const ACTIONS = ["prReview", "grammar", "support", "summarize"];
 
 const SUMMARY_SYSTEM =
   "Summarize the page for a busy reader. Lead with a one-line what-this-is, then 3-6 tight bullets of the key points. Plain text, no preamble.";
@@ -24,14 +24,17 @@ async function loadConnections() {
     return;
   }
   const conns = r.data || [];
+  const claude = conns.find((c) => c.isClaudeCode);
   ACTIONS.forEach((a) => {
     const sel = $("m-" + a);
     sel.innerHTML = "";
+    // Support needs a tool-capable agent — default it to Claude Code.
+    const preferred = models[a] || (a === "support" && claude ? claude.id : null);
     conns.forEach((c) => {
       const o = document.createElement("option");
       o.value = c.id;
       o.textContent = c.name;
-      if (models[a] === c.id) o.selected = true;
+      if (preferred === c.id) o.selected = true;
       sel.appendChild(o);
     });
   });

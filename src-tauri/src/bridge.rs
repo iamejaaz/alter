@@ -47,6 +47,24 @@ struct RunReq {
     prompt: String,
     #[serde(rename = "includeMemory", default)]
     include_memory: bool,
+    // Read-only agent mode: Claude Code runs with a fixed read-only tool
+    // allowlist (see AGENT_ALLOWED_TOOLS) in the server-configured workdir. No
+    // write tools, no arbitrary shell, no permission bypass.
+    #[serde(default)]
+    agent: bool,
+}
+
+// The ONLY tools the support agent may use — read/inspect, never mutate.
+// fr: only read-only subcommands (query/doc get/doctype/report/method/guide) —
+// never `doc create/update/delete` or `api` (which can POST).
+const AGENT_ALLOWED_TOOLS: &str = "Read Grep Glob WebFetch Bash(fr query:*) Bash(fr doc get:*) Bash(fr doctype:*) Bash(fr report:*) Bash(fr method:*) Bash(fr guide:*) Bash(git show:*) Bash(git log:*) Bash(git grep:*) Bash(git diff:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(gh issue view:*) Bash(gh issue list:*) Bash(gh search:*)";
+
+fn agent_workdir() -> String {
+    std::env::var("ALTER_AGENT_WORKDIR").unwrap_or_else(|_| {
+        std::env::var("HOME")
+            .map(|h| format!("{h}/projects/frappe/frappe-bench"))
+            .unwrap_or_default()
+    })
 }
 
 fn shared_memory() -> String {
@@ -285,11 +303,12 @@ fn stream_run(req: tiny_http::Request, app: &AppHandle, body: &str) {
         }
     }
     let prompt = parsed.prompt;
+    let agent = parsed.agent;
 
     let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
         if conn.is_claude_code() {
-            produce_claude(&conn, &system, &prompt, &tx);
+            produce_claude(&conn, &system, &prompt, agent, &tx);
         } else {
             tauri::async_runtime::block_on(produce_http(&conn, &system, &prompt, &tx));
         }
@@ -312,7 +331,23 @@ fn stream_run(req: tiny_http::Request, app: &AppHandle, body: &str) {
     let _ = req.respond(resp);
 }
 
-fn produce_claude(conn: &BridgeConn, system: &str, prompt: &str, tx: &std::sync::mpsc::Sender<Vec<u8>>) {
+fn tool_label(name: &str, input: &serde_json::Value) -> String {
+    let arg = input["command"]
+        .as_str()
+        .or_else(|| input["file_path"].as_str())
+        .or_else(|| input["pattern"].as_str())
+        .or_else(|| input["url"].as_str())
+        .or_else(|| input["query"].as_str())
+        .unwrap_or("");
+    let arg: String = arg.chars().take(80).collect();
+    if arg.is_empty() {
+        name.to_string()
+    } else {
+        format!("{name}: {arg}")
+    }
+}
+
+fn produce_claude(conn: &BridgeConn, system: &str, prompt: &str, agent: bool, tx: &std::sync::mpsc::Sender<Vec<u8>>) {
     let full = if system.is_empty() { prompt.to_string() } else { format!("{system}\n\n{prompt}") };
     let mut cmd = std::process::Command::new("claude");
     cmd.arg("-p")
@@ -323,6 +358,17 @@ fn produce_claude(conn: &BridgeConn, system: &str, prompt: &str, tx: &std::sync:
         .arg("--verbose");
     if !conn.model.is_empty() && conn.model != "claude-code" {
         cmd.arg("--model").arg(&conn.model);
+    }
+    if agent {
+        // Read-only allowlist + fixed server-side workdir. No write tools, no
+        // arbitrary shell, no permission bypass — a browser-triggered call
+        // cannot mutate anything or escape the allowed commands.
+        let dir = agent_workdir();
+        if !dir.is_empty() {
+            cmd.current_dir(&dir);
+        }
+        cmd.arg("--allowedTools").arg(AGENT_ALLOWED_TOOLS);
+        cmd.arg("--permission-mode").arg("default");
     }
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
     let mut child = match cmd.spawn() {
@@ -336,6 +382,7 @@ fn produce_claude(conn: &BridgeConn, system: &str, prompt: &str, tx: &std::sync:
         use std::io::BufRead;
         let reader = std::io::BufReader::new(out);
         let mut streamed = false;
+        let mut tool: Option<(String, String)> = None; // (name, accumulated input json)
         for line in reader.lines().map_while(Result::ok) {
             let v: serde_json::Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
@@ -343,13 +390,34 @@ fn produce_claude(conn: &BridgeConn, system: &str, prompt: &str, tx: &std::sync:
             };
             if v["type"] == "stream_event" {
                 let ev = &v["event"];
-                if ev["type"] == "content_block_delta" && ev["delta"]["type"] == "text_delta" {
-                    if let Some(t) = ev["delta"]["text"].as_str() {
-                        streamed = true;
-                        if tx.send(t.as_bytes().to_vec()).is_err() {
-                            break;
+                let et = ev["type"].as_str().unwrap_or("");
+                match et {
+                    "content_block_start" if ev["content_block"]["type"] == "tool_use" => {
+                        let name = ev["content_block"]["name"].as_str().unwrap_or("tool").to_string();
+                        tool = Some((name, String::new()));
+                    }
+                    "content_block_delta" if ev["delta"]["type"] == "text_delta" => {
+                        if let Some(t) = ev["delta"]["text"].as_str() {
+                            streamed = true;
+                            if tx.send(t.as_bytes().to_vec()).is_err() {
+                                break;
+                            }
                         }
                     }
+                    "content_block_delta" if ev["delta"]["type"] == "input_json_delta" => {
+                        if let (Some((_, acc)), Some(p)) = (tool.as_mut(), ev["delta"]["partial_json"].as_str()) {
+                            acc.push_str(p);
+                        }
+                    }
+                    "content_block_stop" => {
+                        if let Some((name, acc)) = tool.take() {
+                            let input: serde_json::Value = serde_json::from_str(&acc).unwrap_or(serde_json::Value::Null);
+                            let label = tool_label(&name, &input);
+                            // Emit a visible step marker the extension renders as an activity line.
+                            let _ = tx.send(format!("\u{0001}▸ {label}\u{0001}").into_bytes());
+                        }
+                    }
+                    _ => {}
                 }
             } else if v["type"] == "result" && !streamed {
                 if let Some(t) = v["result"].as_str() {

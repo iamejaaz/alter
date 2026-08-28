@@ -24,6 +24,12 @@
       "js": ["grammar.js"],
       "css": ["grammar.css"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://support.frappe.io/*"],
+      "js": ["support.js"],
+      "css": ["support.css"],
+      "run_at": "document_idle"
     }
   ]
 }
