@@ -99,14 +99,46 @@
 .sup-step {
   color: #8b8b94;
   font-size: 12px;
-  padding: 2px 0;
+  padding: 2px 0 2px 8px;
   border-left: 2px solid #34343c;
-  padding-left: 8px;
   margin: 3px 0;
+}
+.sup-step-tool {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: #a1a1aa;
+}
+.sup-step-say {
+  color: #71717a;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.sup-working {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #a1a1aa;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.sup-spin {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #3f3f46;
+  border-top-color: #a1a1aa;
+  border-radius: 50%;
+  animation: sup-spin 0.7s linear infinite;
+  flex: none;
+}
+@keyframes sup-spin {
+  to { transform: rotate(360deg); }
+}
+.sup-answer {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #26262c;
 }
 .sup-msg {
   padding: 8px 0;

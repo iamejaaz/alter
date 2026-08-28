@@ -3,7 +3,7 @@
 // connections live here, resolved per-request by connectionId.
 
 use std::io::Read;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
 
 pub const BRIDGE_PORT: u16 = 8765;
@@ -31,7 +31,19 @@ pub struct BridgeState {
     pub token: Mutex<String>,
     // runId -> pid of the live `claude` process, so a Stop can kill it (and its
     // tool subprocesses) instead of leaving it running after the panel closes.
-    pub running: Mutex<std::collections::HashMap<String, u32>>,
+    pub running: Arc<Mutex<std::collections::HashMap<String, u32>>>,
+    // runId -> live agent progress the panel polls for (steps + final answer),
+    // so the extension gets Claude-Code-style activity without needing the
+    // service worker to consume a stream (which MV3 buffers).
+    pub progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
+}
+
+#[derive(Default, Clone, serde::Serialize)]
+pub struct AgentProgress {
+    steps: Vec<String>,
+    text: String,
+    done: bool,
+    error: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -122,6 +134,177 @@ fn shared_memory() -> String {
         .and_then(|home| std::fs::read_to_string(std::path::Path::new(&home).join(".claude/CLAUDE.md")).ok())
         .map(|s| s.chars().take(8000).collect())
         .unwrap_or_default()
+}
+
+// Fold in the user's ~/.claude/CLAUDE.md so models get the same standing
+// preferences Claude Code already loads on its own.
+fn build_system(include_memory: bool, system: Option<&str>) -> String {
+    let base = system.unwrap_or("");
+    if !include_memory {
+        return base.to_string();
+    }
+    let mem = shared_memory();
+    if mem.is_empty() {
+        base.to_string()
+    } else {
+        format!("User's standing preferences (from ~/.claude/CLAUDE.md — authoritative):\n{mem}\n\n{base}")
+    }
+}
+
+fn push_step(progress: &Mutex<std::collections::HashMap<String, AgentProgress>>, rid: &str, s: String) {
+    if let Some(p) = progress.lock().unwrap().get_mut(rid) {
+        if !p.done {
+            p.steps.push(s);
+        }
+    }
+}
+
+fn finish_progress(
+    progress: &Mutex<std::collections::HashMap<String, AgentProgress>>,
+    rid: &str,
+    text: Option<String>,
+    err: Option<String>,
+) {
+    let mut map = progress.lock().unwrap();
+    if let Some(p) = map.get_mut(rid) {
+        if p.done {
+            return;
+        }
+        if let Some(t) = text {
+            // The final answer is usually the last narration step too — drop the dup.
+            if p.steps.last().map(|s| s.as_str()) == Some(t.as_str()) {
+                p.steps.pop();
+            }
+            p.text = t;
+        }
+        if let Some(e) = err {
+            p.error = Some(e);
+        }
+        p.done = true;
+    }
+}
+
+// Spawn a Claude Code agent run in the background, parsing its stream-json into a
+// per-run progress record the panel polls. Reads run auto (allowlist); the run
+// lives in its own process group so Stop can kill it.
+fn spawn_agent_run(
+    mut conn: BridgeConn,
+    system: String,
+    prompt: String,
+    run_id: String,
+    running: Arc<Mutex<std::collections::HashMap<String, u32>>>,
+    progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
+) {
+    progress.lock().unwrap().insert(run_id.clone(), AgentProgress::default());
+    let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
+    let mut cmd = std::process::Command::new("claude");
+    cmd.arg("-p")
+        .arg(&full)
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--verbose");
+    if !conn.model.is_empty() && conn.model != "claude-code" {
+        cmd.arg("--model").arg(std::mem::take(&mut conn.model));
+    }
+    let dir = agent_workdir();
+    if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
+        cmd.current_dir(&dir);
+    }
+    cmd.arg("--allowedTools").arg(agent_allowed_tools());
+    cmd.arg("--disallowedTools").arg(agent_disallowed_tools());
+    cmd.arg("--permission-mode").arg("default");
+    cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    std::thread::spawn(move || {
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                finish_progress(&progress, &run_id, None, Some(format!("can't run claude: {e}")));
+                return;
+            }
+        };
+        running.lock().unwrap().insert(run_id.clone(), child.id());
+        // Drain stderr on its own thread so a full pipe can't deadlock stdout.
+        let stderr_buf = Arc::new(Mutex::new(String::new()));
+        if let Some(mut err) = child.stderr.take() {
+            let sb = stderr_buf.clone();
+            std::thread::spawn(move || {
+                let mut s = String::new();
+                let _ = err.read_to_string(&mut s);
+                *sb.lock().unwrap() = s;
+            });
+        }
+        let mut final_text = String::new();
+        if let Some(out) = child.stdout.take() {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let v: serde_json::Value = match serde_json::from_str(&line) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                match v["type"].as_str().unwrap_or("") {
+                    "assistant" => {
+                        if let Some(content) = v["message"]["content"].as_array() {
+                            for item in content {
+                                match item["type"].as_str().unwrap_or("") {
+                                    "text" => {
+                                        let txt = item["text"].as_str().unwrap_or("");
+                                        if !txt.trim().is_empty() {
+                                            push_step(&progress, &run_id, txt.trim().to_string());
+                                            final_text = txt.to_string();
+                                        }
+                                    }
+                                    "tool_use" => {
+                                        let label = tool_label(item["name"].as_str().unwrap_or("tool"), &item["input"]);
+                                        push_step(&progress, &run_id, format!("\u{25B8} {label}"));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    "result" => {
+                        let is_err = v["is_error"].as_bool().unwrap_or(false);
+                        let r = v["result"].as_str().unwrap_or("").to_string();
+                        if is_err {
+                            let msg = if r.is_empty() { "the agent hit an error".to_string() } else { r };
+                            finish_progress(&progress, &run_id, None, Some(msg));
+                        } else {
+                            finish_progress(&progress, &run_id, Some(r), None);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let _ = child.wait();
+        running.lock().unwrap().remove(&run_id);
+        // No result event (killed, crashed, limit): close out sensibly.
+        let mut map = progress.lock().unwrap();
+        if let Some(p) = map.get_mut(&run_id) {
+            if !p.done {
+                let err = stderr_buf.lock().unwrap().clone();
+                if !final_text.trim().is_empty() {
+                    if p.steps.last().map(|s| s.as_str()) == Some(final_text.trim()) {
+                        p.steps.pop();
+                    }
+                    p.text = final_text.trim().to_string();
+                } else if !err.trim().is_empty() {
+                    p.error = Some(err.trim().to_string());
+                } else {
+                    p.error = Some("The agent stopped without an answer (it may have been stopped or hit the session limit).".to_string());
+                }
+                p.done = true;
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -626,23 +809,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     }
                 }
             }
-            // Fold in the user's ~/.claude/CLAUDE.md so HTTP models get the same
-            // standing preferences Claude Code already loads on its own.
-            let system = match (req.include_memory, req.system.as_deref()) {
-                (true, s) => {
-                    let mem = shared_memory();
-                    if mem.is_empty() {
-                        s.unwrap_or("").to_string()
-                    } else {
-                        format!(
-                            "User's standing preferences (from ~/.claude/CLAUDE.md — authoritative):\n{mem}\n\n{}",
-                            s.unwrap_or("")
-                        )
-                    }
-                }
-                (false, s) => s.unwrap_or("").to_string(),
-            };
-            let reg = req.run_id.as_deref().map(|id| (&state.running, id));
+            let system = build_system(req.include_memory, req.system.as_deref());
+            let reg = req.run_id.as_deref().map(|id| (&*state.running, id));
             let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &req.prompt, req.agent, reg));
             match result {
                 Ok(content) => (200, serde_json::json!({ "content": strip_think(&content) }).to_string()),
@@ -700,6 +868,46 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     serde_json::json!({ "error": String::from_utf8_lossy(&out.stderr).trim() }).to_string(),
                 ),
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
+            }
+        }
+        (tiny_http::Method::Post, "/agent-start") => {
+            let req: RunReq = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
+            };
+            let conn = state.conns.lock().unwrap().iter().find(|c| c.id == req.connection_id).cloned();
+            let mut conn = match conn {
+                Some(c) => c,
+                None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
+            };
+            if !conn.is_claude_code() {
+                return (400, "{\"error\":\"the support agent needs the Claude Code connection (it uses tools)\"}".into());
+            }
+            if let Some(m) = req.model.as_deref() {
+                if !m.is_empty() {
+                    conn.model = m.to_string();
+                }
+            }
+            let system = build_system(req.include_memory, req.system.as_deref());
+            let run_id = req.run_id.clone().unwrap_or_else(gen_token);
+            state.progress.lock().unwrap().retain(|_, p| !p.done);
+            spawn_agent_run(conn, system, req.prompt, run_id.clone(), state.running.clone(), state.progress.clone());
+            (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
+        }
+        (tiny_http::Method::Post, "/agent-poll") => {
+            #[derive(serde::Deserialize)]
+            struct P {
+                #[serde(rename = "runId")]
+                run_id: String,
+            }
+            let req: P = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(_) => return (400, "{\"error\":\"bad request\"}".into()),
+            };
+            let snap = state.progress.lock().unwrap().get(&req.run_id).cloned();
+            match snap {
+                Some(p) => (200, serde_json::to_string(&p).unwrap_or_else(|_| "{}".into())),
+                None => (200, serde_json::json!({ "steps": [], "text": "", "done": true, "error": "run not found" }).to_string()),
             }
         }
         (tiny_http::Method::Post, "/cancel") => {

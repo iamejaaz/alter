@@ -162,6 +162,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }),
         });
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: r.body.error || hint(r) });
+      } else if (msg.type === "agent-start") {
+        const r = await bridge("/agent-start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            connectionId: msg.connectionId,
+            system: msg.system,
+            prompt: msg.prompt,
+            includeMemory: msg.includeMemory,
+            model: msg.model,
+            runId: msg.runId,
+          }),
+        });
+        sendResponse(r.ok ? { ok: true, runId: r.body.runId } : { ok: false, error: r.body.error || hint(r) });
+      } else if (msg.type === "agent-poll") {
+        const r = await bridge("/agent-poll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runId: msg.runId }),
+        });
+        sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: hint(r) });
       } else if (msg.type === "cancel") {
         const r = await bridge("/cancel", {
           method: "POST",
