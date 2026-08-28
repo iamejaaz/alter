@@ -106,7 +106,7 @@ fn gen_token() -> String {
 // Resolve a connection to a completion. HTTP → OpenAI-compatible call; Claude
 // Code → one-shot `claude -p` (headless), so the extension gets your local
 // subscription with no key.
-async fn run_completion(conn: &BridgeConn, system: Option<&str>, prompt: &str) -> Result<String, String> {
+async fn run_completion(conn: &BridgeConn, system: Option<&str>, prompt: &str, agent: bool) -> Result<String, String> {
     if conn.is_claude_code() {
         let full = match system {
             Some(s) if !s.is_empty() => format!("{s}\n\n{prompt}"),
@@ -116,6 +116,14 @@ async fn run_completion(conn: &BridgeConn, system: Option<&str>, prompt: &str) -
         cmd.arg("-p").arg(&full);
         if !conn.model.is_empty() && conn.model != "claude-code" {
             cmd.arg("--model").arg(&conn.model);
+        }
+        if agent {
+            let dir = agent_workdir();
+            if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
+                cmd.current_dir(&dir);
+            }
+            cmd.arg("--allowedTools").arg(AGENT_ALLOWED_TOOLS);
+            cmd.arg("--permission-mode").arg("default");
         }
         let out = cmd.output().map_err(|e| e.to_string())?;
         if out.status.success() {
@@ -541,7 +549,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 }
                 (false, s) => s.unwrap_or("").to_string(),
             };
-            let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &req.prompt));
+            let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &req.prompt, req.agent));
             match result {
                 Ok(content) => (200, serde_json::json!({ "content": strip_think(&content) }).to_string()),
                 Err(e) => (502, serde_json::json!({ "error": e }).to_string()),

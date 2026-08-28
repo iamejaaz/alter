@@ -82,6 +82,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "run-stream") return;
   port.onMessage.addListener(async (msg) => {
+    // MV3 kills the service worker after ~30s idle — during a long agent run
+    // (10–30s before the first token) that would abort the streaming read. Ping
+    // a chrome API every 20s to keep the worker alive until the stream ends.
+    const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
     try {
       const { token } = await chrome.storage.local.get("token");
       const res = await fetch(BRIDGE + "/run-stream", {
@@ -99,18 +103,22 @@ chrome.runtime.onConnect.addListener((port) => {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        port.postMessage({ delta: dec.decode(value, { stream: true }) });
+        const text = dec.decode(value, { stream: true });
+        if (text) port.postMessage({ delta: text });
       }
       port.postMessage({ done: true });
     } catch (e) {
-      port.postMessage({ error: "Can't reach Alter. Is the app running?" });
+      port.postMessage({ error: "Stream dropped — " + (e && e.message ? e.message : "check the Alter app is running.") });
       port.postMessage({ done: true });
+    } finally {
+      clearInterval(keepAlive);
     }
   });
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
+    const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
     try {
       if (msg.type === "diff") {
         // GitHub's .diff 302-redirects to patch-diff.githubusercontent.com (a
@@ -147,6 +155,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             connectionId: msg.connectionId,
             system: msg.system,
             prompt: msg.prompt,
+            agent: msg.agent,
+            includeMemory: msg.includeMemory,
           }),
         });
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: r.body.error || hint(r) });
@@ -155,6 +165,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
     } catch (e) {
       sendResponse({ ok: false, error: "Can't reach Alter. Is the app running?" });
+    } finally {
+      clearInterval(keepAlive);
     }
   })();
   return true; // keep the channel open for the async reply

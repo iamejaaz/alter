@@ -93,6 +93,27 @@ async function followUp(q) {
   supSession.transcript.push({ q, a });
 }
 
+// Reliable path: MV3 service-worker streaming can stall, so when the live
+// stream produces nothing we fall back to the plain (non-streaming) /run, which
+// returns the whole answer at once. Loses live steps but always completes.
+async function nonStreamFallback(el, params) {
+  el.innerHTML = '<span style="color:#a1a1aa">Working… (live steps unavailable — waiting for the full answer)</span>';
+  const r = await send({
+    type: "run",
+    connectionId: params.connectionId,
+    agent: params.agent,
+    includeMemory: params.includeMemory,
+    system: params.system,
+    prompt: params.prompt,
+  });
+  if (r && r.ok && r.data && r.data.content) {
+    el.innerHTML = mini(r.data.content);
+    return r.data.content;
+  }
+  el.innerHTML = `<span class="sup-err">${escapeHtml((r && r.error) || "No response — check the Alter app is running.")}</span>`;
+  return "";
+}
+
 function streamAgent(el, params) {
   return new Promise((resolve) => {
     const t0 = Date.now();
@@ -102,61 +123,56 @@ function streamAgent(el, params) {
       const body = document.querySelector("#sup-body");
       if (body) body.scrollTop = body.scrollHeight;
     };
-    // Live elapsed counter while we wait for the first token, so it's obviously
-    // alive (agent startup + fr + grep can take 10–30s) rather than stuck.
     const tick = setInterval(() => {
       if (finished || full) return;
       const s = Math.round((Date.now() - t0) / 1000);
-      const hint = s > 40 ? " — agent tasks can take a minute; make sure the Alter app is running" : "";
-      el.innerHTML = `<span style="color:#a1a1aa">Working… ${s}s${hint}</span>`;
+      el.innerHTML = `<span style="color:#a1a1aa">Working… ${s}s</span>`;
     }, 1000);
     let timer;
     const stop = () => {
       finished = true;
       clearInterval(tick);
       clearTimeout(timer);
+      try { port.disconnect(); } catch {}
     };
-    // Idle timeout — re-armed on each token, so a long agent run (many tool
-    // steps) never gets falsely cut off; only a truly stuck one does.
+    const fallback = () => {
+      if (finished) return;
+      stop();
+      nonStreamFallback(el, params).then(resolve);
+    };
+    // First-token watchdog: if the stream delivers nothing in 25s, the worker
+    // likely dropped it — switch to the reliable non-streaming path instead of
+    // waiting out a long timeout.
+    let firstToken = setTimeout(fallback, 25000);
+    // Idle timeout while actively streaming — re-armed on each token.
     const armIdle = (ms) => {
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (finished) return;
-        stop();
-        try { port.disconnect(); } catch {}
-        if (!full) el.innerHTML = `<span class="sup-err">No output for a while — the agent may be stuck. Check the Alter app is running.</span>`;
-        resolve(cleanText(full));
-      }, ms);
+      timer = setTimeout(fallback, ms);
     };
-    armIdle(120000);
 
     el.innerHTML = '<span style="color:#a1a1aa">Working… 0s</span>';
     const port = chrome.runtime.connect({ name: "run-stream" });
     port.postMessage(params);
     port.onMessage.addListener((m) => {
-      if (finished) return; // ignore the trailing done that follows an error
+      if (finished) return;
       if (m.delta) {
+        clearTimeout(firstToken);
         armIdle(90000);
         full += m.delta;
         el.innerHTML = renderStream(full) || '<span style="color:#a1a1aa">Working…</span>';
         scroll();
       } else if (m.error) {
-        stop();
-        try { port.disconnect(); } catch {}
-        el.innerHTML = full
-          ? renderStream(full) + `<div class="sup-err">⚠ ${escapeHtml(m.error)}</div>`
-          : `<span class="sup-err">${escapeHtml(m.error)}</span>`;
-        resolve(cleanText(full));
+        // Stream errored — try the reliable path before giving up.
+        fallback();
       } else if (m.done) {
-        stop();
-        port.disconnect();
+        clearTimeout(firstToken);
         const clean = cleanText(full);
         if (!full) {
-          el.innerHTML =
-            '<span class="sup-err">No response — check the Alter app is running and a Claude Code model is selected for support.</span>';
-        } else if (!clean) {
-          el.innerHTML = renderStream(full); // steps only, no final text
+          fallback(); // empty stream → non-streaming retry
+          return;
         }
+        stop();
+        if (!clean) el.innerHTML = renderStream(full);
         resolve(clean);
       }
     });

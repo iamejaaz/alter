@@ -122,6 +122,26 @@ function displayText(full) {
   return full;
 }
 
+// Reliable path when MV3 service-worker streaming stalls: fetch the whole
+// answer via the non-streaming /run.
+async function nonStreamInto(el, params) {
+  el.innerHTML = '<span style="color:#a1a1aa">Thinking… (waiting for the full answer)</span>';
+  const r = await send({
+    type: "run",
+    connectionId: params.connectionId,
+    includeMemory: params.includeMemory,
+    system: params.system,
+    prompt: params.prompt,
+  });
+  if (r && r.ok && r.data && r.data.content) {
+    const clean = displayText(r.data.content) ?? r.data.content;
+    el.innerHTML = mini(clean);
+    return clean;
+  }
+  el.innerHTML = `<span class="alter-err">${escapeHtml((r && r.error) || "No response — check the Alter app is running.")}</span>`;
+  return "";
+}
+
 function streamInto(el, params) {
   return new Promise((resolve) => {
     const t0 = Date.now();
@@ -131,36 +151,33 @@ function streamInto(el, params) {
     const tick = setInterval(() => {
       if (finished || full) return;
       const s = Math.round((Date.now() - t0) / 1000);
-      const hint = s > 40 ? " — Claude Code can take a minute to start; make sure the Alter app is running" : "";
-      el.innerHTML = `<span style="color:#a1a1aa">Thinking… ${s}s${hint}</span>`;
+      el.innerHTML = `<span style="color:#a1a1aa">Thinking… ${s}s</span>`;
     }, 1000);
     let timer;
     const stop = () => {
       finished = true;
       clearInterval(tick);
       clearTimeout(timer);
+      try { port.disconnect(); } catch {}
     };
-    // Idle timeout — only fires when nothing has streamed for a while, so a
-    // long-but-active review never gets falsely cut off. Re-armed on each delta.
+    const fallback = () => {
+      if (finished) return;
+      stop();
+      nonStreamInto(el, params).then(resolve);
+    };
+    let firstToken = setTimeout(fallback, 25000);
     const armIdle = (ms) => {
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (finished) return;
-        stop();
-        try { port.disconnect(); } catch {}
-        // Keep whatever already streamed; only replace with an error if nothing came.
-        if (!full) el.innerHTML = '<span class="alter-err">No output — check the Alter app is running and a model is selected.</span>';
-        resolve(displayText(full) || "");
-      }, ms);
+      timer = setTimeout(fallback, ms);
     };
-    armIdle(120000); // generous window for Claude Code to produce the first token
 
     el.innerHTML = '<span style="color:#a1a1aa">Thinking… 0s</span>';
     const port = chrome.runtime.connect({ name: "run-stream" });
     port.postMessage(params);
     port.onMessage.addListener((m) => {
-      if (finished) return; // ignore the trailing done that follows an error
+      if (finished) return;
       if (m.delta) {
+        clearTimeout(firstToken);
         armIdle(90000);
         full += m.delta;
         const shown = displayText(full);
@@ -169,19 +186,14 @@ function streamInto(el, params) {
         const body = document.querySelector("#alter-panel-body");
         if (body) body.scrollTop = body.scrollHeight;
       } else if (m.error) {
-        stop();
-        try { port.disconnect(); } catch {}
-        // Keep anything already streamed; append the error rather than wiping it.
-        el.innerHTML = raw
-          ? mini(raw) + `<div class="alter-err">⚠ ${escapeHtml(m.error)}</div>`
-          : `<span class="alter-err">${escapeHtml(m.error)}</span>`;
-        resolve(raw);
+        fallback();
       } else if (m.done) {
+        clearTimeout(firstToken);
+        if (!full.trim()) {
+          fallback();
+          return;
+        }
         stop();
-        port.disconnect();
-        if (!full.trim())
-          el.innerHTML =
-            '<span class="alter-err">No response — check the Alter app is running and a model is selected.</span>';
         resolve(raw);
       }
     });
