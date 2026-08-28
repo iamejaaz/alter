@@ -1,5 +1,8 @@
 const $ = (id) => document.getElementById(id);
-const ACTIONS = ["prReview", "prDesc", "grammar"];
+const ACTIONS = ["prReview", "grammar", "summarize"];
+
+const SUMMARY_SYSTEM =
+  "Summarize the page for a busy reader. Lead with a one-line what-this-is, then 3-6 tight bullets of the key points. Plain text, no preamble.";
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
@@ -51,5 +54,35 @@ $("save").addEventListener("click", async () => {
 });
 
 ACTIONS.forEach((a) => $("m-" + a).addEventListener("change", saveModels));
+
+$("describe-page").addEventListener("click", async () => {
+  const out = $("summary");
+  const connectionId = $("m-summarize").value;
+  if (!connectionId) {
+    out.innerHTML = '<span class="err">Pick a model for page summary first.</span>';
+    return;
+  }
+  out.textContent = "Reading the page…";
+  let text = "";
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => document.body.innerText.slice(0, 20000),
+    });
+    text = res.result || "";
+  } catch {
+    out.innerHTML = '<span class="err">Can\'t read this page (try a normal http/https tab).</span>';
+    return;
+  }
+  if (!text.trim()) {
+    out.innerHTML = '<span class="err">No readable text on this page.</span>';
+    return;
+  }
+  out.textContent = "Summarizing…";
+  const r = await send({ type: "run", connectionId, system: SUMMARY_SYSTEM, prompt: text });
+  out.textContent = r && r.ok ? r.data.content : (r && r.error) || "Failed.";
+  if (!r || !r.ok) out.innerHTML = `<span class="err">${out.textContent}</span>`;
+});
 
 loadConnections();

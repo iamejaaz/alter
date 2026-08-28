@@ -11,14 +11,6 @@ const REVIEW_SYSTEM = [
   "Output: a one-line verdict, then a short bulleted list of the highest-signal issues (most severe first), each with file:line. If it's clean, say so plainly.",
 ].join(" ");
 
-const DESC_SYSTEM = [
-  "Write a short, clean GitHub PR description from the diff.",
-  "Title needs a type prefix: feat: / fix: / refactor: / chore: etc.",
-  "No long paragraphs, no fluff, no preamble. A one-line summary then a tight bullet list of the changes.",
-  "Never add AI/Claude attribution or Co-Authored-By footers.",
-  "Keep exploit/vuln specifics out — no security details in the description.",
-  "Output plain Markdown ready to paste: first line is the title, then a blank line, then the body.",
-].join(" ");
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
@@ -34,13 +26,6 @@ const ACTIONS = {
     system: REVIEW_SYSTEM,
     verb: (parts, diff, note) => `Review this pull request diff (${parts.owner}/${parts.repo}#${parts.num}):\n\n${diff}${note}`,
     working: "Reviewing… (this can take a few seconds)",
-  },
-  describe: {
-    title: "PR description",
-    model: "prDesc",
-    system: DESC_SYSTEM,
-    verb: (parts, diff, note) => `Write the PR description for this diff (${parts.owner}/${parts.repo}#${parts.num}):\n\n${diff}${note}`,
-    working: "Writing the description…",
   },
 };
 
@@ -102,15 +87,11 @@ function ensureButton() {
   if (document.getElementById("alter-actions")) return;
   const wrap = document.createElement("div");
   wrap.id = "alter-actions";
-  const mk = (label, key) => {
-    const b = document.createElement("button");
-    b.className = "alter-action-btn";
-    b.textContent = label;
-    b.addEventListener("click", () => run(key));
-    return b;
-  };
-  wrap.appendChild(mk("Describe", "describe"));
-  wrap.appendChild(mk("Review with Alter", "review"));
+  const b = document.createElement("button");
+  b.className = "alter-action-btn";
+  b.textContent = "Review with Alter";
+  b.addEventListener("click", () => run("review"));
+  wrap.appendChild(b);
   document.body.appendChild(wrap);
 }
 

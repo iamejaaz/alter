@@ -41,6 +41,18 @@
       .ok { color: #4ade80; }
       .err { color: #f87171; }
       hr { border: 0; border-top: 1px solid #26262c; margin: 14px 0; }
+      #summary {
+        margin-top: 10px;
+        max-height: 220px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #d4d4d8;
+      }
+      #summary:empty { display: none; }
+      #summary .err { color: #f87171; }
     </style>
   </head>
   <body>
@@ -58,11 +70,15 @@
     <label>Model for PR review</label>
     <select id="m-prReview"></select>
 
-    <label>Model for PR description</label>
-    <select id="m-prDesc"></select>
-
     <label>Model for grammar</label>
     <select id="m-grammar"></select>
+
+    <hr />
+
+    <label>Model for page summary</label>
+    <select id="m-summarize"></select>
+    <button id="describe-page" style="width:100%;margin-top:8px">Describe this page</button>
+    <div id="summary"></div>
 
     <div class="status" id="status"></div>
   </body>

@@ -157,6 +157,21 @@ document.addEventListener("selectionchange", () => {
   scTimer = setTimeout(() => refresh(), 150);
 });
 document.addEventListener("scroll", removePill, true);
+// The native "select" event fires exactly when text is selected in an
+// input/textarea, and gives the element directly — the most reliable trigger.
+document.addEventListener(
+  "select",
+  (e) => {
+    const el = e.target;
+    if (!isEditableInput(el)) return;
+    const { selectionStart: s, selectionEnd: en, value } = el;
+    if (s != null && en != null && en > s) {
+      target = { kind: "input", el, start: s, end: en, text: value.slice(s, en), rect: el.getBoundingClientRect() };
+      showPill(target);
+    }
+  },
+  true
+);
 
 // ⌘⇧L / Ctrl+⇧L fixes the whole focused field even without a selection.
 document.addEventListener("keydown", (e) => {

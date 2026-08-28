@@ -3,7 +3,7 @@
   "name": "Alter",
   "version": "0.1.0",
   "description": "Use your Alter models on any page — review PRs, fix grammar, and more. No API keys in the browser.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
     "http://127.0.0.1:8765/*",
     "http://localhost:8765/*",
