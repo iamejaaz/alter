@@ -124,9 +124,30 @@ function displayText(full) {
 
 function streamInto(el, params) {
   return new Promise((resolve) => {
-    el.innerHTML = '<span style="color:#a1a1aa">Thinking…</span>';
+    const t0 = Date.now();
     let full = "";
     let raw = "";
+    let finished = false;
+    const tick = setInterval(() => {
+      if (finished || full) return;
+      const s = Math.round((Date.now() - t0) / 1000);
+      const hint = s > 40 ? " — Claude Code can take a minute to start; make sure the Alter app is running" : "";
+      el.innerHTML = `<span style="color:#a1a1aa">Thinking… ${s}s${hint}</span>`;
+    }, 1000);
+    const stop = () => {
+      finished = true;
+      clearInterval(tick);
+      clearTimeout(timer);
+    };
+    const timer = setTimeout(() => {
+      if (finished) return;
+      stop();
+      try { port.disconnect(); } catch {}
+      el.innerHTML = '<span class="alter-err">Timed out after 2 min — check the Alter app is running.</span>';
+      resolve("");
+    }, 120000);
+
+    el.innerHTML = '<span style="color:#a1a1aa">Thinking… 0s</span>';
     const port = chrome.runtime.connect({ name: "run-stream" });
     port.postMessage(params);
     port.onMessage.addListener((m) => {
@@ -138,10 +159,15 @@ function streamInto(el, params) {
         const body = document.querySelector("#alter-panel-body");
         if (body) body.scrollTop = body.scrollHeight;
       } else if (m.error) {
+        stop();
         el.innerHTML = `<span class="alter-err">${escapeHtml(m.error)}</span>`;
+        resolve("");
       } else if (m.done) {
+        stop();
         port.disconnect();
-        if (!full.trim()) el.innerHTML = '<span class="alter-err">(empty response)</span>';
+        if (!full.trim())
+          el.innerHTML =
+            '<span class="alter-err">No response — check the Alter app is running and a model is selected.</span>';
         resolve(raw);
       }
     });

@@ -95,22 +95,56 @@ async function followUp(q) {
 
 function streamAgent(el, params) {
   return new Promise((resolve) => {
-    el.innerHTML = '<span style="color:#a1a1aa">Working…</span>';
+    const t0 = Date.now();
     let full = "";
+    let finished = false;
+    const scroll = () => {
+      const body = document.querySelector("#sup-body");
+      if (body) body.scrollTop = body.scrollHeight;
+    };
+    // Live elapsed counter while we wait for the first token, so it's obviously
+    // alive (agent startup + fr + grep can take 10–30s) rather than stuck.
+    const tick = setInterval(() => {
+      if (finished || full) return;
+      const s = Math.round((Date.now() - t0) / 1000);
+      const hint = s > 40 ? " — agent tasks can take a minute; make sure the Alter app is running" : "";
+      el.innerHTML = `<span style="color:#a1a1aa">Working… ${s}s${hint}</span>`;
+    }, 1000);
+    const stop = () => {
+      finished = true;
+      clearInterval(tick);
+      clearTimeout(timer);
+    };
+    const timer = setTimeout(() => {
+      if (finished) return;
+      stop();
+      try { port.disconnect(); } catch {}
+      el.innerHTML = `<span class="sup-err">Timed out after 2 min — the agent may be stuck. Check the Alter app is running.</span>`;
+      resolve("");
+    }, 120000);
+
+    el.innerHTML = '<span style="color:#a1a1aa">Working… 0s</span>';
     const port = chrome.runtime.connect({ name: "run-stream" });
     port.postMessage(params);
     port.onMessage.addListener((m) => {
       if (m.delta) {
         full += m.delta;
         el.innerHTML = renderStream(full) || '<span style="color:#a1a1aa">Working…</span>';
-        const body = document.querySelector("#sup-body");
-        if (body) body.scrollTop = body.scrollHeight;
+        scroll();
       } else if (m.error) {
+        stop();
         el.innerHTML = `<span class="sup-err">${escapeHtml(m.error)}</span>`;
+        resolve("");
       } else if (m.done) {
+        stop();
         port.disconnect();
         const clean = cleanText(full);
-        if (!clean) el.innerHTML = '<span class="sup-err">(empty response)</span>';
+        if (!full) {
+          el.innerHTML =
+            '<span class="sup-err">No response — check the Alter app is running and a Claude Code model is selected for support.</span>';
+        } else if (!clean) {
+          el.innerHTML = renderStream(full); // steps only, no final text
+        }
         resolve(clean);
       }
     });
