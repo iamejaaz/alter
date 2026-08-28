@@ -52,6 +52,9 @@ struct RunReq {
     // write tools, no arbitrary shell, no permission bypass.
     #[serde(default)]
     agent: bool,
+    // Optional per-request model override (e.g. force Sonnet to conserve limits).
+    #[serde(default)]
+    model: Option<String>,
 }
 
 // The ONLY tools the support agent may use — read/inspect, never mutate.
@@ -294,13 +297,18 @@ fn stream_run(req: tiny_http::Request, app: &AppHandle, body: &str) {
     let conn = app
         .try_state::<BridgeState>()
         .and_then(|s| s.conns.lock().unwrap().iter().find(|c| c.id == parsed.connection_id).cloned());
-    let conn = match conn {
+    let mut conn = match conn {
         Some(c) => c,
         None => {
             let _ = req.respond(json_response(404, "{\"error\":\"unknown connectionId\"}".into()));
             return;
         }
     };
+    if let Some(m) = parsed.model.as_deref() {
+        if !m.is_empty() {
+            conn.model = m.to_string();
+        }
+    }
     let mut system = parsed.system.unwrap_or_default();
     if parsed.include_memory {
         let mem = shared_memory();
@@ -529,10 +537,15 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
             };
             let conn = state.conns.lock().unwrap().iter().find(|c| c.id == req.connection_id).cloned();
-            let conn = match conn {
+            let mut conn = match conn {
                 Some(c) => c,
                 None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
             };
+            if let Some(m) = req.model.as_deref() {
+                if !m.is_empty() {
+                    conn.model = m.to_string();
+                }
+            }
             // Fold in the user's ~/.claude/CLAUDE.md so HTTP models get the same
             // standing preferences Claude Code already loads on its own.
             let system = match (req.include_memory, req.system.as_deref()) {

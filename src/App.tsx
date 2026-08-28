@@ -323,6 +323,11 @@ export default function App() {
   };
   // Turn raw provider errors into plain-English guidance.
   const humanizeError = (raw: string): string => {
+    const limit = raw.match(/(?:session|usage)\s+limit[^\n.]*?(resets?[^\n.]*)/i);
+    if (limit || /hit your (?:session|usage|weekly) limit|limit reached/i.test(raw))
+      return `Claude Code session limit reached${
+        limit && limit[1] ? " — " + limit[1].trim() : " — it resets on a rolling 5-hour window"
+      }. All Claude models share this subscription cap, so switch to an HTTP connection (e.g. laguna) until it resets, or run lighter with the Sonnet model.`;
     if (/thought_signature/i.test(raw))
       return "This Gemini model needs a special tool-call format Alter can't send. Reload the app — Gemini now runs tool-free (still reads images and writes code), or use a non-Gemini connection for file/web tools.";
     if (/image input|support image|no endpoints.*image/i.test(raw))
