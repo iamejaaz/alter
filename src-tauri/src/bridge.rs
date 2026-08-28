@@ -216,10 +216,195 @@ pub fn start(app: AppHandle) {
                 b
             };
 
+            if method == tiny_http::Method::Post && path == "/run-stream" {
+                stream_run(req, &app, &body);
+                continue;
+            }
+
             let response = handle(&app, &method, &path, &body);
             let _ = req.respond(json_response(response.0, response.1));
         }
     });
+}
+
+// A Read that pulls bytes from a channel — lets tiny_http write the response
+// incrementally as the model produces tokens (chunked transfer, i.e. streaming).
+struct ChannelReader {
+    rx: std::sync::mpsc::Receiver<Vec<u8>>,
+    buf: Vec<u8>,
+    pos: usize,
+}
+impl std::io::Read for ChannelReader {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        if self.pos >= self.buf.len() {
+            match self.rx.recv() {
+                Ok(b) if !b.is_empty() => {
+                    self.buf = b;
+                    self.pos = 0;
+                }
+                _ => return Ok(0), // sender closed → EOF
+            }
+        }
+        let n = std::cmp::min(out.len(), self.buf.len() - self.pos);
+        out[..n].copy_from_slice(&self.buf[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+fn stream_run(req: tiny_http::Request, app: &AppHandle, body: &str) {
+    let parsed: RunReq = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(_) => {
+            let _ = req.respond(json_response(400, "{\"error\":\"bad request\"}".into()));
+            return;
+        }
+    };
+    let conn = app
+        .try_state::<BridgeState>()
+        .and_then(|s| s.conns.lock().unwrap().iter().find(|c| c.id == parsed.connection_id).cloned());
+    let conn = match conn {
+        Some(c) => c,
+        None => {
+            let _ = req.respond(json_response(404, "{\"error\":\"unknown connectionId\"}".into()));
+            return;
+        }
+    };
+    let mut system = parsed.system.unwrap_or_default();
+    if parsed.include_memory {
+        let mem = shared_memory();
+        if !mem.is_empty() {
+            system = format!(
+                "User's standing preferences (from ~/.claude/CLAUDE.md — authoritative):\n{mem}\n\n{system}"
+            );
+        }
+    }
+    let prompt = parsed.prompt;
+
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        if conn.is_claude_code() {
+            produce_claude(&conn, &system, &prompt, &tx);
+        } else {
+            tauri::async_runtime::block_on(produce_http(&conn, &system, &prompt, &tx));
+        }
+        // tx drops here → ChannelReader hits EOF and tiny_http closes the response.
+    });
+
+    let reader = ChannelReader { rx, buf: Vec::new(), pos: 0 };
+    let mut headers = Vec::new();
+    for (k, v) in [
+        ("Content-Type", "text/plain; charset=utf-8"),
+        ("Access-Control-Allow-Origin", "*"),
+        ("Cache-Control", "no-cache"),
+        ("X-Accel-Buffering", "no"),
+    ] {
+        if let Ok(h) = tiny_http::Header::from_bytes(k.as_bytes(), v.as_bytes()) {
+            headers.push(h);
+        }
+    }
+    let resp = tiny_http::Response::new(tiny_http::StatusCode(200), headers, reader, None, None);
+    let _ = req.respond(resp);
+}
+
+fn produce_claude(conn: &BridgeConn, system: &str, prompt: &str, tx: &std::sync::mpsc::Sender<Vec<u8>>) {
+    let full = if system.is_empty() { prompt.to_string() } else { format!("{system}\n\n{prompt}") };
+    let mut cmd = std::process::Command::new("claude");
+    cmd.arg("-p")
+        .arg(&full)
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--include-partial-messages")
+        .arg("--verbose");
+    if !conn.model.is_empty() && conn.model != "claude-code" {
+        cmd.arg("--model").arg(&conn.model);
+    }
+    cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = tx.send(format!("[Alter: can't run claude — {e}]").into_bytes());
+            return;
+        }
+    };
+    if let Some(out) = child.stdout.take() {
+        use std::io::BufRead;
+        let reader = std::io::BufReader::new(out);
+        let mut streamed = false;
+        for line in reader.lines().map_while(Result::ok) {
+            let v: serde_json::Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            if v["type"] == "stream_event" {
+                let ev = &v["event"];
+                if ev["type"] == "content_block_delta" && ev["delta"]["type"] == "text_delta" {
+                    if let Some(t) = ev["delta"]["text"].as_str() {
+                        streamed = true;
+                        if tx.send(t.as_bytes().to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                }
+            } else if v["type"] == "result" && !streamed {
+                if let Some(t) = v["result"].as_str() {
+                    let _ = tx.send(t.as_bytes().to_vec());
+                }
+            }
+        }
+    }
+    let _ = child.wait();
+}
+
+async fn produce_http(conn: &BridgeConn, system: &str, prompt: &str, tx: &std::sync::mpsc::Sender<Vec<u8>>) {
+    use futures_util::StreamExt;
+    let client = match reqwest::Client::builder().timeout(std::time::Duration::from_secs(300)).build() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = tx.send(format!("[Alter: {e}]").into_bytes());
+            return;
+        }
+    };
+    let base = conn.base_url.trim_end_matches('/');
+    let mut messages = Vec::new();
+    if !system.is_empty() {
+        messages.push(serde_json::json!({ "role": "system", "content": system }));
+    }
+    messages.push(serde_json::json!({ "role": "user", "content": prompt }));
+    let body = serde_json::json!({ "model": conn.model, "messages": messages, "max_tokens": 4000, "stream": true });
+    let resp = match client.post(format!("{base}/chat/completions")).bearer_auth(&conn.api_key).json(&body).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = tx.send(format!("[Alter: {e}]").into_bytes());
+            return;
+        }
+    };
+    let mut stream = resp.bytes_stream();
+    let mut buf = String::new();
+    while let Some(chunk) = stream.next().await {
+        let bytes = match chunk {
+            Ok(b) => b,
+            Err(_) => break,
+        };
+        buf.push_str(&String::from_utf8_lossy(&bytes));
+        while let Some(idx) = buf.find('\n') {
+            let line = buf[..idx].trim().to_string();
+            buf.drain(..=idx);
+            if let Some(data) = line.strip_prefix("data:") {
+                let data = data.trim();
+                if data == "[DONE]" {
+                    return;
+                }
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
+                    if let Some(t) = v["choices"][0]["delta"]["content"].as_str() {
+                        if !t.is_empty() && tx.send(t.as_bytes().to_vec()).is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn cors_empty(status: u16) -> tiny_http::Response<std::io::Empty> {

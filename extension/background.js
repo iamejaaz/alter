@@ -71,6 +71,38 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   chrome.scripting.executeScript({ target: { tabId: tab.id }, func: replaceSelectionInPage, args: [r.body.content] });
 });
 
+// Streaming variant: a long-lived port streams model tokens to the content
+// script as they arrive, so the panel fills in live instead of hanging.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "run-stream") return;
+  port.onMessage.addListener(async (msg) => {
+    try {
+      const { token } = await chrome.storage.local.get("token");
+      const res = await fetch(BRIDGE + "/run-stream", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + (token || ""), "Content-Type": "application/json" },
+        body: JSON.stringify(msg),
+      });
+      if (!res.ok || !res.body) {
+        port.postMessage({ error: res.status === 401 ? "Wrong or missing token — set it in the popup." : "Bridge error " + res.status });
+        port.postMessage({ done: true });
+        return;
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        port.postMessage({ delta: dec.decode(value, { stream: true }) });
+      }
+      port.postMessage({ done: true });
+    } catch (e) {
+      port.postMessage({ error: "Can't reach Alter. Is the app running?" });
+      port.postMessage({ done: true });
+    }
+  });
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {

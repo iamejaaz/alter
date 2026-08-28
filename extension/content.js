@@ -67,19 +67,45 @@ async function run(actionKey) {
     note = "\n\n[diff truncated to first 60k chars]";
   }
 
-  panel(action.title, action.working);
-  const r = await send({
-    type: "run",
+  streamRun(action.title, {
     connectionId,
     includeMemory: true,
     system: action.system,
     prompt: action.verb(parts, diff, note),
   });
-  if (!r || !r.ok) {
-    panel(action.title, r?.error || "Failed.", true);
-    return;
-  }
-  panel(action.title, r.data.content || "(empty response)");
+}
+
+// Hide the reasoning-model <think> block while it streams; show the answer that
+// follows the closing tag.
+function displayText(full) {
+  if (full.includes("</think>")) return full.slice(full.lastIndexOf("</think>") + 8).trim();
+  if (full.includes("<think>")) return null; // still thinking
+  return full;
+}
+
+function streamRun(title, params) {
+  panel(title, "Thinking…");
+  const bodyEl = document.querySelector("#alter-panel-body");
+  let full = "";
+  let raw = "";
+  const port = chrome.runtime.connect({ name: "run-stream" });
+  port.postMessage(params);
+  port.onMessage.addListener((m) => {
+    if (m.delta) {
+      full += m.delta;
+      const shown = displayText(full);
+      raw = shown == null ? "" : shown;
+      bodyEl.innerHTML = shown == null ? '<span style="color:#a1a1aa">Thinking…</span>' : mini(shown) || "…";
+      bodyEl.scrollTop = bodyEl.scrollHeight;
+    } else if (m.error) {
+      bodyEl.innerHTML = `<span class="alter-err">${escapeHtml(m.error)}</span>`;
+    } else if (m.done) {
+      port.disconnect();
+      const copy = document.querySelector("#alter-copy");
+      if (copy && raw) copy.onclick = () => { navigator.clipboard.writeText(raw); copy.textContent = "Copied"; setTimeout(() => (copy.textContent = "Copy"), 1500); };
+      if (!full.trim()) bodyEl.innerHTML = '<span class="alter-err">(empty response)</span>';
+    }
+  });
 }
 
 function ensureButton() {
