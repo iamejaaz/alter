@@ -13,6 +13,12 @@
       "js": ["content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["grammar.js"],
+      "css": ["grammar.css"],
+      "run_at": "document_idle"
     }
   ]
 }
