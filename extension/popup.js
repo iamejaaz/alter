@@ -13,9 +13,11 @@ function setStatus(text, cls) {
 }
 
 async function loadConnections() {
-  const stored = await chrome.storage.local.get(["token", "models"]);
+  const stored = await chrome.storage.local.get(["token", "models", "claudeModel"]);
   $("token").value = stored.token || "";
   const models = stored.models || {};
+  // Default the Claude model to Sonnet — cheaper against the session limit.
+  $("claude-model").value = stored.claudeModel != null ? stored.claudeModel : "sonnet";
 
   const r = await send({ type: "connections" });
   if (!r || !r.ok) {
@@ -47,7 +49,7 @@ async function loadConnections() {
 async function saveModels() {
   const models = {};
   ACTIONS.forEach((a) => (models[a] = $("m-" + a).value));
-  await chrome.storage.local.set({ models });
+  await chrome.storage.local.set({ models, claudeModel: $("claude-model").value });
 }
 
 $("save").addEventListener("click", async () => {
@@ -57,6 +59,7 @@ $("save").addEventListener("click", async () => {
 });
 
 ACTIONS.forEach((a) => $("m-" + a).addEventListener("change", saveModels));
+$("claude-model").addEventListener("change", saveModels);
 
 $("describe-page").addEventListener("click", async () => {
   const out = $("summary");

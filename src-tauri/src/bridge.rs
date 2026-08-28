@@ -309,9 +309,11 @@ fn stream_run(req: tiny_http::Request, app: &AppHandle, body: &str) {
             return;
         }
     };
-    if let Some(m) = parsed.model.as_deref() {
-        if !m.is_empty() {
-            conn.model = m.to_string();
+    if conn.is_claude_code() {
+        if let Some(m) = parsed.model.as_deref() {
+            if !m.is_empty() {
+                conn.model = m.to_string();
+            }
         }
     }
     let mut system = parsed.system.unwrap_or_default();
@@ -546,9 +548,11 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Some(c) => c,
                 None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
             };
-            if let Some(m) = req.model.as_deref() {
-                if !m.is_empty() {
-                    conn.model = m.to_string();
+            if conn.is_claude_code() {
+                if let Some(m) = req.model.as_deref() {
+                    if !m.is_empty() {
+                        conn.model = m.to_string();
+                    }
                 }
             }
             // Fold in the user's ~/.claude/CLAUDE.md so HTTP models get the same
