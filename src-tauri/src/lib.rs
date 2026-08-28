@@ -893,6 +893,7 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
@@ -950,6 +951,23 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            // Global hotkey (⌘⇧Space) toggles Alter from anywhere.
+            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+            let toggle = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space);
+            app.global_shortcut().on_shortcut(toggle, |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let up = w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false);
+                        if up {
+                            let _ = w.hide();
+                        } else {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                }
+            })?;
             Ok(())
         })
         .on_window_event(|window, event| {
