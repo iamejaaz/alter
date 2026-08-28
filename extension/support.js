@@ -110,24 +110,32 @@ function streamAgent(el, params) {
       const hint = s > 40 ? " — agent tasks can take a minute; make sure the Alter app is running" : "";
       el.innerHTML = `<span style="color:#a1a1aa">Working… ${s}s${hint}</span>`;
     }, 1000);
+    let timer;
     const stop = () => {
       finished = true;
       clearInterval(tick);
       clearTimeout(timer);
     };
-    const timer = setTimeout(() => {
-      if (finished) return;
-      stop();
-      try { port.disconnect(); } catch {}
-      el.innerHTML = `<span class="sup-err">Timed out after 2 min — the agent may be stuck. Check the Alter app is running.</span>`;
-      resolve("");
-    }, 120000);
+    // Idle timeout — re-armed on each token, so a long agent run (many tool
+    // steps) never gets falsely cut off; only a truly stuck one does.
+    const armIdle = (ms) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (finished) return;
+        stop();
+        try { port.disconnect(); } catch {}
+        if (!full) el.innerHTML = `<span class="sup-err">No output for a while — the agent may be stuck. Check the Alter app is running.</span>`;
+        resolve(cleanText(full));
+      }, ms);
+    };
+    armIdle(120000);
 
     el.innerHTML = '<span style="color:#a1a1aa">Working… 0s</span>';
     const port = chrome.runtime.connect({ name: "run-stream" });
     port.postMessage(params);
     port.onMessage.addListener((m) => {
       if (m.delta) {
+        armIdle(90000);
         full += m.delta;
         el.innerHTML = renderStream(full) || '<span style="color:#a1a1aa">Working…</span>';
         scroll();

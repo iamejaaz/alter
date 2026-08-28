@@ -364,7 +364,7 @@ fn produce_claude(conn: &BridgeConn, system: &str, prompt: &str, agent: bool, tx
         // arbitrary shell, no permission bypass — a browser-triggered call
         // cannot mutate anything or escape the allowed commands.
         let dir = agent_workdir();
-        if !dir.is_empty() {
+        if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
             cmd.current_dir(&dir);
         }
         cmd.arg("--allowedTools").arg(AGENT_ALLOWED_TOOLS);

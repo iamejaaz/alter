@@ -134,24 +134,33 @@ function streamInto(el, params) {
       const hint = s > 40 ? " — Claude Code can take a minute to start; make sure the Alter app is running" : "";
       el.innerHTML = `<span style="color:#a1a1aa">Thinking… ${s}s${hint}</span>`;
     }, 1000);
+    let timer;
     const stop = () => {
       finished = true;
       clearInterval(tick);
       clearTimeout(timer);
     };
-    const timer = setTimeout(() => {
-      if (finished) return;
-      stop();
-      try { port.disconnect(); } catch {}
-      el.innerHTML = '<span class="alter-err">Timed out after 2 min — check the Alter app is running.</span>';
-      resolve("");
-    }, 120000);
+    // Idle timeout — only fires when nothing has streamed for a while, so a
+    // long-but-active review never gets falsely cut off. Re-armed on each delta.
+    const armIdle = (ms) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (finished) return;
+        stop();
+        try { port.disconnect(); } catch {}
+        // Keep whatever already streamed; only replace with an error if nothing came.
+        if (!full) el.innerHTML = '<span class="alter-err">No output — check the Alter app is running and a model is selected.</span>';
+        resolve(displayText(full) || "");
+      }, ms);
+    };
+    armIdle(120000); // generous window for Claude Code to produce the first token
 
     el.innerHTML = '<span style="color:#a1a1aa">Thinking… 0s</span>';
     const port = chrome.runtime.connect({ name: "run-stream" });
     port.postMessage(params);
     port.onMessage.addListener((m) => {
       if (m.delta) {
+        armIdle(90000);
         full += m.delta;
         const shown = displayText(full);
         raw = shown == null ? "" : shown;
