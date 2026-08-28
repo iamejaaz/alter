@@ -10,6 +10,7 @@ interface Props {
   onNew: () => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onTogglePin: (id: string) => void;
   onOpenSettings: () => void;
   onOpenRoutines: () => void;
   onOpenSkills: () => void;
@@ -22,6 +23,7 @@ export default function Sidebar({
   onNew,
   onDelete,
   onRename,
+  onTogglePin,
   onOpenSettings,
   onOpenRoutines,
   onOpenSkills,
@@ -41,13 +43,86 @@ export default function Sidebar({
     setEditingId(null);
   };
   const q = query.trim().toLowerCase();
-  const filtered = q
+  const matched = q
     ? conversations.filter(
         (c) =>
           c.title.toLowerCase().includes(q) ||
           c.messages.some((m) => m.content?.toLowerCase().includes(q))
       )
     : conversations;
+  const filtered = [...matched].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
+  const pinned = filtered.filter((c) => c.pinned);
+  const rest = filtered.filter((c) => !c.pinned);
+  const sections = q
+    ? [{ label: `Results (${filtered.length})`, items: filtered }]
+    : [
+        ...(pinned.length ? [{ label: "Pinned", items: pinned }] : []),
+        ...(rest.length ? [{ label: "Recent", items: rest }] : []),
+      ];
+
+  const renderChat = (c: Conversation) => (
+    <div
+      key={c.id}
+      className={`group flex items-center rounded-lg px-2.5 py-2 text-sm cursor-pointer transition-colors ${
+        c.id === activeId
+          ? "bg-[var(--panel-2)] text-[var(--txt)]"
+          : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
+      }`}
+      onClick={() => editingId !== c.id && onSelect(c.id)}
+      onDoubleClick={() => startRename(c)}
+    >
+      {editingId === c.id ? (
+        <input
+          autoFocus
+          value={draftTitle}
+          onChange={(e) => setDraftTitle(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitRename();
+            if (e.key === "Escape") setEditingId(null);
+          }}
+          className="flex-1 min-w-0 bg-transparent border-b border-[var(--bd)] focus:border-zinc-500 text-[var(--txt)] focus:outline-none"
+        />
+      ) : (
+        <span className="flex-1 truncate">{c.title}</span>
+      )}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onTogglePin(c.id);
+        }}
+        className={`ml-2 transition-opacity ${
+          c.pinned
+            ? "text-[var(--txt-dim)] hover:text-[var(--txt)]"
+            : "opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)]"
+        }`}
+        title={c.pinned ? "Unpin" : "Pin to top"}
+      >
+        {c.pinned ? "★" : "☆"}
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          startRename(c);
+        }}
+        className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-1.5 transition-opacity"
+        title="Rename"
+      >
+        ✎
+      </button>
+      <button
+        onClick={async (e) => {
+          e.stopPropagation();
+          if (await confirmDialog(`Delete "${c.title}"? This can't be undone.`)) onDelete(c.id);
+        }}
+        className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-1.5 transition-opacity"
+        title="Delete"
+      >
+        ×
+      </button>
+    </div>
+  );
 
   return (
     <aside className="w-64 shrink-0 flex flex-col border-r border-[var(--bd-soft)] bg-[var(--sidebar)]">
@@ -77,68 +152,20 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2">
-        {conversations.length > 0 && (
-          <p className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-[var(--txt-faint)]">
-            {q ? `Results (${filtered.length})` : "Recent"}
-          </p>
+        {sections.map((s) => (
+          <div key={s.label}>
+            <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-[var(--txt-faint)]">
+              {s.label}
+            </p>
+            <div className="space-y-0.5">{s.items.map(renderChat)}</div>
+          </div>
+        ))}
+        {conversations.length === 0 && (
+          <p className="px-2.5 py-2 text-xs text-[var(--txt-faint)]">No conversations yet.</p>
         )}
-        <div className="space-y-0.5">
-          {filtered.map((c) => (
-            <div
-              key={c.id}
-              className={`group flex items-center rounded-lg px-2.5 py-2 text-sm cursor-pointer transition-colors ${
-                c.id === activeId
-                  ? "bg-[var(--panel-2)] text-[var(--txt)]"
-                  : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
-              }`}
-              onClick={() => editingId !== c.id && onSelect(c.id)}
-              onDoubleClick={() => startRename(c)}
-            >
-              {editingId === c.id ? (
-                <input
-                  autoFocus
-                  value={draftTitle}
-                  onChange={(e) => setDraftTitle(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  onBlur={commitRename}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitRename();
-                    if (e.key === "Escape") setEditingId(null);
-                  }}
-                  className="flex-1 min-w-0 bg-transparent border-b border-[var(--bd)] focus:border-zinc-500 text-[var(--txt)] focus:outline-none"
-                />
-              ) : (
-                <span className="flex-1 truncate">{c.title}</span>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  startRename(c);
-                }}
-                className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-2 transition-opacity"
-                title="Rename"
-              >
-                ✎
-              </button>
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (await confirmDialog(`Delete "${c.title}"? This can't be undone.`)) onDelete(c.id);
-                }}
-                className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-1.5 transition-opacity"
-                title="Delete"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          {conversations.length === 0 && (
-            <p className="px-2.5 py-2 text-xs text-[var(--txt-faint)]">No conversations yet.</p>
-          )}
-          {conversations.length > 0 && filtered.length === 0 && (
-            <p className="px-2.5 py-2 text-xs text-[var(--txt-faint)]">No matches.</p>
-          )}
-        </div>
+        {conversations.length > 0 && filtered.length === 0 && (
+          <p className="px-2.5 py-2 text-xs text-[var(--txt-faint)]">No matches.</p>
+        )}
       </nav>
 
       <div className="flex gap-1 p-2 border-t border-[var(--bd-soft)]">

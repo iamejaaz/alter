@@ -29,6 +29,7 @@ export interface Conversation {
   connectionId?: string; // which connection this chat uses (per-chat, not global)
   model?: string; // resolved model for this chat (e.g. Claude Code sub-model)
   effort?: Effort;
+  pinned?: boolean;
 }
 
 // Sentinel base URL that routes a connection to the local `claude` CLI instead of HTTP.

@@ -939,6 +939,7 @@ export default function App() {
         onNew={() => setActiveId(null)}
         onDelete={deleteConversation}
         onRename={(id, title) => updateConversation(id, (c) => ({ ...c, title }))}
+        onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}
         onOpenSettings={() => setShowSettings(true)}
         onOpenRoutines={() => setShowRoutines(true)}
         onOpenSkills={() => setShowSkills(true)}
