@@ -83,8 +83,17 @@ function showPill(t) {
   const left = Math.min(window.innerWidth - 120, Math.max(8, t.rect.left));
   pill.style.top = top + "px";
   pill.style.left = left + "px";
-  pill.addEventListener("mousedown", (e) => e.preventDefault()); // keep the selection
-  pill.addEventListener("click", () => fix(t));
+  // preventDefault keeps the selection/focus; stopPropagation stops editors
+  // (e.g. Frappe Helpdesk's reply box) from treating the pill click as a
+  // click-away and closing themselves before the fix applies.
+  pill.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  pill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    fix(t);
+  });
   document.body.appendChild(pill);
 }
 
@@ -108,36 +117,48 @@ async function fix(t) {
     setTimeout(removePill, 1500);
     return;
   }
-  replace(t, r.data.content);
-  removePill();
+  const changed = replace(t, r.data.content);
+  // Confirm visibly so it's obvious the fix landed (the editor may have shifted).
+  p.textContent = changed ? "✓ Fixed" : "✓ Copied";
+  p.disabled = true;
+  setTimeout(removePill, 1000);
 }
 
+// Returns true if the text was replaced in place; false if it fell back to the
+// clipboard (so the caller can say "✓ Copied" — paste to use it).
 function replace(t, corrected) {
-  if (t.kind === "input") {
-    t.el.focus();
-    try {
-      t.el.setSelectionRange(t.start, t.end);
-    } catch {}
-    if (typeof t.el.setRangeText === "function") {
-      t.el.setRangeText(corrected, t.start, t.end, "end");
-    } else {
-      t.el.value = t.el.value.slice(0, t.start) + corrected + t.el.value.slice(t.end);
+  try {
+    if (t.kind === "input") {
+      t.el.focus();
+      try {
+        t.el.setSelectionRange(t.start, t.end);
+      } catch {}
+      if (typeof t.el.setRangeText === "function") {
+        t.el.setRangeText(corrected, t.start, t.end, "end");
+      } else {
+        t.el.value = t.el.value.slice(0, t.start) + corrected + t.el.value.slice(t.end);
+      }
+      t.el.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;
     }
-    t.el.dispatchEvent(new Event("input", { bubbles: true }));
-  } else {
     t.el.focus();
     // execCommand keeps the site's own undo stack and framework bindings happy.
-    const ok = document.execCommand && document.execCommand("insertText", false, corrected);
+    let ok = document.execCommand && document.execCommand("insertText", false, corrected);
     if (!ok) {
       const sel = window.getSelection();
       if (sel && sel.rangeCount) {
         const range = sel.getRangeAt(0);
         range.deleteContents();
         range.insertNode(document.createTextNode(corrected));
+        ok = true;
       }
     }
     t.el.dispatchEvent(new InputEvent("input", { bubbles: true }));
-  }
+    if (ok) return true;
+  } catch {}
+  // Couldn't write it back (editor closed/moved) — put it on the clipboard.
+  navigator.clipboard.writeText(corrected).catch(() => {});
+  return false;
 }
 
 // Poll the focused editable for a selection. This does NOT depend on any event
