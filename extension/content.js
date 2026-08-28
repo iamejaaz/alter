@@ -159,6 +159,7 @@ function streamInto(el, params) {
     const port = chrome.runtime.connect({ name: "run-stream" });
     port.postMessage(params);
     port.onMessage.addListener((m) => {
+      if (finished) return; // ignore the trailing done that follows an error
       if (m.delta) {
         armIdle(90000);
         full += m.delta;
@@ -169,8 +170,12 @@ function streamInto(el, params) {
         if (body) body.scrollTop = body.scrollHeight;
       } else if (m.error) {
         stop();
-        el.innerHTML = `<span class="alter-err">${escapeHtml(m.error)}</span>`;
-        resolve("");
+        try { port.disconnect(); } catch {}
+        // Keep anything already streamed; append the error rather than wiping it.
+        el.innerHTML = raw
+          ? mini(raw) + `<div class="alter-err">⚠ ${escapeHtml(m.error)}</div>`
+          : `<span class="alter-err">${escapeHtml(m.error)}</span>`;
+        resolve(raw);
       } else if (m.done) {
         stop();
         port.disconnect();

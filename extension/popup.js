@@ -84,8 +84,13 @@ $("describe-page").addEventListener("click", async () => {
   }
   out.textContent = "Summarizing…";
   const r = await send({ type: "run", connectionId, system: SUMMARY_SYSTEM, prompt: text });
-  out.textContent = r && r.ok ? r.data.content : (r && r.error) || "Failed.";
-  if (!r || !r.ok) out.innerHTML = `<span class="err">${out.textContent}</span>`;
+  if (r && r.ok && r.data && r.data.content) {
+    out.style.color = "";
+    out.textContent = r.data.content;
+  } else {
+    out.style.color = "#f87171";
+    out.textContent = (r && r.error) || "No response — is the Alter app running?";
+  }
 });
 
 loadConnections();

@@ -134,6 +134,7 @@ function streamAgent(el, params) {
     const port = chrome.runtime.connect({ name: "run-stream" });
     port.postMessage(params);
     port.onMessage.addListener((m) => {
+      if (finished) return; // ignore the trailing done that follows an error
       if (m.delta) {
         armIdle(90000);
         full += m.delta;
@@ -141,8 +142,11 @@ function streamAgent(el, params) {
         scroll();
       } else if (m.error) {
         stop();
-        el.innerHTML = `<span class="sup-err">${escapeHtml(m.error)}</span>`;
-        resolve("");
+        try { port.disconnect(); } catch {}
+        el.innerHTML = full
+          ? renderStream(full) + `<div class="sup-err">⚠ ${escapeHtml(m.error)}</div>`
+          : `<span class="sup-err">${escapeHtml(m.error)}</span>`;
+        resolve(cleanText(full));
       } else if (m.done) {
         stop();
         port.disconnect();

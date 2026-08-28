@@ -89,18 +89,22 @@ function showPill(t) {
 }
 
 async function fix(t) {
+  // Hold a local ref — a scroll during the await calls removePill() and nulls
+  // the global `pill`, which would make the post-await mutations throw.
+  const p = pill;
+  if (!p) return;
   const { models } = await chrome.storage.local.get("models");
   const connectionId = models && models.grammar;
   if (!connectionId) {
-    pill.textContent = "Pick a grammar model in Alter";
+    p.textContent = "Pick a grammar model in Alter";
     return;
   }
-  pill.textContent = "Fixing…";
-  pill.disabled = true;
+  p.textContent = "Fixing…";
+  p.disabled = true;
   const r = await send({ type: "run", connectionId, system: GRAMMAR_SYSTEM, prompt: t.text });
   if (!r || !r.ok || !r.data || !r.data.content) {
-    pill.textContent = r && r.error ? "Error" : "No change";
-    pill.disabled = false;
+    p.textContent = r && r.error ? "Error" : "No change";
+    p.disabled = false;
     setTimeout(removePill, 1500);
     return;
   }

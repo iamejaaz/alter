@@ -40,11 +40,17 @@ function replaceSelectionInPage(corrected) {
     return a;
   }
   const el = deepActive();
-  if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT") && el.selectionStart != null && el.selectionEnd > el.selectionStart) {
-    el.setRangeText(corrected, el.selectionStart, el.selectionEnd, "end");
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    return true;
+  if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) {
+    // Only replace a real range — never insertText into an input with a
+    // collapsed selection, which would append the fix alongside the original.
+    if (el.selectionStart != null && el.selectionEnd > el.selectionStart) {
+      el.setRangeText(corrected, el.selectionStart, el.selectionEnd, "end");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;
+    }
+    return false;
   }
+  // contenteditable / rich editors: insertText replaces the live selection.
   const ok = document.execCommand && document.execCommand("insertText", false, corrected);
   return !!ok;
 }
@@ -144,6 +150,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }),
         });
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: r.body.error || hint(r) });
+      } else {
+        sendResponse({ ok: false, error: "Unknown request type: " + msg.type });
       }
     } catch (e) {
       sendResponse({ ok: false, error: "Can't reach Alter. Is the app running?" });
