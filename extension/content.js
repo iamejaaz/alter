@@ -124,9 +124,14 @@ function displayText(full) {
   return full;
 }
 
+let activeRun = null; // { runId, stop } while a review/follow-up is in flight
+
 // Non-streaming: MV3 service workers buffer a fetch stream until it completes,
 // so incremental streaming can't work here — run it and show the full answer.
+// Stop kills the run on the bridge so it doesn't keep going after you close it.
 function streamInto(el, params) {
+  const runId =
+    (self.crypto && crypto.randomUUID && crypto.randomUUID()) || "r" + Date.now() + Math.random();
   return new Promise((resolve) => {
     const t0 = Date.now();
     let done = false;
@@ -139,6 +144,8 @@ function streamInto(el, params) {
       done = true;
       clearInterval(tick);
       clearTimeout(to);
+      activeRun = null;
+      showStop(false);
       el.innerHTML = html;
       resolve(val);
     };
@@ -146,6 +153,14 @@ function streamInto(el, params) {
       () => finish('<span class="alter-err">Timed out after 3 min — try again or a smaller diff.</span>', ""),
       180000
     );
+    activeRun = {
+      runId,
+      stop: () => {
+        send({ type: "cancel", runId });
+        finish('<div class="alter-msg">Stopped.</div>', "");
+      },
+    };
+    showStop(true);
     el.innerHTML = '<span style="color:#a1a1aa">Thinking… 0s</span>';
     send({
       type: "run",
@@ -154,6 +169,7 @@ function streamInto(el, params) {
       model: params.model,
       system: params.system,
       prompt: params.prompt,
+      runId,
     }).then((r) => {
       if (r && r.ok && r.data && r.data.content) {
         const clean = displayText(r.data.content) ?? r.data.content;
@@ -163,6 +179,11 @@ function streamInto(el, params) {
       }
     });
   });
+}
+
+function showStop(on) {
+  const b = document.getElementById("alter-stop");
+  if (b) b.style.display = on ? "" : "none";
 }
 
 function ensureButton() {
@@ -214,12 +235,19 @@ function openPanel() {
   el.innerHTML = `
     <div id="alter-panel-head">
       <span id="alter-panel-title">Alter — PR review</span>
-      <button id="alter-close" title="Close">×</button>
+      <div>
+        <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
+        <button id="alter-close" title="Close">×</button>
+      </div>
     </div>
     <div id="alter-panel-body"></div>
     <div id="alter-panel-foot"></div>`;
   document.body.appendChild(el);
+  el.querySelector("#alter-stop").addEventListener("click", () => {
+    if (activeRun) activeRun.stop();
+  });
   el.querySelector("#alter-close").addEventListener("click", () => {
+    if (activeRun) activeRun.stop();
     el.remove();
     session = null;
   });

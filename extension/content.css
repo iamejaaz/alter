@@ -61,6 +61,11 @@
 #alter-panel-head button:hover {
   color: #e4e4e7;
 }
+#alter-stop {
+  border: 1px solid #3f3f46 !important;
+  border-radius: 6px;
+  color: #e4e4e7 !important;
+}
 #alter-panel-body {
   padding: 12px 14px;
   overflow-y: auto;
