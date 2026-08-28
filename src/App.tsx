@@ -690,6 +690,26 @@ export default function App() {
     if (m.attachments) setAttachments(m.attachments);
   };
 
+  // Fork a new chat from this turn, leaving the original untouched.
+  const branchFrom = (idx: number) => {
+    if (!active) return;
+    const m = active.messages[idx];
+    if (m.role !== "user") return;
+    const conv: Conversation = {
+      id: newId(),
+      title: `${active.title} ↳`,
+      messages: active.messages.slice(0, idx),
+      createdAt: Date.now(),
+      connectionId: active.connectionId,
+      model: active.model,
+      effort: active.effort,
+    };
+    setConversations((prev) => [conv, ...prev]);
+    setActiveId(conv.id);
+    setInput(m.content);
+    if (m.attachments) setAttachments(m.attachments);
+  };
+
   const conversationMarkdown = (c: Conversation) =>
     `# ${c.title}\n\n` +
     c.messages
@@ -1108,10 +1128,18 @@ export default function App() {
                           {m.content}
                         </div>
                       )}
-                      <div className="flex justify-end">
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={() => branchFrom(i)}
+                          className="mt-1 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Fork a new chat from here (keeps this one)"
+                        >
+                          Branch
+                        </button>
                         <button
                           onClick={() => editMessage(i)}
                           className="mt-1 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Edit this message (replaces the rest of this chat)"
                         >
                           Edit
                         </button>
