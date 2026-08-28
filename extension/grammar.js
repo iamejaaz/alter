@@ -135,43 +135,26 @@ function replace(t, corrected) {
   }
 }
 
-function refresh(e) {
-  if (e && e.target && e.target.id === "alter-grammar-pill") return;
+// Poll the focused editable for a selection. This does NOT depend on any event
+// firing, so it survives shadow DOM, custom editors, and stopped-propagation —
+// whatever GitHub or a site does, reading selectionStart/End still works.
+let lastKey = "";
+setInterval(() => {
+  if (pill && pill.matches(":hover")) return; // don't yank it while aiming at it
   const t = currentTarget();
   if (t) {
-    target = t;
-    showPill(t);
-  } else {
+    const key = t.kind + "|" + t.text;
+    if (key !== lastKey) {
+      lastKey = key;
+      target = t;
+      showPill(t);
+    }
+  } else if (lastKey) {
+    lastKey = "";
     removePill();
   }
-}
-
-let scTimer = null;
-document.addEventListener("mouseup", (e) => setTimeout(() => refresh(e), 0), true);
-document.addEventListener("keyup", (e) => {
-  if (e.key === "Shift" || e.shiftKey) setTimeout(() => refresh(e), 0);
-}, true);
-// selectionchange is the reliable signal for text selected inside inputs/textareas.
-document.addEventListener("selectionchange", () => {
-  clearTimeout(scTimer);
-  scTimer = setTimeout(() => refresh(), 150);
-});
+}, 400);
 document.addEventListener("scroll", removePill, true);
-// The native "select" event fires exactly when text is selected in an
-// input/textarea, and gives the element directly — the most reliable trigger.
-document.addEventListener(
-  "select",
-  (e) => {
-    const el = e.target;
-    if (!isEditableInput(el)) return;
-    const { selectionStart: s, selectionEnd: en, value } = el;
-    if (s != null && en != null && en > s) {
-      target = { kind: "input", el, start: s, end: en, text: value.slice(s, en), rect: el.getBoundingClientRect() };
-      showPill(target);
-    }
-  },
-  true
-);
 
 // ⌘⇧L / Ctrl+⇧L fixes the whole focused field even without a selection.
 document.addEventListener("keydown", (e) => {
