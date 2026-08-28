@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { isClaudeCodeUrl, MemoryItem, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
 import { testConnection } from "../lib/api";
@@ -19,6 +20,12 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [bridge, setBridge] = useState<{ port: number; token: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    void invoke<{ port: number; token: string }>("bridge_info").then(setBridge).catch(() => {});
+  }, []);
 
   const runTest = async () => {
     setTesting(true);
@@ -298,6 +305,29 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
                 <div>
                   <p className="text-sm text-[var(--txt)]">Launch at login</p>
                   <p className="text-[11px] text-[var(--txt-faint)]">Start Alter in the background so routines keep running.</p>
+                </div>
+              </div>
+            )}
+            {bridge && (
+              <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+                <p className="text-sm text-[var(--txt)]">Browser bridge</p>
+                <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
+                  Pair the Alter browser extension so it can use your models. Runs on localhost:{bridge.port}.
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-xs text-[var(--txt-dim)]">
+                    {bridge.token}
+                  </code>
+                  <button
+                    onClick={() => {
+                      void navigator.clipboard.writeText(bridge.token);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    }}
+                    className="rounded-md border border-[var(--bd)] px-3 py-1.5 text-xs text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
                 </div>
               </div>
             )}

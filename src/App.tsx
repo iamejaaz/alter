@@ -251,6 +251,10 @@ export default function App() {
   useEffect(() => storage.saveMemories(memories), [memories]);
   useEffect(() => storage.saveRoutines(routines), [routines]);
   useEffect(() => storage.saveProjects(projects), [projects]);
+  // Keep the local bridge's copy of connections in sync (extension reads them, no keys leave the app).
+  useEffect(() => {
+    void invoke("bridge_sync", { connections: settings.connections ?? [] }).catch(() => {});
+  }, [settings.connections]);
   useEffect(() => storage.saveSkills(skills), [skills]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

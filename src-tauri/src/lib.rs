@@ -34,6 +34,7 @@ fn list_dir(path: String) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
+mod bridge;
 mod browser;
 
 pub(crate) fn html_to_text(html: &str) -> String {
@@ -888,6 +889,7 @@ pub fn run() {
         .manage(browser::BrowserState::default())
         .manage(ChatCancel::default())
         .manage(ClaudeState::default())
+        .manage(bridge::BridgeState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -916,6 +918,8 @@ pub fn run() {
             quick_complete,
             claude_title,
             git_pr,
+            bridge::bridge_info,
+            bridge::bridge_sync,
             browser::browser_open,
             browser::browser_read,
             browser::browser_click,
@@ -933,6 +937,8 @@ pub fn run() {
                     }
                 });
             }
+            bridge::start(app.handle().clone());
+
             let show = MenuItem::with_id(app, "show", "Show Alter", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
