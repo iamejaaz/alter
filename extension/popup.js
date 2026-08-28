@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const ACTIONS = ["prReview", "grammar"];
+const ACTIONS = ["prReview", "prDesc", "grammar"];
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 

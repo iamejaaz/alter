@@ -1,8 +1,12 @@
-#alter-review-btn {
+#alter-actions {
   position: fixed;
   right: 20px;
   bottom: 20px;
   z-index: 2147483000;
+  display: flex;
+  gap: 8px;
+}
+.alter-action-btn {
   background: #4f46e5;
   color: #fff;
   border: 0;
@@ -13,7 +17,10 @@
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
   cursor: pointer;
 }
-#alter-review-btn:hover {
+.alter-action-btn:first-child {
+  background: #26262c;
+}
+.alter-action-btn:hover {
   background: #6366f1;
 }
 

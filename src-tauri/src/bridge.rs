@@ -45,6 +45,16 @@ struct RunReq {
     connection_id: String,
     system: Option<String>,
     prompt: String,
+    #[serde(rename = "includeMemory", default)]
+    include_memory: bool,
+}
+
+fn shared_memory() -> String {
+    std::env::var("HOME")
+        .ok()
+        .and_then(|home| std::fs::read_to_string(std::path::Path::new(&home).join(".claude/CLAUDE.md")).ok())
+        .map(|s| s.chars().take(8000).collect())
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -257,7 +267,23 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Some(c) => c,
                 None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
             };
-            let result = tauri::async_runtime::block_on(run_completion(&conn, req.system.as_deref(), &req.prompt));
+            // Fold in the user's ~/.claude/CLAUDE.md so HTTP models get the same
+            // standing preferences Claude Code already loads on its own.
+            let system = match (req.include_memory, req.system.as_deref()) {
+                (true, s) => {
+                    let mem = shared_memory();
+                    if mem.is_empty() {
+                        s.unwrap_or("").to_string()
+                    } else {
+                        format!(
+                            "User's standing preferences (from ~/.claude/CLAUDE.md — authoritative):\n{mem}\n\n{}",
+                            s.unwrap_or("")
+                        )
+                    }
+                }
+                (false, s) => s.unwrap_or("").to_string(),
+            };
+            let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &req.prompt));
             match result {
                 Ok(content) => (200, serde_json::json!({ "content": strip_think(&content) }).to_string()),
                 Err(e) => (502, serde_json::json!({ "error": e }).to_string()),

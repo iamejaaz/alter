@@ -17,7 +17,17 @@ async function bridge(path, opts = {}) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
-      if (msg.type === "connections") {
+      if (msg.type === "diff") {
+        // GitHub's .diff 302-redirects to patch-diff.githubusercontent.com (a
+        // different origin), so a page-context fetch is CORS-blocked. The worker
+        // has host permissions and can follow it, with the user's session.
+        const res = await fetch(msg.url, { credentials: "include" });
+        if (!res.ok) {
+          sendResponse({ ok: false, error: "GitHub returned " + res.status });
+          return;
+        }
+        sendResponse({ ok: true, text: await res.text() });
+      } else if (msg.type === "connections") {
         const r = await bridge("/connections");
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: hint(r) });
       } else if (msg.type === "run") {

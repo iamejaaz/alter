@@ -4,7 +4,12 @@
   "version": "0.1.0",
   "description": "Use your Alter models on any page — review PRs, fix grammar, and more. No API keys in the browser.",
   "permissions": ["storage"],
-  "host_permissions": ["http://127.0.0.1:8765/*", "http://localhost:8765/*"],
+  "host_permissions": [
+    "http://127.0.0.1:8765/*",
+    "http://localhost:8765/*",
+    "https://github.com/*",
+    "https://patch-diff.githubusercontent.com/*"
+  ],
   "background": { "service_worker": "background.js" },
   "action": { "default_popup": "popup.html", "default_title": "Alter" },
   "content_scripts": [

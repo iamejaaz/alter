@@ -11,6 +11,15 @@ const REVIEW_SYSTEM = [
   "Output: a one-line verdict, then a short bulleted list of the highest-signal issues (most severe first), each with file:line. If it's clean, say so plainly.",
 ].join(" ");
 
+const DESC_SYSTEM = [
+  "Write a short, clean GitHub PR description from the diff.",
+  "Title needs a type prefix: feat: / fix: / refactor: / chore: etc.",
+  "No long paragraphs, no fluff, no preamble. A one-line summary then a tight bullet list of the changes.",
+  "Never add AI/Claude attribution or Co-Authored-By footers.",
+  "Keep exploit/vuln specifics out — no security details in the description.",
+  "Output plain Markdown ready to paste: first line is the title, then a blank line, then the body.",
+].join(" ");
+
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
 function prParts() {
@@ -18,28 +27,51 @@ function prParts() {
   return m ? { owner: m[1], repo: m[2], num: m[3] } : null;
 }
 
-async function review() {
+const ACTIONS = {
+  review: {
+    title: "PR review",
+    model: "prReview",
+    system: REVIEW_SYSTEM,
+    verb: (parts, diff, note) => `Review this pull request diff (${parts.owner}/${parts.repo}#${parts.num}):\n\n${diff}${note}`,
+    working: "Reviewing… (this can take a few seconds)",
+  },
+  describe: {
+    title: "PR description",
+    model: "prDesc",
+    system: DESC_SYSTEM,
+    verb: (parts, diff, note) => `Write the PR description for this diff (${parts.owner}/${parts.repo}#${parts.num}):\n\n${diff}${note}`,
+    working: "Writing the description…",
+  },
+};
+
+async function getDiff(parts) {
+  const url = `${location.origin}/${parts.owner}/${parts.repo}/pull/${parts.num}.diff`;
+  const r = await send({ type: "diff", url });
+  if (!r || !r.ok) throw new Error(r?.error || "Couldn't fetch the PR diff.");
+  return r.text || "";
+}
+
+async function run(actionKey) {
+  const action = ACTIONS[actionKey];
   const parts = prParts();
   if (!parts) return;
   const { models } = await chrome.storage.local.get("models");
-  const connectionId = models && models.prReview;
+  const connectionId = models && models[action.model];
   if (!connectionId) {
-    panel("Pick a model for PR review in the Alter extension popup first.", true);
+    panel(action.title, `Pick a model for ${action.title} in the Alter extension popup first.`, true);
     return;
   }
 
-  panel("Fetching the diff…");
+  panel(action.title, "Fetching the diff…");
   let diff = "";
   try {
-    const url = `${location.origin}/${parts.owner}/${parts.repo}/pull/${parts.num}.diff`;
-    const res = await fetch(url, { credentials: "same-origin" });
-    diff = await res.text();
-  } catch {
-    panel("Couldn't fetch the PR diff.", true);
+    diff = await getDiff(parts);
+  } catch (e) {
+    panel(action.title, String(e.message || e), true);
     return;
   }
   if (!diff.trim()) {
-    panel("Empty diff — nothing to review.", true);
+    panel(action.title, "Empty diff — nothing to do.", true);
     return;
   }
 
@@ -50,28 +82,36 @@ async function review() {
     note = "\n\n[diff truncated to first 60k chars]";
   }
 
-  panel("Reviewing… (this can take a few seconds)");
+  panel(action.title, action.working);
   const r = await send({
     type: "run",
     connectionId,
-    system: REVIEW_SYSTEM,
-    prompt: `Review this pull request diff (${parts.owner}/${parts.repo}#${parts.num}):\n\n${diff}${note}`,
+    includeMemory: true,
+    system: action.system,
+    prompt: action.verb(parts, diff, note),
   });
   if (!r || !r.ok) {
-    panel(r?.error || "Review failed.", true);
+    panel(action.title, r?.error || "Failed.", true);
     return;
   }
-  panel(r.data.content || "(empty response)");
+  panel(action.title, r.data.content || "(empty response)");
 }
 
 function ensureButton() {
   if (!prParts()) return;
-  if (document.getElementById("alter-review-btn")) return;
-  const btn = document.createElement("button");
-  btn.id = "alter-review-btn";
-  btn.textContent = "Review with Alter";
-  btn.addEventListener("click", review);
-  document.body.appendChild(btn);
+  if (document.getElementById("alter-actions")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "alter-actions";
+  const mk = (label, key) => {
+    const b = document.createElement("button");
+    b.className = "alter-action-btn";
+    b.textContent = label;
+    b.addEventListener("click", () => run(key));
+    return b;
+  };
+  wrap.appendChild(mk("Describe", "describe"));
+  wrap.appendChild(mk("Review with Alter", "review"));
+  document.body.appendChild(wrap);
 }
 
 function escapeHtml(s) {
@@ -84,14 +124,14 @@ function mini(md) {
     .replace(/\n/g, "<br>");
 }
 
-function panel(content, isError) {
+function panel(title, content, isError) {
   let el = document.getElementById("alter-panel");
   if (!el) {
     el = document.createElement("div");
     el.id = "alter-panel";
     el.innerHTML = `
       <div id="alter-panel-head">
-        <span>Alter — PR review</span>
+        <span id="alter-panel-title"></span>
         <div>
           <button id="alter-copy" title="Copy">Copy</button>
           <button id="alter-close" title="Close">×</button>
@@ -101,6 +141,7 @@ function panel(content, isError) {
     document.body.appendChild(el);
     el.querySelector("#alter-close").addEventListener("click", () => el.remove());
   }
+  el.querySelector("#alter-panel-title").textContent = "Alter — " + title;
   const body = el.querySelector("#alter-panel-body");
   body.innerHTML = isError ? `<span class="alter-err">${escapeHtml(content)}</span>` : mini(content);
   const copy = el.querySelector("#alter-copy");
