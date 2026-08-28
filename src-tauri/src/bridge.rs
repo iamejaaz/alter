@@ -741,15 +741,16 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             };
             // Fixed command shapes only — the caller fills slots, never a free
             // command string. This is the human-approved write the agent proposed.
+            // `-s` is required: fr refuses to pick a profile non-interactively.
             let mut args: Vec<String> = match req.verb.as_str() {
                 "update" => {
                     if req.sets.is_empty() {
                         return (400, "{\"error\":\"update needs at least one field\"}".into());
                     }
-                    vec!["doc".into(), "update".into(), req.doctype, req.name]
+                    vec!["-s".into(), AGENT_SITE.into(), "doc".into(), "update".into(), req.doctype, req.name]
                 }
                 "submit" | "cancel" | "delete" => {
-                    vec!["doc".into(), req.verb.clone(), req.doctype, req.name]
+                    vec!["-s".into(), AGENT_SITE.into(), "doc".into(), req.verb.clone(), req.doctype, req.name]
                 }
                 _ => return (400, "{\"error\":\"unsupported verb\"}".into()),
             };
