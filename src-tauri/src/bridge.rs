@@ -29,6 +29,9 @@ impl BridgeConn {
 pub struct BridgeState {
     pub conns: Mutex<Vec<BridgeConn>>,
     pub token: Mutex<String>,
+    // runId -> pid of the live `claude` process, so a Stop can kill it (and its
+    // tool subprocesses) instead of leaving it running after the panel closes.
+    pub running: Mutex<std::collections::HashMap<String, u32>>,
 }
 
 #[derive(serde::Serialize)]
@@ -55,6 +58,9 @@ struct RunReq {
     // Optional per-request model override (e.g. force Sonnet to conserve limits).
     #[serde(default)]
     model: Option<String>,
+    // Client-supplied id so a Stop can target this exact run.
+    #[serde(rename = "runId", default)]
+    run_id: Option<String>,
 }
 
 // Read/inspect tools the agent may run WITHOUT asking. fr: only the read-only
@@ -113,7 +119,13 @@ fn gen_token() -> String {
 // Resolve a connection to a completion. HTTP → OpenAI-compatible call; Claude
 // Code → one-shot `claude -p` (headless), so the extension gets your local
 // subscription with no key.
-async fn run_completion(conn: &BridgeConn, system: Option<&str>, prompt: &str, agent: bool) -> Result<String, String> {
+async fn run_completion(
+    conn: &BridgeConn,
+    system: Option<&str>,
+    prompt: &str,
+    agent: bool,
+    reg: Option<(&Mutex<std::collections::HashMap<String, u32>>, &str)>,
+) -> Result<String, String> {
     if conn.is_claude_code() {
         let full = match system {
             Some(s) if !s.is_empty() => format!("{s}\n\n{prompt}"),
@@ -133,7 +145,24 @@ async fn run_completion(conn: &BridgeConn, system: Option<&str>, prompt: &str, a
             cmd.arg("--disallowedTools").arg(AGENT_DISALLOWED_TOOLS);
             cmd.arg("--permission-mode").arg("default");
         }
-        let out = cmd.output().map_err(|e| e.to_string())?;
+        // Spawn in its own process group so Stop can signal the whole tree
+        // (claude + any tool subprocess), and register the pid for /cancel.
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
+        let child = cmd.spawn().map_err(|e| e.to_string())?;
+        if let Some((map, id)) = reg {
+            map.lock().unwrap().insert(id.to_string(), child.id());
+        }
+        let waited = child.wait_with_output();
+        if let Some((map, id)) = reg {
+            map.lock().unwrap().remove(id);
+        }
+        let out = waited.map_err(|e| e.to_string())?;
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
         } else {
@@ -576,7 +605,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 }
                 (false, s) => s.unwrap_or("").to_string(),
             };
-            let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &req.prompt, req.agent));
+            let reg = req.run_id.as_deref().map(|id| (&state.running, id));
+            let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &req.prompt, req.agent, reg));
             match result {
                 Ok(content) => (200, serde_json::json!({ "content": strip_think(&content) }).to_string()),
                 Err(e) => (502, serde_json::json!({ "error": e }).to_string()),
@@ -635,6 +665,101 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
             }
         }
+        (tiny_http::Method::Post, "/cancel") => {
+            #[derive(serde::Deserialize)]
+            struct C {
+                #[serde(rename = "runId")]
+                run_id: String,
+            }
+            let req: C = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(_) => return (400, "{\"error\":\"bad request\"}".into()),
+            };
+            let pid = state.running.lock().unwrap().get(&req.run_id).copied();
+            match pid {
+                Some(pid) => {
+                    kill_group(pid);
+                    (200, "{\"ok\":true}".into())
+                }
+                None => (200, "{\"ok\":true,\"note\":\"already finished\"}".into()),
+            }
+        }
+        (tiny_http::Method::Post, "/fr-write") => {
+            #[derive(serde::Deserialize)]
+            struct Set {
+                field: String,
+                value: String,
+            }
+            #[derive(serde::Deserialize)]
+            struct W {
+                verb: String,
+                doctype: String,
+                name: String,
+                #[serde(default)]
+                sets: Vec<Set>,
+            }
+            let req: W = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
+            };
+            // Fixed command shapes only — the caller fills slots, never a free
+            // command string. This is the human-approved write the agent proposed.
+            let mut args: Vec<String> = match req.verb.as_str() {
+                "update" => {
+                    if req.sets.is_empty() {
+                        return (400, "{\"error\":\"update needs at least one field\"}".into());
+                    }
+                    vec!["doc".into(), "update".into(), req.doctype, req.name]
+                }
+                "submit" | "cancel" | "delete" => {
+                    vec!["doc".into(), req.verb.clone(), req.doctype, req.name]
+                }
+                _ => return (400, "{\"error\":\"unsupported verb\"}".into()),
+            };
+            if req.verb == "update" {
+                for s in &req.sets {
+                    args.push("--set".into());
+                    args.push(format!("{}={}", s.field, s.value));
+                }
+            }
+            let mut c = std::process::Command::new("fr");
+            c.args(&args);
+            let dir = agent_workdir();
+            if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
+                c.current_dir(&dir);
+            }
+            match c.output() {
+                Ok(out) => {
+                    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                    if out.status.success() {
+                        (200, serde_json::json!({ "ok": true, "output": stdout }).to_string())
+                    } else {
+                        let err = if !stderr.is_empty() { stderr } else { stdout };
+                        (502, serde_json::json!({ "error": err }).to_string())
+                    }
+                }
+                Err(e) => (500, serde_json::json!({ "error": format!("can't run fr: {e}") }).to_string()),
+            }
+        }
         _ => (404, "{\"error\":\"not found\"}".into()),
+    }
+}
+
+// Signal-terminate the process group led by `pid` (negative pid = the group), so
+// the claude run and any tool it spawned all stop.
+fn kill_group(pid: u32) {
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("kill")
+            .arg("-TERM")
+            .arg(format!("-{pid}"))
+            .output();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .output();
     }
 }

@@ -158,9 +158,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             agent: msg.agent,
             includeMemory: msg.includeMemory,
             model: msg.model,
+            runId: msg.runId,
           }),
         });
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: r.body.error || hint(r) });
+      } else if (msg.type === "cancel") {
+        const r = await bridge("/cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runId: msg.runId }),
+        });
+        sendResponse(r.ok ? { ok: true } : { ok: false, error: r.body.error || hint(r) });
+      } else if (msg.type === "fr-write") {
+        const r = await bridge("/fr-write", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(msg.write),
+        });
+        sendResponse(r.ok ? { ok: true, output: r.body.output || "" } : { ok: false, error: r.body.error || hint(r) });
       } else {
         sendResponse({ ok: false, error: "Unknown request type: " + msg.type });
       }
