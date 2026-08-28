@@ -931,15 +931,13 @@ export default function App() {
     if (activeId) updateConversation(activeId, (c) => ({ ...c, effort: e }));
   };
 
-  // Local, token-free: shows what Alter has tallied from Claude Code result
-  // events — no model call, so running it costs nothing.
-  const showUsage = () => {
+  // Probes Claude Code's live availability (cheapest model) so it can report the
+  // session-limit / reset status, then shows Alter's local cost tally.
+  const showUsage = async () => {
     const money = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`;
     const total = conversations.reduce((s, c) => s + (c.costUsd ?? 0), 0);
     const priced = conversations.filter((c) => c.costUsd != null);
-    const lines = [
-      "**Usage** — Alter's own tally from Claude Code's result events. This command doesn't call the model, so it costs nothing.",
-      "",
+    const tally = [
       `Total spend: ${money(total)} across ${priced.length} Claude Code chat${priced.length === 1 ? "" : "s"}`,
       active
         ? `This chat: ${active.lastTokens ? active.lastTokens.toLocaleString() + " context tokens" : "—"}${
@@ -947,14 +945,36 @@ export default function App() {
           }`
         : "",
       "",
-      "_Not your subscription's limit — `/usage` inside the Claude Code terminal shows that._",
+      "_Cost is Alter's own tally from Claude Code result events. The subscription %/limit bars live in the `/usage` screen of the Claude Code terminal._",
     ]
       .filter(Boolean)
       .join("\n");
-    if (active) {
-      updateConversation(active.id, (c) => ({ ...c, messages: [...c.messages, { role: "assistant", content: lines }] }));
+
+    const render = (status: string) =>
+      `**Usage**\n\n${status}\n\n${tally}`;
+    const cid = active?.id;
+    const push = (content: string) => {
+      if (cid) updateConversation(cid, (c) => ({ ...c, messages: [...c.messages, { role: "assistant", content }] }));
+      else setInfo(content.replace(/\*|_/g, ""));
+    };
+    push(render("⏳ Checking Claude Code availability…"));
+
+    let status: string;
+    try {
+      await invoke<string>("claude_probe");
+      status = "🟢 Claude Code is available.";
+    } catch (e) {
+      const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
+      status = /limit/i.test(msg) ? "🔴 " + humanizeError(msg) : "⚠️ Claude Code error: " + msg.slice(0, 160);
+    }
+    // Replace the "checking…" message we just pushed with the final one.
+    if (cid) {
+      updateConversation(cid, (c) => ({
+        ...c,
+        messages: [...c.messages.slice(0, -1), { role: "assistant", content: render(status) }],
+      }));
     } else {
-      setInfo(`Total Claude Code spend: ${money(total)} across ${priced.length} chats`);
+      setInfo(status.replace(/\*|_|`/g, ""));
     }
   };
 
@@ -986,7 +1006,7 @@ export default function App() {
         if (active && (await confirmDialog(`Delete "${active.title}"?`))) deleteConversation(active.id);
       },
     },
-    { cmd: "/usage", desc: "Show token & cost usage (no tokens used)", run: showUsage },
+    { cmd: "/usage", desc: "Claude Code availability + cost tally", run: showUsage },
     { cmd: "/compact", desc: "Reset Claude Code context for this chat (no tokens used)", run: compactChat },
     { cmd: "/auto", desc: "Auto — act freely, writes confirm", run: () => applyMode("auto") },
     { cmd: "/ask", desc: "Ask before every action", run: () => applyMode("ask") },

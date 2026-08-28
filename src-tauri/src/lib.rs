@@ -332,6 +332,27 @@ fn claude_title(text: String) -> Result<String, String> {
     }
 }
 
+// Tiny availability probe (cheapest model) so /usage can show whether Claude
+// Code is usable right now, or surface the session-limit / reset message.
+#[tauri::command]
+fn claude_probe() -> Result<String, String> {
+    use std::process::Command;
+    let out = Command::new("claude")
+        .arg("-p")
+        .arg("Reply with exactly: ok")
+        .arg("--model")
+        .arg("haiku")
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        Err(if err.is_empty() { stdout } else { err })
+    }
+}
+
 #[tauri::command]
 fn claude_version() -> Result<String, String> {
     use std::process::Command;
@@ -917,6 +938,7 @@ pub fn run() {
             open_external,
             quick_complete,
             claude_title,
+            claude_probe,
             git_pr,
             bridge::bridge_info,
             bridge::bridge_sync,

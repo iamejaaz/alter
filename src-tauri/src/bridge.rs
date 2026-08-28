@@ -132,7 +132,12 @@ async fn run_completion(conn: &BridgeConn, system: Option<&str>, prompt: &str, a
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
         } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+            // Claude prints limit/auth errors to stdout on some failures, so fall
+            // back to stdout when stderr is empty — otherwise the caller only sees
+            // a bare non-zero exit ("Bridge error 502").
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            Err(if err.is_empty() { stdout } else { err })
         }
     } else {
         let client = reqwest::Client::builder()

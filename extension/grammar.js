@@ -83,17 +83,10 @@ function showPill(t) {
   const left = Math.min(window.innerWidth - 120, Math.max(8, t.rect.left));
   pill.style.top = top + "px";
   pill.style.left = left + "px";
-  // preventDefault keeps the selection/focus; stopPropagation stops editors
-  // (e.g. Frappe Helpdesk's reply box) from treating the pill click as a
-  // click-away and closing themselves before the fix applies.
-  pill.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  });
-  pill.addEventListener("click", (e) => {
-    e.stopPropagation();
-    fix(t);
-  });
+  // Click handling is done by the document-capture interceptors below, not here
+  // — that's the only way to beat a site's capture-phase / pointerdown
+  // click-away (e.g. Frappe Helpdesk's reply box) that would otherwise close
+  // before our bubbling handler runs.
   document.body.appendChild(pill);
 }
 
@@ -181,6 +174,28 @@ setInterval(() => {
   }
 }, 400);
 document.addEventListener("scroll", removePill, true);
+
+// Intercept pointer/click on the pill at the DOCUMENT CAPTURE phase — earlier
+// than a site's own click-away handler — so editors like Frappe Helpdesk's
+// reply box don't close when the pill is clicked. Registered on load, before
+// the reply box adds its handler, so ours fires first and stops the event.
+function onPillEvent(e) {
+  if (!pill) return false;
+  if (e.target === pill || pill.contains(e.target)) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    return true;
+  }
+  return false;
+}
+["pointerdown", "mousedown", "mouseup"].forEach((ev) => document.addEventListener(ev, onPillEvent, true));
+document.addEventListener(
+  "click",
+  (e) => {
+    if (onPillEvent(e) && target) fix(target);
+  },
+  true
+);
 
 // ⌘⇧L / Ctrl+⇧L fixes the whole focused field even without a selection.
 document.addEventListener("keydown", (e) => {
