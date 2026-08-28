@@ -926,6 +926,52 @@ export default function App() {
     if (activeId) updateConversation(activeId, (c) => ({ ...c, effort: e }));
   };
 
+  // Local, token-free: shows what Alter has tallied from Claude Code result
+  // events — no model call, so running it costs nothing.
+  const showUsage = () => {
+    const money = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`;
+    const total = conversations.reduce((s, c) => s + (c.costUsd ?? 0), 0);
+    const priced = conversations.filter((c) => c.costUsd != null);
+    const lines = [
+      "**Usage** — Alter's own tally from Claude Code's result events. This command doesn't call the model, so it costs nothing.",
+      "",
+      `Total spend: ${money(total)} across ${priced.length} Claude Code chat${priced.length === 1 ? "" : "s"}`,
+      active
+        ? `This chat: ${active.lastTokens ? active.lastTokens.toLocaleString() + " context tokens" : "—"}${
+            active.costUsd != null ? " · " + money(active.costUsd) : ""
+          }`
+        : "",
+      "",
+      "_Not your subscription's limit — `/usage` inside the Claude Code terminal shows that._",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (active) {
+      updateConversation(active.id, (c) => ({ ...c, messages: [...c.messages, { role: "assistant", content: lines }] }));
+    } else {
+      setInfo(`Total Claude Code spend: ${money(total)} across ${priced.length} chats`);
+    }
+  };
+
+  // Token-free "compact": reset the Claude Code session so its context window
+  // starts fresh (a real summarizing compact would need a model call). Messages
+  // stay visible; Alter re-shares its memory on the next turn.
+  const compactChat = () => {
+    if (!active) return;
+    updateConversation(active.id, (c) => ({
+      ...c,
+      claudeSessionId: undefined,
+      messages: [
+        ...c.messages,
+        {
+          role: "assistant",
+          content:
+            "**Context compacted** — started a fresh Claude Code session for this chat (no tokens used). Your messages stay visible; Claude Code's context is reset and Alter re-shares its memory on your next message.",
+        },
+      ],
+    }));
+  };
+
   const slashCommands = [
     { cmd: "/new", desc: "Start a new chat", run: () => setActiveId(null) },
     {
@@ -935,6 +981,8 @@ export default function App() {
         if (active && (await confirmDialog(`Delete "${active.title}"?`))) deleteConversation(active.id);
       },
     },
+    { cmd: "/usage", desc: "Show token & cost usage (no tokens used)", run: showUsage },
+    { cmd: "/compact", desc: "Reset Claude Code context for this chat (no tokens used)", run: compactChat },
     { cmd: "/auto", desc: "Auto — act freely, writes confirm", run: () => applyMode("auto") },
     { cmd: "/ask", desc: "Ask before every action", run: () => applyMode("ask") },
     { cmd: "/plan", desc: "Plan only, no actions", run: () => applyMode("plan") },
