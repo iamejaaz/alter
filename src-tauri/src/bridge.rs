@@ -57,10 +57,14 @@ struct RunReq {
     model: Option<String>,
 }
 
-// The ONLY tools the support agent may use — read/inspect, never mutate.
-// fr: only read-only subcommands (query/doc get/doctype/report/method/guide) —
-// never `doc create/update/delete` or `api` (which can POST).
-const AGENT_ALLOWED_TOOLS: &str = "Read Grep Glob WebFetch Bash(fr query:*) Bash(fr doc get:*) Bash(fr doctype:*) Bash(fr report:*) Bash(fr method:*) Bash(fr guide:*) Bash(git show:*) Bash(git log:*) Bash(git grep:*) Bash(git diff:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(gh issue view:*) Bash(gh issue list:*) Bash(gh search:*)";
+// Read/inspect tools the agent may run WITHOUT asking. fr: only the read-only
+// subcommands. Anything that changes data is not here — it's explicitly denied
+// below and surfaced to the human to approve.
+const AGENT_ALLOWED_TOOLS: &str = "Read Grep Glob WebFetch Bash(fr query:*) Bash(fr guide:*) Bash(fr doc get:*) Bash(fr doc list:*) Bash(fr doctype list:*) Bash(fr doctype show:*) Bash(fr report run:*) Bash(fr method search:*) Bash(fr method list:*) Bash(fr method show:*) Bash(fr file download:*) Bash(fr auth whoami:*) Bash(fr auth list:*) Bash(git show:*) Bash(git log:*) Bash(git grep:*) Bash(git diff:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(gh issue view:*) Bash(gh issue list:*) Bash(gh search:*)";
+
+// Mutating fr subcommands — hard-denied so a write fails cleanly (headless has no
+// interactive prompt). The agent proposes these for the human to approve instead.
+const AGENT_DISALLOWED_TOOLS: &str = "Bash(fr doc create:*) Bash(fr doc update:*) Bash(fr doc delete:*) Bash(fr doc submit:*) Bash(fr doc cancel:*) Bash(fr doc amend:*) Bash(fr method call:*) Bash(fr api:*) Bash(fr file upload:*) Bash(fr update:*) Bash(fr assistant:*) Bash(fr auth login:*) Bash(fr auth logout:*) Bash(fr auth default:*) Bash(fr auth configure:*)";
 
 fn agent_workdir() -> String {
     std::env::var("ALTER_AGENT_WORKDIR").unwrap_or_else(|_| {
@@ -126,6 +130,7 @@ async fn run_completion(conn: &BridgeConn, system: Option<&str>, prompt: &str, a
                 cmd.current_dir(&dir);
             }
             cmd.arg("--allowedTools").arg(AGENT_ALLOWED_TOOLS);
+            cmd.arg("--disallowedTools").arg(AGENT_DISALLOWED_TOOLS);
             cmd.arg("--permission-mode").arg("default");
         }
         let out = cmd.output().map_err(|e| e.to_string())?;
