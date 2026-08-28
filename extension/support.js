@@ -9,7 +9,8 @@ const SUPPORT_SYSTEM = [
   "You are Ejaaz's Frappe support engineer, triaging a ticket on support.frappe.io.",
   "You have READ-ONLY tools: `fr` (frappectl, default profile = support.frappe.io) to read tickets/docs/SQL, Read/Grep/Glob over the local frappe checkout, git to inspect any version, and gh + WebFetch for frappe/frappe issues/PRs.",
   "Always: read the ticket first with `fr doc get \"HD Ticket\" <id>` (and `fr query`/`fr doctype` for related data); identify the customer's Frappe version.",
-  "When verifying behavior, check the code AT THE CUSTOMER'S VERSION (e.g. `git show <ref>:path`) and state which ref you checked — never trust the working branch as the customer's reality, and never invent behavior.",
+  "Try to trace what the customer reports IN THE CODE at the customer's version (e.g. `git show <ref>:path`) — is the reported behavior actually reproducible from the code path? State which ref you checked. Never trust the working branch as the customer's reality, and never invent behavior.",
+  "If the ticket is ambiguous, missing key facts (version, exact steps, error text, doctype), or you cannot trace it to a concrete code path, DO NOT guess a diagnosis. Instead say plainly: what you understood, what you verified, and exactly what extra info you need from the customer to go further (as specific questions).",
   "Follow the user's standing preferences for voice. Be terse. If a command is denied, fall back to Read/Grep/WebFetch.",
 ].join(" ");
 
@@ -93,88 +94,40 @@ async function followUp(q) {
   supSession.transcript.push({ q, a });
 }
 
-// Reliable path: MV3 service-worker streaming can stall, so when the live
-// stream produces nothing we fall back to the plain (non-streaming) /run, which
-// returns the whole answer at once. Loses live steps but always completes.
-async function nonStreamFallback(el, params) {
-  el.innerHTML = '<span style="color:#a1a1aa">Working… (live steps unavailable — waiting for the full answer)</span>';
-  const r = await send({
-    type: "run",
-    connectionId: params.connectionId,
-    agent: params.agent,
-    includeMemory: params.includeMemory,
-    system: params.system,
-    prompt: params.prompt,
-  });
-  if (r && r.ok && r.data && r.data.content) {
-    el.innerHTML = mini(r.data.content);
-    return r.data.content;
-  }
-  el.innerHTML = `<span class="sup-err">${escapeHtml((r && r.error) || "No response — check the Alter app is running.")}</span>`;
-  return "";
-}
-
+// Non-streaming: MV3 service workers buffer a fetch stream until it completes,
+// so incremental streaming can't work here — we run the agent and show the full
+// answer when it's done. A ticking timer keeps it obviously alive.
 function streamAgent(el, params) {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    let full = "";
-    let finished = false;
-    const scroll = () => {
-      const body = document.querySelector("#sup-body");
-      if (body) body.scrollTop = body.scrollHeight;
-    };
+    let done = false;
     const tick = setInterval(() => {
-      if (finished || full) return;
-      const s = Math.round((Date.now() - t0) / 1000);
-      el.innerHTML = `<span style="color:#a1a1aa">Working… ${s}s</span>`;
+      if (done) return;
+      el.innerHTML = `<span style="color:#a1a1aa">Working… ${Math.round((Date.now() - t0) / 1000)}s (reading the ticket, checking the code…)</span>`;
     }, 1000);
-    let timer;
-    const stop = () => {
-      finished = true;
+    const finish = (html, val) => {
+      if (done) return;
+      done = true;
       clearInterval(tick);
-      clearTimeout(timer);
-      try { port.disconnect(); } catch {}
+      clearTimeout(to);
+      el.innerHTML = html;
+      resolve(val);
     };
-    const fallback = () => {
-      if (finished) return;
-      stop();
-      nonStreamFallback(el, params).then(resolve);
-    };
-    // First-token watchdog: if the stream delivers nothing in 25s, the worker
-    // likely dropped it — switch to the reliable non-streaming path instead of
-    // waiting out a long timeout.
-    let firstToken = setTimeout(fallback, 25000);
-    // Idle timeout while actively streaming — re-armed on each token.
-    const armIdle = (ms) => {
-      clearTimeout(timer);
-      timer = setTimeout(fallback, ms);
-    };
-
+    const to = setTimeout(
+      () => finish('<span class="sup-err">Timed out after 3 min — the agent is taking too long. Try again or narrow the question.</span>', ""),
+      180000
+    );
     el.innerHTML = '<span style="color:#a1a1aa">Working… 0s</span>';
-    const port = chrome.runtime.connect({ name: "run-stream" });
-    port.postMessage(params);
-    port.onMessage.addListener((m) => {
-      if (finished) return;
-      if (m.delta) {
-        clearTimeout(firstToken);
-        armIdle(90000);
-        full += m.delta;
-        el.innerHTML = renderStream(full) || '<span style="color:#a1a1aa">Working…</span>';
-        scroll();
-      } else if (m.error) {
-        // Stream errored — try the reliable path before giving up.
-        fallback();
-      } else if (m.done) {
-        clearTimeout(firstToken);
-        const clean = cleanText(full);
-        if (!full) {
-          fallback(); // empty stream → non-streaming retry
-          return;
-        }
-        stop();
-        if (!clean) el.innerHTML = renderStream(full);
-        resolve(clean);
-      }
+    send({
+      type: "run",
+      connectionId: params.connectionId,
+      agent: params.agent,
+      includeMemory: params.includeMemory,
+      system: params.system,
+      prompt: params.prompt,
+    }).then((r) => {
+      if (r && r.ok && r.data && r.data.content) finish(mini(r.data.content), r.data.content);
+      else finish(`<span class="sup-err">${escapeHtml((r && r.error) || "No response — check the Alter app is running.")}</span>`, "");
     });
   });
 }

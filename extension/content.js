@@ -122,79 +122,41 @@ function displayText(full) {
   return full;
 }
 
-// Reliable path when MV3 service-worker streaming stalls: fetch the whole
-// answer via the non-streaming /run.
-async function nonStreamInto(el, params) {
-  el.innerHTML = '<span style="color:#a1a1aa">Thinking… (waiting for the full answer)</span>';
-  const r = await send({
-    type: "run",
-    connectionId: params.connectionId,
-    includeMemory: params.includeMemory,
-    system: params.system,
-    prompt: params.prompt,
-  });
-  if (r && r.ok && r.data && r.data.content) {
-    const clean = displayText(r.data.content) ?? r.data.content;
-    el.innerHTML = mini(clean);
-    return clean;
-  }
-  el.innerHTML = `<span class="alter-err">${escapeHtml((r && r.error) || "No response — check the Alter app is running.")}</span>`;
-  return "";
-}
-
+// Non-streaming: MV3 service workers buffer a fetch stream until it completes,
+// so incremental streaming can't work here — run it and show the full answer.
 function streamInto(el, params) {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    let full = "";
-    let raw = "";
-    let finished = false;
+    let done = false;
     const tick = setInterval(() => {
-      if (finished || full) return;
-      const s = Math.round((Date.now() - t0) / 1000);
-      el.innerHTML = `<span style="color:#a1a1aa">Thinking… ${s}s</span>`;
+      if (done) return;
+      el.innerHTML = `<span style="color:#a1a1aa">Thinking… ${Math.round((Date.now() - t0) / 1000)}s</span>`;
     }, 1000);
-    let timer;
-    const stop = () => {
-      finished = true;
+    const finish = (html, val) => {
+      if (done) return;
+      done = true;
       clearInterval(tick);
-      clearTimeout(timer);
-      try { port.disconnect(); } catch {}
+      clearTimeout(to);
+      el.innerHTML = html;
+      resolve(val);
     };
-    const fallback = () => {
-      if (finished) return;
-      stop();
-      nonStreamInto(el, params).then(resolve);
-    };
-    let firstToken = setTimeout(fallback, 25000);
-    const armIdle = (ms) => {
-      clearTimeout(timer);
-      timer = setTimeout(fallback, ms);
-    };
-
+    const to = setTimeout(
+      () => finish('<span class="alter-err">Timed out after 3 min — try again or a smaller diff.</span>', ""),
+      180000
+    );
     el.innerHTML = '<span style="color:#a1a1aa">Thinking… 0s</span>';
-    const port = chrome.runtime.connect({ name: "run-stream" });
-    port.postMessage(params);
-    port.onMessage.addListener((m) => {
-      if (finished) return;
-      if (m.delta) {
-        clearTimeout(firstToken);
-        armIdle(90000);
-        full += m.delta;
-        const shown = displayText(full);
-        raw = shown == null ? "" : shown;
-        el.innerHTML = shown == null ? '<span style="color:#a1a1aa">Thinking…</span>' : mini(shown) || "…";
-        const body = document.querySelector("#alter-panel-body");
-        if (body) body.scrollTop = body.scrollHeight;
-      } else if (m.error) {
-        fallback();
-      } else if (m.done) {
-        clearTimeout(firstToken);
-        if (!full.trim()) {
-          fallback();
-          return;
-        }
-        stop();
-        resolve(raw);
+    send({
+      type: "run",
+      connectionId: params.connectionId,
+      includeMemory: params.includeMemory,
+      system: params.system,
+      prompt: params.prompt,
+    }).then((r) => {
+      if (r && r.ok && r.data && r.data.content) {
+        const clean = displayText(r.data.content) ?? r.data.content;
+        finish(mini(clean), clean);
+      } else {
+        finish(`<span class="alter-err">${escapeHtml((r && r.error) || "No response — check the Alter app is running.")}</span>`, "");
       }
     });
   });
