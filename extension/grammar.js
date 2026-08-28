@@ -35,8 +35,17 @@ function contentEditableHost(node) {
   return null;
 }
 
+// Pierce shadow roots — GitHub's composer and many editors put the real
+// <textarea>/contenteditable inside a shadow tree, so document.activeElement
+// only gives the outer host.
+function deepActive() {
+  let a = document.activeElement;
+  while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+  return a;
+}
+
 function currentTarget() {
-  const active = document.activeElement;
+  const active = deepActive();
   // input / textarea: selection lives on the element, not window.getSelection().
   if (isEditableInput(active)) {
     const { selectionStart: s, selectionEnd: e, value } = active;
@@ -137,16 +146,22 @@ function refresh(e) {
   }
 }
 
-document.addEventListener("mouseup", (e) => setTimeout(() => refresh(e), 0));
+let scTimer = null;
+document.addEventListener("mouseup", (e) => setTimeout(() => refresh(e), 0), true);
 document.addEventListener("keyup", (e) => {
   if (e.key === "Shift" || e.shiftKey) setTimeout(() => refresh(e), 0);
+}, true);
+// selectionchange is the reliable signal for text selected inside inputs/textareas.
+document.addEventListener("selectionchange", () => {
+  clearTimeout(scTimer);
+  scTimer = setTimeout(() => refresh(), 150);
 });
 document.addEventListener("scroll", removePill, true);
 
 // ⌘⇧L / Ctrl+⇧L fixes the whole focused field even without a selection.
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") {
-    const active = document.activeElement;
+    const active = deepActive();
     let t = currentTarget();
     if (!t && isEditableInput(active) && active.value.trim()) {
       t = { kind: "input", el: active, start: 0, end: active.value.length, text: active.value, rect: active.getBoundingClientRect() };
@@ -165,3 +180,5 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
+
+console.log("[Alter] grammar-fix ready");
