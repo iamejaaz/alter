@@ -1,6 +1,7 @@
 // Injected on GitHub PR pages. Adds a "Review with Alter" button that pulls the
 // PR diff and runs it through the model you picked for PR review in the popup.
-
+// IIFE-wrapped so its top-level names don't collide with sibling content scripts.
+(() => {
 const REVIEW_SYSTEM = [
   "You are reviewing ONE GitHub pull request as a senior maintainer, in the reviewer's terse daily-review style.",
   "Open with a verdict on its own first line — exactly one of: '🟢 Ready to approve', '🟡 Needs your judgment', or '🔴 Needs changes'.",
@@ -235,3 +236,4 @@ function renderFooter() {
 
 setInterval(ensureButton, 1500);
 ensureButton();
+})();

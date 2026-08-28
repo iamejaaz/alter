@@ -2,7 +2,8 @@
 // pill appears → click replaces it in place, using the model you picked for
 // grammar in the popup. Works in <textarea>, text <input>, and contenteditable
 // (Gmail, Froala/Quill editors, the Frappe support portal, etc).
-
+// IIFE-wrapped so its top-level names don't collide with sibling content scripts.
+(() => {
 const GRAMMAR_SYSTEM = [
   "You are a precise copy editor.",
   "Fix spelling, grammar, and punctuation in the user's text.",
@@ -180,3 +181,4 @@ document.addEventListener("keydown", (e) => {
 });
 
 console.log("[Alter] grammar-fix ready");
+})();

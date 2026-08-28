@@ -2,7 +2,9 @@
 // tickets/<id>) it adds Summarize / Diagnose / Draft reply, each driving the
 // read-only Claude Code agent (fr to read the ticket, grep frappe code at the
 // customer's version, gh for known issues) with its steps streamed live.
-
+// Wrapped in an IIFE so its top-level declarations don't collide with the other
+// content scripts sharing this page's isolated world.
+(() => {
 const SUPPORT_SYSTEM = [
   "You are Ejaaz's Frappe support engineer, triaging a ticket on support.frappe.io.",
   "You have READ-ONLY tools: `fr` (frappectl, default profile = support.frappe.io) to read tickets/docs/SQL, Read/Grep/Glob over the local frappe checkout, git to inspect any version, and gh + WebFetch for frappe/frappe issues/PRs.",
@@ -200,3 +202,4 @@ function renderFooter() {
 setInterval(ensureButtons, 1500);
 ensureButtons();
 console.log("[Alter] support agent ready");
+})();
