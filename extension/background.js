@@ -119,6 +119,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       } else if (msg.type === "connections") {
         const r = await bridge("/connections");
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: hint(r) });
+      } else if (msg.type === "gh-checks") {
+        const r = await bridge("/gh-checks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repo: msg.repo, num: msg.num }),
+        });
+        sendResponse(r.ok ? { ok: true, text: r.body.output || "" } : { ok: false, error: hint(r) });
       } else if (msg.type === "gh") {
         const r = await bridge("/gh", {
           method: "POST",

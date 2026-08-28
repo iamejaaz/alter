@@ -479,6 +479,28 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Err(e) => (502, serde_json::json!({ "error": e }).to_string()),
             }
         }
+        (tiny_http::Method::Post, "/gh-checks") => {
+            #[derive(serde::Deserialize)]
+            struct C {
+                repo: String,
+                num: String,
+            }
+            let req: C = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(_) => return (400, "{\"error\":\"bad request\"}".into()),
+            };
+            // `gh pr checks` exits non-zero when checks fail/pending — capture stdout regardless.
+            match std::process::Command::new("gh")
+                .args(["pr", "checks", &req.num, "-R", &req.repo])
+                .output()
+            {
+                Ok(out) => {
+                    let text = String::from_utf8_lossy(&out.stdout);
+                    (200, serde_json::json!({ "output": text.trim() }).to_string())
+                }
+                Err(_) => (200, serde_json::json!({ "output": "" }).to_string()),
+            }
+        }
         (tiny_http::Method::Post, "/gh") => {
             #[derive(serde::Deserialize)]
             struct GhReq {

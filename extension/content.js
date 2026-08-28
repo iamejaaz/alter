@@ -2,18 +2,14 @@
 // PR diff and runs it through the model you picked for PR review in the popup.
 
 const REVIEW_SYSTEM = [
-  "You are reviewing a GitHub pull request as a senior maintainer of this project.",
-  "Judge with a maintainer's lens: cleanest mechanism, root cause fixed, no state residue — not just 'it works'.",
-  "START with a merge verdict on its own first line — exactly one of:",
-  "'🟢 Safe to merge' (no blocking issues), '🟡 Merge after addressing the points below' (nits/non-blocking), or '🔴 Not safe to merge' (correctness/security/design blocker).",
-  "Then a one-line why, then the issues.",
-  "Write terse, @author-addressed comments in plain English. No preamble, no meta, no praise-fluff.",
-  "Explain each issue as a plain before/after example where useful (user does X → shows Y → PR shows worse Z); defer file/line/mechanism until needed.",
-  "Scan test data / fixtures for real domains, emails, names, or keys — flag any PII (expect example.com).",
-  "No premature victory — progress is distance-to-parity with the real thing.",
-  "List the highest-signal issues first (most severe first), each with file:line. If it's clean, say so plainly.",
+  "You are reviewing ONE GitHub pull request as a senior maintainer, in the reviewer's terse daily-review style.",
+  "Open with a verdict on its own first line — exactly one of: '🟢 Ready to approve', '🟡 Needs your judgment', or '🔴 Needs changes'.",
+  "If CI status is provided, factor it in and say whether a failing check is caused by this diff or unrelated/pre-existing.",
+  "Then **Mechanism:** — one or two lines: what the PR changes and the root cause it addresses (judge the cleanest mechanism, not just 'it works').",
+  "Then **Assessment:** — terse bullets: is the root cause actually fixed, any leftover state/residue, is the fix minimally scoped, test coverage (call out untested new paths), and scan fixtures/test data for real domains, emails, names, or keys — flag any PII (expect example.com).",
+  "If the verdict is 🔴 Needs changes, add **Draft comment:** — a ready-to-paste review comment: @author-addressed, terse plain English, cite file:line, explain as a plain before/after user example where it helps, and include a ```suggestion block when a concrete fix fits.",
+  "Terse throughout. No preamble, no meta, no praise-fluff. No premature victory — progress is distance-to-parity with the real thing.",
 ].join(" ");
-
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
@@ -22,21 +18,16 @@ function prParts() {
   return m ? { owner: m[1], repo: m[2], num: m[3] } : null;
 }
 
-const ACTIONS = {
-  review: {
-    title: "PR review",
-    model: "prReview",
-    system: REVIEW_SYSTEM,
-    verb: (parts, diff, note) => `Review this pull request diff (${parts.owner}/${parts.repo}#${parts.num}):\n\n${diff}${note}`,
-    working: "Reviewing… (this can take a few seconds)",
-  },
-};
-
 async function getDiff(parts) {
   const url = `${location.origin}/${parts.owner}/${parts.repo}/pull/${parts.num}.diff`;
   const r = await send({ type: "diff", url });
   if (!r || !r.ok) throw new Error(r?.error || "Couldn't fetch the PR diff.");
   return r.text || "";
+}
+
+async function getChecks(parts) {
+  const r = await send({ type: "gh-checks", repo: `${parts.owner}/${parts.repo}`, num: parts.num });
+  return r && r.ok ? r.text || "" : "";
 }
 
 let session = null;
@@ -49,7 +40,7 @@ async function run() {
   openPanel();
   if (!connectionId) return setStatus("Pick a model for PR review in the Alter popup first.", true);
 
-  setStatus("Fetching the diff…");
+  setStatus("Fetching the diff + CI…");
   let diff = "";
   try {
     diff = await getDiff(parts);
@@ -57,6 +48,7 @@ async function run() {
     return setStatus(String(e.message || e), true);
   }
   if (!diff.trim()) return setStatus("Empty diff — nothing to review.", true);
+  const checks = await getChecks(parts).catch(() => "");
 
   let note = "";
   const CAP = 60000;
@@ -65,14 +57,17 @@ async function run() {
     note = "\n\n[diff truncated to first 60k chars]";
   }
 
+  const ciBlock = checks.trim() ? `CI checks:\n${checks.slice(0, 4000)}\n\n` : "";
+  const prompt = `Review this pull request (${parts.owner}/${parts.repo}#${parts.num}).\n\n${ciBlock}Diff:\n${diff}${note}`;
+
   session = { parts, connectionId, diff, note, review: "", transcript: [] };
   clearBody();
   const block = appendBlock("assistant");
   const raw = await streamInto(block, {
     connectionId,
     includeMemory: true,
-    system: ACTIONS.review.system,
-    prompt: ACTIONS.review.verb(parts, diff, note),
+    system: REVIEW_SYSTEM,
+    prompt,
   });
   session.review = raw;
   renderFooter();
@@ -214,9 +209,8 @@ function renderFooter() {
   const foot = document.querySelector("#alter-panel-foot");
   foot.innerHTML = `
     <div id="alter-foot-btns">
-      <button data-ev="comment">💬 Comment</button>
+      <button data-ev="comment">💬 Post as comment</button>
       <button data-ev="request_changes">🔴 Request changes</button>
-      <button data-ev="approve">🟢 Approve</button>
     </div>
     <div id="alter-foot-ask">
       <input id="alter-ask" placeholder="Ask a follow-up…" />
