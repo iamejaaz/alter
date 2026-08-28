@@ -14,6 +14,63 @@ async function bridge(path, opts = {}) {
   return { ok: res.ok, status: res.status, body };
 }
 
+// Right-click "Fix grammar with Alter" — the browser hands us the exact
+// selection (info.selectionText), so this works in any editor GitHub uses,
+// shadow DOM or not, with no selection-detection guesswork.
+const GRAMMAR_SYSTEM =
+  "You are a precise copy editor. Fix spelling, grammar, and punctuation. Preserve meaning, tone, and formatting. Do not add, remove, or rephrase beyond fixing errors. Reply with ONLY the corrected text — no quotes, no commentary.";
+
+function createMenus() {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "alter-fix-grammar",
+      title: "Fix grammar with Alter",
+      contexts: ["editable"],
+    });
+  });
+}
+chrome.runtime.onInstalled.addListener(createMenus);
+chrome.runtime.onStartup.addListener(createMenus);
+
+// Injected into the page to swap the current selection for the corrected text.
+function replaceSelectionInPage(corrected) {
+  function deepActive() {
+    let a = document.activeElement;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    return a;
+  }
+  const el = deepActive();
+  if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT") && el.selectionStart != null && el.selectionEnd > el.selectionStart) {
+    el.setRangeText(corrected, el.selectionStart, el.selectionEnd, "end");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+  const ok = document.execCommand && document.execCommand("insertText", false, corrected);
+  return !!ok;
+}
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId !== "alter-fix-grammar") return;
+  const text = (info.selectionText || "").trim();
+  if (!text || !tab) return;
+  const { models } = await chrome.storage.local.get("models");
+  const connectionId = models && models.grammar;
+  if (!connectionId) {
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => alert("Pick a grammar model in the Alter extension popup first.") });
+    return;
+  }
+  const r = await bridge("/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ connectionId, system: GRAMMAR_SYSTEM, prompt: text }),
+  });
+  if (!r.ok || !r.body.content) {
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: (m) => alert("Alter: " + m), args: [r.body.error || "grammar fix failed"] });
+    return;
+  }
+  chrome.scripting.executeScript({ target: { tabId: tab.id }, func: replaceSelectionInPage, args: [r.body.content] });
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
