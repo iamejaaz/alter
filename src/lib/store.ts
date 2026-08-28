@@ -175,7 +175,15 @@ export const storage = {
   saveMemories: (m: MemoryItem[]) => save("alter.memories", m),
   loadRoutines: () => load<Routine[]>("alter.routines", []),
   saveRoutines: (r: Routine[]) => save("alter.routines", r),
-  loadSkills: () => load<Skill[]>("alter.skills", []),
+  loadSkills: () => {
+    const s = load<Skill[]>("alter.skills", []);
+    // One-time seed of starter skills built from Ejaaz's working preferences.
+    if (s.length === 0 && !localStorage.getItem("alter.skillsSeeded")) {
+      localStorage.setItem("alter.skillsSeeded", "1");
+      return STARTER_SKILLS.map((k) => ({ ...k, id: newId() }));
+    }
+    return s;
+  },
   saveSkills: (s: Skill[]) => save("alter.skills", s),
   loadProjects: () => load<Project[]>("alter.projects", []),
   saveProjects: (p: Project[]) => save("alter.projects", p),
@@ -184,3 +192,48 @@ export const storage = {
 export function newId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
+
+const STARTER_SKILLS: Omit<Skill, "id">[] = [
+  {
+    name: "PR description",
+    description: "Write a short, clean PR description",
+    instructions: [
+      "Write a short PR description — no long paragraphs, no fluff, no preamble.",
+      "Title needs a type prefix: feat: / fix: / refactor: / chore: etc.",
+      "Never add AI/Claude attribution or Co-Authored-By footers.",
+      "Keep exploit/vuln specifics out of public descriptions.",
+      "Lead with the what and why in 1-2 lines; bullet the changes if needed. Link issues/PRs plainly.",
+    ].join("\n"),
+  },
+  {
+    name: "Commit message",
+    description: "Terse conventional commit messages",
+    instructions: [
+      "Type-prefixed subject (feat:/fix:/refactor:/chore:), imperative, under ~70 chars.",
+      "Body only if it adds signal — what changed and why, not how.",
+      "No AI/Claude attribution, no Co-Authored-By.",
+    ].join("\n"),
+  },
+  {
+    name: "PR review",
+    description: "Review a PR with a maintainer's lens",
+    instructions: [
+      "Judge with a maintainer's lens: cleanest mechanism, root cause fixed, no state residue — not just 'it works'.",
+      "Comments: terse, @author-addressed, plain English, link references, no preamble/meta/praise-fluff.",
+      "Explain an issue as a plain before/after user example (user does X → develop shows Y → PR shows worse Z); defer file/line/mechanism until needed.",
+      "Scan test data/fixtures for real domains, emails, names, or keys — flag PII, expect example.com.",
+      "No premature victory — progress is distance-to-parity with the real thing.",
+    ].join("\n"),
+  },
+  {
+    name: "Frappe desk UI",
+    description: "Frappe/Espresso front-end conventions",
+    instructions: [
+      "No explanatory comments in code — keep it comment-free.",
+      "Don't duplicate CSS — reuse existing classes; sweep for dead CSS after edits.",
+      "Never hand-write inline SVGs — use frappe.utils.icon().",
+      "Use Espresso components (es-button, es-badge with data-attributes) instead of bootstrap btn/badge.",
+      "No blue / heavy black for accents — selection/hover use Espresso gray tokens.",
+    ].join("\n"),
+  },
+];
