@@ -677,14 +677,22 @@ export default function App() {
     if (m.attachments) setAttachments(m.attachments);
   };
 
+  const conversationMarkdown = (c: Conversation) =>
+    `# ${c.title}\n\n` +
+    c.messages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => `**${m.role === "user" ? "You" : "Alter"}:**\n\n${m.content}`)
+      .join("\n\n---\n\n");
+
+  const copyConversation = async () => {
+    if (!active) return;
+    await navigator.clipboard.writeText(conversationMarkdown(active));
+    setInfo("Chat copied as Markdown.");
+  };
+
   const exportConversation = async () => {
     if (!active) return;
-    const md =
-      `# ${active.title}\n\n` +
-      active.messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => `**${m.role === "user" ? "You" : "Alter"}:**\n\n${m.content}`)
-        .join("\n\n---\n\n");
+    const md = conversationMarkdown(active);
     try {
       const path = await save({
         defaultPath: `${active.title}.md`,
@@ -900,6 +908,12 @@ export default function App() {
     { id: "routines", label: "Open routines", section: "Actions", run: () => setShowRoutines(true) },
     { id: "skills", label: "Open skills", section: "Actions", run: () => setShowSkills(true) },
     { id: "folder", label: "Attach a working folder", section: "Actions", run: () => void chooseFolder() },
+    ...(active
+      ? [
+          { id: "export", label: "Export chat as Markdown…", section: "Actions", run: () => void exportConversation() },
+          { id: "copymd", label: "Copy chat as Markdown", section: "Actions", run: () => void copyConversation() },
+        ]
+      : []),
     ...(["auto", "ask", "plan", "chat"] as const).map((m) => ({
       id: `mode-${m}`,
       label: `Mode: ${m}`,
