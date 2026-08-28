@@ -32,6 +32,9 @@ async function loadConnections() {
       sel.appendChild(o);
     });
   });
+  // Persist whatever is shown (defaults included) so an untouched dropdown still
+  // counts as a real choice — otherwise its action reports "no model".
+  await saveModels();
   setStatus(`Connected · ${conns.length} models`, "ok");
 }
 
