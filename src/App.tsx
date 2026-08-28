@@ -4,6 +4,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
+import CommandPalette, { Command } from "./components/CommandPalette";
 import { Chevron, IconArrowUp, IconFolder, IconMic, IconPaperclip } from "./components/Icons";
 
 function extractArtifacts(content: string): ArtifactType[] {
@@ -111,6 +112,7 @@ export default function App() {
   const [artifact, setArtifact] = useState<ArtifactType | null>(null);
   const [listening, setListening] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
+  const [showPalette, setShowPalette] = useState(false);
   const abortsRef = useRef<Record<string, AbortController>>({}); // one per streaming conversation
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -223,6 +225,10 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
         e.preventDefault();
         setActiveId(null);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowPalette((v) => !v);
       }
       if (e.key === "Escape") setPreview(null);
     };
@@ -888,6 +894,42 @@ export default function App() {
     "Search the web for today's news",
   ];
 
+  const paletteCommands: Command[] = [
+    { id: "new", label: "New chat", hint: "⌘N", section: "Actions", run: () => setActiveId(null) },
+    { id: "settings", label: "Open settings", section: "Actions", run: () => setShowSettings(true) },
+    { id: "routines", label: "Open routines", section: "Actions", run: () => setShowRoutines(true) },
+    { id: "skills", label: "Open skills", section: "Actions", run: () => setShowSkills(true) },
+    { id: "folder", label: "Attach a working folder", section: "Actions", run: () => void chooseFolder() },
+    ...(["auto", "ask", "plan", "chat"] as const).map((m) => ({
+      id: `mode-${m}`,
+      label: `Mode: ${m}`,
+      section: "Mode",
+      run: () => applyMode(m),
+    })),
+    ...connections.map((c) => ({
+      id: `conn-${c.id}`,
+      label: isClaudeCodeUrl(c.baseUrl) ? "Claude Code" : c.name,
+      hint: c.id === settings.activeConnectionId ? "current" : undefined,
+      section: "Connections",
+      run: () => switchConnection(c.id),
+    })),
+    ...(claudeCodeActive
+      ? CLAUDE_MODELS.map((m) => ({
+          id: `cm-${m.id}`,
+          label: `Claude model: ${m.label}`,
+          hint: settings.model === m.id ? "current" : undefined,
+          section: "Claude model",
+          run: () => setClaudeModel(m.id),
+        }))
+      : []),
+    ...conversations.map((c) => ({
+      id: `chat-${c.id}`,
+      label: c.title,
+      section: "Chats",
+      run: () => setActiveId(c.id),
+    })),
+  ];
+
   return (
     <div className="flex h-full bg-[var(--bg)] text-[var(--txt)]">
       <Sidebar
@@ -1391,6 +1433,8 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {showPalette && <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />}
 
       <ConfirmHost />
 
