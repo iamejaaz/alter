@@ -433,7 +433,7 @@ export default function App() {
           const facts = memories.map((m) => `- ${m.text}`).join("\n");
           ccPrompt = `<context note="Things I've told you before — keep these in mind; don't reply to this block">\n${facts}\n</context>\n\n${apiText}`;
         }
-        const { content, sessionId } = await claudeCodeChat(
+        const { content, sessionId, costUsd, tokens } = await claudeCodeChat(
           ccPrompt,
           folder,
           convId,
@@ -468,6 +468,8 @@ export default function App() {
         updateConversation(convId, (c) => ({
           ...c,
           claudeSessionId: sessionId ?? c.claudeSessionId,
+          costUsd: costUsd != null ? (c.costUsd ?? 0) + costUsd : c.costUsd,
+          lastTokens: tokens ?? c.lastTokens,
           messages: [
             ...c.messages.slice(0, -1),
             ...(content ? [{ role: "assistant", content } as Message] : []),
@@ -1440,8 +1442,13 @@ export default function App() {
                   />
                 )}
                 {active && active.messages.length > 0 && (
-                  <span className="text-[11px] text-[var(--txt-faint)] tabular-nums mx-1">
-                    ~{tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}
+                  <span className="text-[11px] text-[var(--txt-faint)] tabular-nums mx-1" title="Context tokens · session cost">
+                    {active.lastTokens
+                      ? active.lastTokens >= 1000
+                        ? (active.lastTokens / 1000).toFixed(1) + "k"
+                        : active.lastTokens
+                      : `~${tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}`}
+                    {active.costUsd != null && ` · $${active.costUsd.toFixed(active.costUsd < 1 ? 3 : 2)}`}
                   </span>
                 )}
 

@@ -30,6 +30,8 @@ export interface Conversation {
   model?: string; // resolved model for this chat (e.g. Claude Code sub-model)
   effort?: Effort;
   pinned?: boolean;
+  costUsd?: number; // cumulative Claude Code spend for this chat
+  lastTokens?: number; // context tokens reported on the last turn
 }
 
 // Sentinel base URL that routes a connection to the local `claude` CLI instead of HTTP.

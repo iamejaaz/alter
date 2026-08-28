@@ -218,10 +218,12 @@ export async function claudeCodeChat(
   onDelta: (text: string) => void,
   onActivity: (label: string) => void,
   signal: AbortSignal
-): Promise<{ content: string; sessionId: string | null }> {
+): Promise<{ content: string; sessionId: string | null; costUsd: number | null; tokens: number | null }> {
   let streamed = ""; // text of the current segment (reset at each tool boundary)
   let result = ""; // authoritative final answer from the result event
   let sid: string | null = sessionId;
+  let costUsd: number | null = null;
+  let tokens: number | null = null;
   let pending: { name: string; input: string } | null = null; // tool call being built
   const smoother = makeSmoother(onDelta);
 
@@ -283,6 +285,9 @@ export async function claudeCodeChat(
       // Final answer — only paint it if nothing streamed (else keep what the user watched).
       if (ev.type === "result" && typeof ev.result === "string") {
         result = ev.result;
+        if (typeof ev.total_cost_usd === "number") costUsd = ev.total_cost_usd;
+        const u = ev.usage as { input_tokens?: number; output_tokens?: number } | undefined;
+        if (u) tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0);
         // Blocked by permissions (Ask/Plan modes) — tell the user how to allow it.
         const denials = Array.isArray(ev.permission_denials) ? ev.permission_denials : [];
         if (denials.length) {
@@ -314,5 +319,5 @@ export async function claudeCodeChat(
     signal.removeEventListener("abort", onAbort);
   }
   await smoother.finish(); // let the last burst finish typing out
-  return { content: streamed || result, sessionId: sid };
+  return { content: streamed || result, sessionId: sid, costUsd, tokens };
 }
