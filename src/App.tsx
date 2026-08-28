@@ -78,6 +78,7 @@ import {
   Conversation,
   MemoryItem,
   Message,
+  Project,
   Routine,
   Settings,
   Skill,
@@ -86,6 +87,7 @@ import {
   storage,
 } from "./lib/store";
 import RoutinesPanel from "./components/RoutinesPanel";
+import ProjectsPanel from "./components/ProjectsPanel";
 import SkillsPanel from "./components/SkillsPanel";
 import ConfirmHost from "./components/ConfirmHost";
 
@@ -94,6 +96,11 @@ export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => storage.loadConversations());
   const [memories, setMemories] = useState<MemoryItem[]>(() => storage.loadMemories());
   const [routines, setRoutines] = useState<Routine[]>(() => storage.loadRoutines());
+  const [projects, setProjects] = useState<Project[]>(() => storage.loadProjects());
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(
+    () => localStorage.getItem("alter.activeProject")
+  );
+  const [showProjects, setShowProjects] = useState(false);
   const [showRoutines, setShowRoutines] = useState(false);
   const [skills, setSkills] = useState<Skill[]>(() => storage.loadSkills());
   const [showSkills, setShowSkills] = useState(false);
@@ -167,6 +174,17 @@ export default function App() {
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const activeStreaming = !!activeId && streamingIds.includes(activeId);
+  const selectProject = (id: string | null) => {
+    setActiveProjectId(id);
+    if (id) localStorage.setItem("alter.activeProject", id);
+    else localStorage.removeItem("alter.activeProject");
+    const p = projects.find((x) => x.id === id);
+    if (p?.folder) {
+      setFolder(p.folder);
+      localStorage.setItem("alter.folder", p.folder);
+    }
+    setActiveId(null);
+  };
 
   useEffect(() => {
     void invoke<string>("read_user_memory").then(setSharedMemory).catch(() => {});
@@ -232,6 +250,7 @@ export default function App() {
   useEffect(() => storage.saveConversations(conversations), [conversations]);
   useEffect(() => storage.saveMemories(memories), [memories]);
   useEffect(() => storage.saveRoutines(routines), [routines]);
+  useEffect(() => storage.saveProjects(projects), [projects]);
   useEffect(() => storage.saveSkills(skills), [skills]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -358,6 +377,7 @@ export default function App() {
         connectionId: settings.activeConnectionId,
         model: settings.model,
         effort: settings.effort,
+        projectId: activeProjectId ?? undefined,
       };
       setConversations((prev) => [conv, ...prev]);
       setActiveId(convId);
@@ -379,8 +399,15 @@ export default function App() {
     // Run them tool-free — they're excellent as chat + vision + coding models.
     const isGemini = /generativelanguage\.googleapis\.com/i.test(settings.baseUrl);
     const useTools = (mode === "auto" || mode === "ask") && !isGemini;
+    const proj = projects.find(
+      (p) => p.id === (conversations.find((c) => c.id === convId)?.projectId ?? activeProjectId)
+    );
+    const projectInstructions = proj?.instructions?.trim();
     const systemContent =
       buildSystemPrompt(memories, mode, skills) +
+      (projectInstructions
+        ? `\n\nProject "${proj!.name}" instructions (treat as authoritative):\n${projectInstructions}`
+        : "") +
       (folder
         ? `\n\nThe user's attached working folder is: ${folder}\nThis is "this folder" / "this project" / "here". When asked about it, immediately call list_tree on it and read key files (README, package.json, main source) to answer — do not ask the user to confirm the path.`
         : "") +
@@ -429,9 +456,14 @@ export default function App() {
         // so what you told Alter applies here too (Claude Code already loads its own
         // CLAUDE.md + memory automatically).
         let ccPrompt = apiText;
-        if (!prior && memories.length > 0) {
-          const facts = memories.map((m) => `- ${m.text}`).join("\n");
-          ccPrompt = `<context note="Things I've told you before — keep these in mind; don't reply to this block">\n${facts}\n</context>\n\n${apiText}`;
+        if (!prior) {
+          const blocks: string[] = [];
+          if (memories.length > 0) blocks.push(memories.map((m) => `- ${m.text}`).join("\n"));
+          if (projectInstructions) blocks.push(`Project "${proj!.name}":\n${projectInstructions}`);
+          if (blocks.length)
+            ccPrompt = `<context note="Things I've told you before — keep these in mind; don't reply to this block">\n${blocks.join(
+              "\n\n"
+            )}\n</context>\n\n${apiText}`;
         }
         const { content, sessionId, costUsd, tokens } = await claudeCodeChat(
           ccPrompt,
@@ -942,6 +974,15 @@ export default function App() {
     { id: "settings", label: "Open settings", section: "Actions", run: () => setShowSettings(true) },
     { id: "routines", label: "Open routines", section: "Actions", run: () => setShowRoutines(true) },
     { id: "skills", label: "Open skills", section: "Actions", run: () => setShowSkills(true) },
+    { id: "projects", label: "Manage projects", section: "Actions", run: () => setShowProjects(true) },
+    { id: "proj-all", label: "Project: All chats", section: "Projects", run: () => selectProject(null) },
+    ...projects.map((p) => ({
+      id: `proj-${p.id}`,
+      label: `Project: ${p.name}`,
+      hint: activeProjectId === p.id ? "current" : undefined,
+      section: "Projects",
+      run: () => selectProject(p.id),
+    })),
     { id: "folder", label: "Attach a working folder", section: "Actions", run: () => void chooseFolder() },
     ...(active
       ? [
@@ -991,6 +1032,10 @@ export default function App() {
       <Sidebar
         conversations={conversations}
         activeId={activeId}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        onSelectProject={selectProject}
+        onManageProjects={() => setShowProjects(true)}
         onSelect={setActiveId}
         onNew={() => setActiveId(null)}
         onDelete={deleteConversation}
@@ -1509,6 +1554,17 @@ export default function App() {
       <ConfirmHost />
 
       {showSkills && <SkillsPanel skills={skills} onChange={setSkills} onClose={() => setShowSkills(false)} />}
+
+      {showProjects && (
+        <ProjectsPanel
+          projects={projects}
+          onChange={(p) => {
+            setProjects(p);
+            if (activeProjectId && !p.some((x) => x.id === activeProjectId)) selectProject(null);
+          }}
+          onClose={() => setShowProjects(false)}
+        />
+      )}
 
       {showRoutines && (
         <RoutinesPanel

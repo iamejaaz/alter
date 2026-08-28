@@ -32,6 +32,14 @@ export interface Conversation {
   pinned?: boolean;
   costUsd?: number; // cumulative Claude Code spend for this chat
   lastTokens?: number; // context tokens reported on the last turn
+  projectId?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  folder?: string;
+  instructions?: string;
 }
 
 // Sentinel base URL that routes a connection to the local `claude` CLI instead of HTTP.
@@ -169,6 +177,8 @@ export const storage = {
   saveRoutines: (r: Routine[]) => save("alter.routines", r),
   loadSkills: () => load<Skill[]>("alter.skills", []),
   saveSkills: (s: Skill[]) => save("alter.skills", s),
+  loadProjects: () => load<Project[]>("alter.projects", []),
+  saveProjects: (p: Project[]) => save("alter.projects", p),
 };
 
 export function newId(): string {

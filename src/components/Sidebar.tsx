@@ -1,11 +1,15 @@
 import { useState } from "react";
-import { Conversation } from "../lib/store";
+import { Conversation, Project } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
 
 interface Props {
   conversations: Conversation[];
   activeId: string | null;
+  projects: Project[];
+  activeProjectId: string | null;
+  onSelectProject: (id: string | null) => void;
+  onManageProjects: () => void;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
@@ -19,6 +23,10 @@ interface Props {
 export default function Sidebar({
   conversations,
   activeId,
+  projects,
+  activeProjectId,
+  onSelectProject,
+  onManageProjects,
   onSelect,
   onNew,
   onDelete,
@@ -43,13 +51,16 @@ export default function Sidebar({
     setEditingId(null);
   };
   const q = query.trim().toLowerCase();
+  const scoped = activeProjectId
+    ? conversations.filter((c) => c.projectId === activeProjectId)
+    : conversations;
   const matched = q
-    ? conversations.filter(
+    ? scoped.filter(
         (c) =>
           c.title.toLowerCase().includes(q) ||
           c.messages.some((m) => m.content?.toLowerCase().includes(q))
       )
-    : conversations;
+    : scoped;
   const filtered = [...matched].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
   const pinned = filtered.filter((c) => c.pinned);
   const rest = filtered.filter((c) => !c.pinned);
@@ -134,6 +145,31 @@ export default function Sidebar({
       </div>
 
       <div className="px-3 pt-2 pb-3">
+        <div className="mb-2 flex items-center gap-1">
+          <div className="relative flex-1">
+            <select
+              value={activeProjectId ?? ""}
+              onChange={(e) => onSelectProject(e.target.value || null)}
+              className="w-full appearance-none rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-2.5 py-1.5 pr-6 text-xs font-medium text-[var(--txt)] focus:outline-none cursor-pointer"
+              title="Project"
+            >
+              <option value="">All chats</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id} className="bg-[var(--modal)]">
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--txt-faint)]">▾</span>
+          </div>
+          <button
+            onClick={onManageProjects}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--bd)] text-[var(--txt-dim)] hover:bg-[var(--panel-2)] hover:text-[var(--txt)] transition-colors"
+            title="Manage projects"
+          >
+            ⚙
+          </button>
+        </div>
         <button
           onClick={onNew}
           className="w-full flex items-center gap-2 rounded-xl bg-[var(--panel)] hover:bg-[var(--panel-2)] border border-[var(--bd)] px-3 py-2 text-sm text-[var(--txt)] transition-colors"
