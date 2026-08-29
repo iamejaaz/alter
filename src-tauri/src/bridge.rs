@@ -111,10 +111,12 @@ fn fr_rules(verbs: &[&str]) -> Vec<String> {
 fn agent_allowed_tools() -> String {
     let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch", "Skill"].iter().map(|s| s.to_string()).collect();
     t.extend(fr_rules(FR_READ_VERBS));
-    for g in [
-        "git show", "git log", "git grep", "git diff",
-        "gh pr view", "gh pr list", "gh issue view", "gh issue list", "gh search",
-    ] {
+    // `git -C <app> show …` is how the agent reads app repos (the bench root isn't
+    // one), and a global flag before the subcommand can't match a `git show`
+    // prefix rule — so allow git broadly and keep it read-only via the skill's
+    // rules. The real boundary (no site mutation) is fr/network, gated separately.
+    t.push("Bash(git:*)".to_string());
+    for g in ["gh pr view", "gh pr list", "gh issue view", "gh issue list", "gh search"] {
         t.push(format!("Bash({g}:*)"));
     }
     t.join(" ")

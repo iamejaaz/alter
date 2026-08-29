@@ -23,6 +23,12 @@ dressed up as a conclusion.
 - **Reproduce before you conclude.** A code-trace is a hypothesis. If you can run
   a bench, confirm it (see step 5). If you can't, say the root cause is
   *unconfirmed* and what would confirm it.
+- **Git is READ-ONLY during diagnosis.** Inspect with `git -C apps/<app> show
+  <ref>:path`, `git -C apps/<app> log`/`diff`/`cat-file` — the bench root isn't a
+  repo, so always target the app with `-C apps/<app>`. NEVER `checkout`, `switch`,
+  `commit`, `reset`, `restore`, `merge`, `rebase`, or `push`; never change the
+  working tree or a remote. Read history with `show` — don't check anything out.
+  (Branching/committing/PRs happen only in a Create-PR run or a handoff session.)
 - **Scan for PII.** Tickets carry real customer names, emails, resumes. Never
   paste candidate/customer PII into a public PR or issue; refer to the ticket by
   number.
