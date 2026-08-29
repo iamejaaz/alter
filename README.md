@@ -4,11 +4,13 @@ Your second self — a lightweight desktop AI companion with memory. Bring your 
 
 ![Alter](docs/screenshot.png)
 
-Alter is a small, fast desktop chat app. It talks to any OpenAI-compatible model, remembers what matters about you across conversations, can read and edit files in a folder you attach, and runs saved prompts on a schedule. It uses your OS's native webview (via Tauri), so the app is a few MB and light on memory — no bundled browser.
+Alter is a small, fast desktop chat app. It talks to any OpenAI-compatible model — or your **Claude Code** subscription — remembers what matters about you across conversations, can read and edit files in a folder you attach, and runs saved prompts on a schedule. It uses your OS's native webview (via Tauri), so the app is a few MB and light on memory — no bundled browser.
 
 ## Features
 
-- **Bring your own model** — point the base URL at any OpenAI-compatible endpoint (presets for DeepSeek, Moonshot/Kimi, and the Vercel AI Gateway are just quick-fills). Requests are proxied through the Rust backend, so any host works with no allowlist. A **Test connection** button checks the endpoint and lists its models. Your API key is stored only on your device.
+- **Bring your own model** — point the base URL at any OpenAI-compatible endpoint (presets for DeepSeek and Moonshot/Kimi are just quick-fills). Requests are proxied through the Rust backend, so any host works with no allowlist. A **Test connection** button checks the endpoint and lists its models. Your API key is stored only on your device.
+- **Claude Code backend** — add a Claude Code connection to use your local `claude` subscription with no API key. These sessions are agentic (they can run tools) and pick Opus / Sonnet / Haiku per connection.
+- **Per-chat model** — each conversation remembers its own connection, model, and effort; switch mid-thread without touching the others.
 - **Streaming chat** with markdown, syntax-highlighted code, LaTeX math (KaTeX), copy buttons, and editable messages.
 - **Artifacts** — HTML/SVG the assistant produces opens in a live, sandboxed side-panel preview.
 - **Light & dark themes** — toggle in Settings, remembered across launches.
@@ -21,7 +23,11 @@ Alter is a small, fast desktop chat app. It talks to any OpenAI-compatible model
 - **Shows its work** — every file read, search, web fetch, or write appears as a step in the conversation as Alter takes it.
 - **Web access** — Alter can search the web and read pages to answer with current information.
 - **Browser mode** — for JavaScript-heavy pages or tasks that need clicking and typing, Alter drives a real browser (uses your installed Chrome, or downloads a browser engine on first use).
+- **Projects** — group conversations under a project with its own working folder and instructions.
+- **Command palette** (⌘K) and a **global hotkey** (⌘⇧Space) to summon Alter from anywhere; **branch a chat** to explore an alternate direction without losing the original.
+- **Token & cost meter** — see tokens and estimated cost per conversation; `/usage` and `/compact` slash commands (Claude Code) report usage and compact context without spending tokens.
 - **Routines** — save a prompt and an interval; Alter runs it automatically and drops each result into a new conversation. Scheduled runs execute in the Rust backend, so they fire even with the window closed.
+- **Browser bridge + extension** — a token-gated local bridge (`127.0.0.1:8765`) lets the companion browser extension reuse your Alter connections with no keys in the browser: maintainer-lens GitHub PR review, a Frappe Helpdesk support agent, grammar fix, and page summaries. See [`extension/`](extension/).
 - **Runs in the background** — a menu-bar tray keeps Alter alive when you close the window, plus an optional launch-at-login.
 
 ## Stack
@@ -80,7 +86,8 @@ Everything is stored in the app's local storage on your device:
 
 ## Notes
 
-- Shell/command execution is intentionally not included — Alter can read, search, and write files, but does not run arbitrary commands.
+- OpenAI-compatible connections are file-tool only — read, search, and write files, no arbitrary commands.
+- Claude Code connections are full agentic sessions and **can** run commands (they act freely on your machine). Use them only with a subscription you trust on this device.
 
 ## License
 
