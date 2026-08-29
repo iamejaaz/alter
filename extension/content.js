@@ -70,6 +70,7 @@ async function run() {
     model: session.model,
     system: REVIEW_SYSTEM,
     prompt,
+    label: "review",
   });
   session.review = raw;
   renderFooter();
@@ -90,6 +91,7 @@ async function followUp(q) {
     system:
       "You are the maintainer discussing your review of this PR with the author. Answer the question specifically and concisely; reference file:line where relevant.",
     prompt,
+    label: "followup",
   });
   session.transcript.push({ q, a });
 }
@@ -107,6 +109,7 @@ async function draftComment() {
     model: session.model,
     system: DRAFT_SYSTEM,
     prompt: `PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}. Your review:\n${session.review}\n\nWrite the comment to post.`,
+    label: "draft",
   });
   if (draft) {
     session.draft = draft;
@@ -150,12 +153,46 @@ function displayText(full) {
 
 let activeRun = null; // { runId, stop } while a review/follow-up is in flight
 
-// The review runs as an agent in a background thread on the bridge; we POLL for
-// its live steps (~1.2s) instead of streaming, because MV3 service workers
-// buffer a streamed fetch. Steps render as they arrive and nothing times out.
-function streamAgent(el, params) {
-  const runId =
-    (self.crypto && crypto.randomUUID && crypto.randomUUID()) || "r" + Date.now() + Math.random();
+// Persist a run's runId per PR so a page-tab reload can RECONNECT to the
+// still-running bridge job instead of orphaning it.
+const RUN_STORE = "pr_active_runs";
+function prKey(parts) {
+  return `${parts.owner}/${parts.repo}#${parts.num}`;
+}
+async function saveActiveRun(rec) {
+  try {
+    const s = await chrome.storage.local.get(RUN_STORE);
+    const runs = s[RUN_STORE] || {};
+    runs[rec.key] = rec;
+    await chrome.storage.local.set({ [RUN_STORE]: runs });
+  } catch (_) {}
+}
+async function clearActiveRun(key) {
+  try {
+    const s = await chrome.storage.local.get(RUN_STORE);
+    const runs = s[RUN_STORE] || {};
+    if (runs[key]) {
+      delete runs[key];
+      await chrome.storage.local.set({ [RUN_STORE]: runs });
+    }
+  } catch (_) {}
+}
+async function getActiveRun(key) {
+  try {
+    const s = await chrome.storage.local.get(RUN_STORE);
+    return (s[RUN_STORE] || {})[key] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Drive a bridge run's live feed by polling (~1.2s). Works for a fresh run
+// (opts.start fires agent-start) and for reconnecting to an already-running one
+// after reload (no start — it already exists server-side).
+function pollRun(el, runId, opts) {
+  opts = opts || {};
+  const parts = prParts();
+  const key = parts ? prKey(parts) : null;
   return new Promise((resolve) => {
     const t0 = Date.now();
     el.innerHTML =
@@ -172,6 +209,7 @@ function streamAgent(el, params) {
       clearInterval(poll);
       activeRun = null;
       showStop(false);
+      if (key) clearActiveRun(key);
     };
     const tick = setInterval(() => {
       if (!done) elapsedEl.textContent = `Thinking… ${Math.round((Date.now() - t0) / 1000)}s`;
@@ -237,22 +275,80 @@ function streamAgent(el, params) {
       }
     };
 
-    send({
-      type: "agent-start",
-      connectionId: params.connectionId,
-      includeMemory: params.includeMemory,
-      system: params.system,
-      prompt: params.prompt,
-      model: params.model,
-      mode: params.mode,
-      runId,
-    }).then((r) => {
-      if (done) return;
-      if (!r || !r.ok) return fail(r && r.error);
+    const begin = () => {
       poll = setInterval(doPoll, 1200);
       doPoll();
-    });
+    };
+    if (opts.start) {
+      opts.start(runId).then((r) => {
+        if (done) return;
+        if (!r || !r.ok) return fail(r && r.error);
+        begin();
+      });
+    } else {
+      begin();
+    }
   });
+}
+
+function streamAgent(el, params) {
+  const runId =
+    (self.crypto && crypto.randomUUID && crypto.randomUUID()) || "r" + Date.now() + Math.random();
+  const parts = prParts();
+  if (parts)
+    saveActiveRun({
+      key: prKey(parts),
+      runId,
+      connectionId: params.connectionId,
+      model: params.model,
+      label: params.label || "review",
+    });
+  return pollRun(el, runId, {
+    start: (rid) =>
+      send({
+        type: "agent-start",
+        connectionId: params.connectionId,
+        includeMemory: params.includeMemory,
+        system: params.system,
+        prompt: params.prompt,
+        model: params.model,
+        mode: params.mode,
+        runId: rid,
+      }),
+  });
+}
+
+// After a page-tab reload, re-attach to a review still running on the bridge.
+const reconnected = new Set();
+async function reconnectIfActive() {
+  const parts = prParts();
+  if (!parts) return;
+  const key = prKey(parts);
+  if (reconnected.has(key) || document.getElementById("alter-panel")) return;
+  reconnected.add(key);
+  const rec = await getActiveRun(key);
+  if (!rec) return;
+  const r = await send({ type: "agent-poll", runId: rec.runId });
+  if (!r || !r.ok || !r.data || (r.data.done && r.data.error === "run not found")) {
+    clearActiveRun(key);
+    return;
+  }
+  openPanel();
+  session = { parts, connectionId: rec.connectionId, model: rec.model, diff: "", note: "", review: "", draft: "", transcript: [] };
+  clearBody();
+  const note = document.createElement("div");
+  note.className = "alter-step alter-step-say";
+  note.textContent = "Reconnected to a review in progress…";
+  document.querySelector("#alter-panel-body").appendChild(note);
+  const block = appendBlock("assistant");
+  const a = await pollRun(block, rec.runId, {});
+  if (rec.label === "draft") {
+    session.draft = a;
+    renderPostPreview(a);
+  } else {
+    session.review = a;
+    renderFooter();
+  }
 }
 
 function showStop(on) {
@@ -396,6 +492,10 @@ function renderPostPreview(text) {
   );
 }
 
-setInterval(ensureButton, 1500);
+setInterval(() => {
+  ensureButton();
+  reconnectIfActive();
+}, 1500);
 ensureButton();
+reconnectIfActive();
 })();
