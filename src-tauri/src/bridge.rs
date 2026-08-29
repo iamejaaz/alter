@@ -1013,6 +1013,29 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run fr: {e}") }).to_string()),
             }
         }
+        (tiny_http::Method::Post, "/open-chat") => {
+            #[derive(serde::Deserialize)]
+            struct O {
+                prompt: String,
+                #[serde(default)]
+                title: Option<String>,
+            }
+            let req: O = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
+            };
+            use tauri::Emitter;
+            let _ = app.emit("alter://open-chat", serde_json::json!({ "prompt": req.prompt, "title": req.title }));
+            if let Some(w) = app
+                .get_webview_window("main")
+                .or_else(|| app.webview_windows().into_values().next())
+            {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+            (200, "{\"ok\":true}".into())
+        }
         (tiny_http::Method::Post, "/assistant") => {
             #[derive(serde::Deserialize)]
             struct A {

@@ -70,6 +70,7 @@ function groupMessages(messages: Message[]): RenderItem[] {
 import { buildSystemPrompt, ChatResult, claudeCodeChat, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { extractPdfText } from "./lib/pdf";
 import { confirmDialog } from "./lib/confirm";
@@ -256,6 +257,36 @@ export default function App() {
     void invoke("bridge_sync", { connections: settings.connections ?? [] }).catch(() => {});
   }, [settings.connections]);
   useEffect(() => storage.saveSkills(skills), [skills]);
+  // Extension "Open in Alter" handoff: the bridge emits this event; open a new
+  // chat on a Claude Code connection pre-filled with the ticket prompt (NOT sent
+  // — the user hits Enter to start the autonomous session).
+  const openSeededRef = useRef<(prompt: string, title?: string) => void>(() => {});
+  openSeededRef.current = (prompt: string, title?: string) => {
+    const claude = (settings.connections ?? []).find((c) => isClaudeCodeUrl(c.baseUrl));
+    const convId = newId();
+    setConversations((prev) => [
+      {
+        id: convId,
+        title: title || prompt.slice(0, 40),
+        messages: [],
+        createdAt: Date.now(),
+        connectionId: claude?.id ?? settings.activeConnectionId,
+        model: claude?.model ?? settings.model,
+        effort: settings.effort,
+        projectId: activeProjectId ?? undefined,
+      },
+      ...prev,
+    ]);
+    setActiveId(convId);
+    setInput(prompt);
+  };
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    void listen<{ prompt: string; title?: string }>("alter://open-chat", (e) =>
+      openSeededRef.current(e.payload.prompt, e.payload.title)
+    ).then((u) => (un = u));
+    return () => un?.();
+  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {

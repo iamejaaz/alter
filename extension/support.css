@@ -178,10 +178,11 @@
 }
 #sup-foot-actions {
   display: flex;
-  gap: 6px;
 }
-#sup-create-pr {
-  flex: 1;
+.sup-menu-wrap {
+  position: relative;
+}
+#sup-continue {
   background: #232329;
   color: #e4e4e7;
   border: 1px solid #3f3f46;
@@ -191,30 +192,47 @@
   font-weight: 600;
   cursor: pointer;
 }
-#sup-create-pr:hover {
+#sup-continue:hover {
   background: #2c2c34;
 }
-#sup-create-pr:disabled {
-  opacity: 0.5;
-  cursor: default;
+.sup-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  background: #1c1c22;
+  border: 1px solid #3f3f46;
+  border-radius: 10px;
+  padding: 4px;
+  z-index: 10;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
-.sup-ghost {
+.sup-menu[hidden] {
+  display: none;
+}
+.sup-menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
   background: transparent;
-  color: #a1a1aa;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 7px 10px;
-  font: 12px/1 inherit;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.sup-ghost:hover {
+  border: 0;
   color: #e4e4e7;
-  background: #232329;
+  border-radius: 7px;
+  padding: 7px 9px;
+  font: 12px/1.2 inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
-.sup-ghost:disabled {
-  opacity: 0.5;
-  cursor: default;
+.sup-menu button span {
+  font-weight: 400;
+  font-size: 11px;
+  color: #8b8b94;
+}
+.sup-menu button:hover {
+  background: #2c2c34;
 }
 #sup-ask {
   flex: 1;
