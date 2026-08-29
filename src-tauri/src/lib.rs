@@ -884,7 +884,46 @@ use tauri::{Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+// Ship Alter's skills with the app: install them into ~/.claude/skills on first
+// run so the headless `claude` the bridge drives (and any Claude Code session on
+// this machine) can use them. Idempotent — never clobbers a user-edited copy.
+fn install_bundled_skills() {
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    let dir = std::path::Path::new(&home).join(".claude/skills/frappe-support-diagnosis");
+    if dir.join("SKILL.md").exists() {
+        return;
+    }
+    let scripts = dir.join("scripts");
+    if std::fs::create_dir_all(&scripts).is_err() {
+        return;
+    }
+    let _ = std::fs::write(
+        dir.join("SKILL.md"),
+        include_str!("../../skills/frappe-support-diagnosis/SKILL.md"),
+    );
+    let files = [
+        (scripts.join("find-code.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/find-code.sh")),
+        (scripts.join("across-versions.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/across-versions.sh")),
+    ];
+    for (path, body) in &files {
+        let _ = std::fs::write(path, body);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = std::fs::metadata(path) {
+                let mut perm = meta.permissions();
+                perm.set_mode(0o755);
+                let _ = std::fs::set_permissions(path, perm);
+            }
+        }
+    }
+}
+
 pub fn run() {
+    install_bundled_skills();
     tauri::Builder::default()
         .manage(browser::BrowserState::default())
         .manage(ChatCancel::default())

@@ -109,7 +109,7 @@ fn fr_rules(verbs: &[&str]) -> Vec<String> {
 }
 
 fn agent_allowed_tools() -> String {
-    let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch"].iter().map(|s| s.to_string()).collect();
+    let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch", "Skill"].iter().map(|s| s.to_string()).collect();
     t.extend(fr_rules(FR_READ_VERBS));
     for g in [
         "git show", "git log", "git grep", "git diff",
