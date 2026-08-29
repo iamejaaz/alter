@@ -61,10 +61,10 @@ async function run() {
   const ciBlock = checks.trim() ? `CI checks:\n${checks.slice(0, 4000)}\n\n` : "";
   const prompt = `Review this pull request (${parts.owner}/${parts.repo}#${parts.num}).\n\n${ciBlock}Diff:\n${diff}${note}`;
 
-  session = { parts, connectionId, model: claudeModel || undefined, diff, note, review: "", transcript: [] };
+  session = { parts, connectionId, model: claudeModel || undefined, diff, note, review: "", draft: "", transcript: [] };
   clearBody();
   const block = appendBlock("assistant");
-  const raw = await streamInto(block, {
+  const raw = await streamAgent(block, {
     connectionId,
     includeMemory: true,
     model: session.model,
@@ -83,7 +83,7 @@ async function followUp(q) {
     `PR diff (may be truncated):\n${session.diff}${session.note}\n\n` +
     `Your review:\n${session.review}${t}\n\nUser: ${q}\nYou:`;
   const block = appendBlock("assistant");
-  const a = await streamInto(block, {
+  const a = await streamAgent(block, {
     connectionId: session.connectionId,
     includeMemory: true,
     model: session.model,
@@ -94,8 +94,33 @@ async function followUp(q) {
   session.transcript.push({ q, a });
 }
 
-async function postToGh(event, btn) {
+const DRAFT_SYSTEM =
+  "You are Ejaaz writing the review comment to post on this PR. Terse, plain English, @author-addressed where useful, cite file:line, and include a ```suggestion block when a concrete fix fits. No preamble, no praise-fluff, no meta. Output ONLY the comment body, ready to paste.";
+
+async function draftComment() {
   if (!session) return;
+  appendBlock("user").textContent = "Draft comment";
+  const block = appendBlock("assistant");
+  const draft = await streamAgent(block, {
+    connectionId: session.connectionId,
+    includeMemory: true,
+    model: session.model,
+    system: DRAFT_SYSTEM,
+    prompt: `PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}. Your review:\n${session.review}\n\nWrite the comment to post.`,
+  });
+  if (draft) {
+    session.draft = draft;
+    renderPostPreview(draft);
+  }
+}
+
+async function postToGh(event, body, btn) {
+  if (!session) return;
+  const note = document.querySelector("#alter-foot-note");
+  if (!body || !body.trim()) {
+    if (note) note.innerHTML = `<span class="alter-err">Nothing to post — the comment is empty.</span>`;
+    return;
+  }
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Posting…";
@@ -103,16 +128,15 @@ async function postToGh(event, btn) {
     type: "gh",
     repo: `${session.parts.owner}/${session.parts.repo}`,
     num: session.parts.num,
-    body: session.review,
+    body,
     event,
   });
   btn.disabled = false;
   btn.textContent = label;
-  const note = document.querySelector("#alter-foot-note");
   if (r && r.ok) {
-    note.innerHTML = "✓ Posted to the PR.";
+    if (note) note.innerHTML = "✓ Posted to the PR.";
   } else {
-    note.innerHTML = `<span class="alter-err">${escapeHtml((r && r.error) || "Failed to post.")}</span>`;
+    if (note) note.innerHTML = `<span class="alter-err">${escapeHtml((r && r.error) || "Failed to post.")}</span>`;
   }
 }
 
@@ -126,57 +150,107 @@ function displayText(full) {
 
 let activeRun = null; // { runId, stop } while a review/follow-up is in flight
 
-// Non-streaming: MV3 service workers buffer a fetch stream until it completes,
-// so incremental streaming can't work here — run it and show the full answer.
-// Stop kills the run on the bridge so it doesn't keep going after you close it.
-function streamInto(el, params) {
+// The review runs as an agent in a background thread on the bridge; we POLL for
+// its live steps (~1.2s) instead of streaming, because MV3 service workers
+// buffer a streamed fetch. Steps render as they arrive and nothing times out.
+function streamAgent(el, params) {
   const runId =
     (self.crypto && crypto.randomUUID && crypto.randomUUID()) || "r" + Date.now() + Math.random();
   return new Promise((resolve) => {
     const t0 = Date.now();
+    el.innerHTML =
+      '<div class="alter-steps"></div><div class="alter-working"><span class="alter-spin"></span><span class="alter-elapsed">Thinking… 0s</span></div>';
+    const stepsEl = el.querySelector(".alter-steps");
+    const workEl = el.querySelector(".alter-working");
+    const elapsedEl = el.querySelector(".alter-elapsed");
     let done = false;
-    const tick = setInterval(() => {
-      if (done) return;
-      el.innerHTML = `<span style="color:#a1a1aa">Thinking… ${Math.round((Date.now() - t0) / 1000)}s</span>`;
-    }, 1000);
-    const finish = (html, val) => {
-      if (done) return;
-      done = true;
+    let poll = null;
+    let shown = 0;
+
+    const cleanup = () => {
       clearInterval(tick);
-      clearTimeout(to);
+      clearInterval(poll);
       activeRun = null;
       showStop(false);
-      el.innerHTML = html;
-      resolve(val);
     };
-    const to = setTimeout(
-      () => finish('<span class="alter-err">Timed out after 3 min — try again or a smaller diff.</span>', ""),
-      180000
-    );
+    const tick = setInterval(() => {
+      if (!done) elapsedEl.textContent = `Thinking… ${Math.round((Date.now() - t0) / 1000)}s`;
+    }, 1000);
+
+    const renderSteps = (steps) => {
+      for (let i = shown; i < steps.length; i++) {
+        const d = document.createElement("div");
+        d.className = "alter-step" + (steps[i].indexOf("▸ ") === 0 ? " alter-step-tool" : " alter-step-say");
+        d.textContent = steps[i];
+        stepsEl.appendChild(d);
+      }
+      shown = steps.length;
+      if (shown) {
+        const body = document.getElementById("alter-panel-body");
+        if (body) body.scrollTop = body.scrollHeight;
+      }
+    };
+
     activeRun = {
       runId,
       stop: () => {
+        if (done) return;
+        done = true;
+        cleanup();
         send({ type: "cancel", runId });
-        finish('<div class="alter-msg">Stopped.</div>', "");
+        workEl.textContent = "Stopped.";
+        resolve("");
       },
     };
     showStop(true);
-    el.innerHTML = '<span style="color:#a1a1aa">Thinking… 0s</span>';
+
+    const fail = (msg) => {
+      if (done) return;
+      done = true;
+      cleanup();
+      workEl.remove();
+      const b = document.createElement("div");
+      b.className = "alter-banner";
+      b.textContent = humanizeErr(msg);
+      el.appendChild(b);
+      resolve("");
+    };
+
+    const doPoll = async () => {
+      if (done) return;
+      const r = await send({ type: "agent-poll", runId });
+      if (!r || !r.ok || !r.data) return; // transient — keep polling
+      const p = r.data;
+      renderSteps(p.steps || []);
+      if (p.done) {
+        done = true;
+        cleanup();
+        if (p.error) return fail(p.error);
+        workEl.remove();
+        const ans = document.createElement("div");
+        ans.className = "alter-answer";
+        const clean = displayText(p.text || "") ?? (p.text || "");
+        ans.innerHTML = mini(clean);
+        el.appendChild(ans);
+        ans.scrollIntoView({ block: "start", behavior: "smooth" });
+        resolve(clean);
+      }
+    };
+
     send({
-      type: "run",
+      type: "agent-start",
       connectionId: params.connectionId,
       includeMemory: params.includeMemory,
-      model: params.model,
       system: params.system,
       prompt: params.prompt,
+      model: params.model,
+      mode: params.mode,
       runId,
     }).then((r) => {
-      if (r && r.ok && r.data && r.data.content) {
-        const clean = displayText(r.data.content) ?? r.data.content;
-        finish(mini(clean), clean);
-      } else {
-        finish(`<div class="alter-banner">${escapeHtml(humanizeErr(r && r.error))}</div>`, "");
-      }
+      if (done) return;
+      if (!r || !r.ok) return fail(r && r.error);
+      poll = setInterval(doPoll, 1200);
+      doPoll();
     });
   });
 }
@@ -273,17 +347,21 @@ function renderFooter() {
   const foot = document.querySelector("#alter-panel-foot");
   foot.innerHTML = `
     <div id="alter-foot-btns">
-      <button data-ev="comment">💬 Post as comment</button>
-      <button data-ev="request_changes">🔴 Request changes</button>
+      <button id="alter-draft">✍️ Draft comment</button>
+      <button id="alter-post-review" class="alter-ghost">Post review as-is…</button>
     </div>
     <div id="alter-foot-ask">
       <input id="alter-ask" placeholder="Ask a follow-up…" />
       <button id="alter-ask-send">Send</button>
     </div>
     <div id="alter-foot-note"></div>`;
-  foot.querySelectorAll("#alter-foot-btns button").forEach((b) =>
-    b.addEventListener("click", () => postToGh(b.dataset.ev, b))
-  );
+  foot.querySelector("#alter-draft").addEventListener("click", (e) => {
+    e.target.disabled = true;
+    draftComment().finally(() => {
+      if (e.target.isConnected) e.target.disabled = false;
+    });
+  });
+  foot.querySelector("#alter-post-review").addEventListener("click", () => renderPostPreview(session.review));
   const input = foot.querySelector("#alter-ask");
   const go = () => {
     const q = input.value.trim();
@@ -295,6 +373,27 @@ function renderFooter() {
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") go();
   });
+}
+
+// Show the exact text that will be posted, editable, with the post actions — so
+// clicking Post/Request always shows what goes to the PR first.
+function renderPostPreview(text) {
+  const foot = document.querySelector("#alter-panel-foot");
+  foot.innerHTML = `
+    <div class="alter-preview-label">This exact text posts to the PR — edit if needed:</div>
+    <textarea id="alter-post-text" class="alter-post-text" rows="6"></textarea>
+    <div id="alter-foot-btns">
+      <button data-ev="comment">💬 Post as comment</button>
+      <button data-ev="request_changes">🔴 Request changes</button>
+      <button id="alter-back" class="alter-ghost">← Back</button>
+    </div>
+    <div id="alter-foot-note"></div>`;
+  const ta = foot.querySelector("#alter-post-text");
+  ta.value = text || "";
+  foot.querySelector("#alter-back").addEventListener("click", renderFooter);
+  foot.querySelectorAll("#alter-foot-btns button[data-ev]").forEach((b) =>
+    b.addEventListener("click", () => postToGh(b.dataset.ev, ta.value, b))
+  );
 }
 
 setInterval(ensureButton, 1500);

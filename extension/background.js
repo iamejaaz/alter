@@ -173,6 +173,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             includeMemory: msg.includeMemory,
             model: msg.model,
             runId: msg.runId,
+            mode: msg.mode,
           }),
         });
         sendResponse(r.ok ? { ok: true, runId: r.body.runId } : { ok: false, error: r.body.error || hint(r) });

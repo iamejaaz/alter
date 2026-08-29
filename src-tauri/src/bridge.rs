@@ -73,6 +73,10 @@ struct RunReq {
     // Client-supplied id so a Stop can target this exact run.
     #[serde(rename = "runId", default)]
     run_id: Option<String>,
+    // Agent tool profile: "pr" = bounded write allowlist for creating a PR;
+    // anything else = the read-only support/review allowlist.
+    #[serde(default)]
+    mode: Option<String>,
 }
 
 // fr read subcommands the agent may run WITHOUT asking, and the write ones that
@@ -118,6 +122,21 @@ fn agent_allowed_tools() -> String {
 
 fn agent_disallowed_tools() -> String {
     fr_rules(FR_WRITE_VERBS).join(" ")
+}
+
+// Bounded write allowlist for turning a diagnosed fix into a PR: edit files,
+// branch, commit, push (to a fork), open the PR. No bypassPermissions, no rm,
+// no arbitrary shell — only the git/gh verbs the flow needs.
+fn pr_allowed_tools() -> String {
+    let mut t: Vec<String> = ["Read", "Grep", "Glob", "Edit", "Write", "WebFetch"].iter().map(|s| s.to_string()).collect();
+    for g in [
+        "git fetch", "git status", "git diff", "git log", "git show", "git branch",
+        "git checkout", "git switch", "git add", "git commit", "git push", "git restore",
+        "gh pr create", "gh pr view", "gh pr list", "gh repo view",
+    ] {
+        t.push(format!("Bash({g}:*)"));
+    }
+    t.join(" ")
 }
 
 fn agent_workdir() -> String {
@@ -192,9 +211,11 @@ fn spawn_agent_run(
     system: String,
     prompt: String,
     run_id: String,
+    mode: Option<String>,
     running: Arc<Mutex<std::collections::HashMap<String, u32>>>,
     progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
 ) {
+    let is_pr = mode.as_deref() == Some("pr");
     progress.lock().unwrap().insert(run_id.clone(), AgentProgress::default());
     let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
     let mut cmd = std::process::Command::new("claude");
@@ -210,8 +231,12 @@ fn spawn_agent_run(
     if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
         cmd.current_dir(&dir);
     }
-    cmd.arg("--allowedTools").arg(agent_allowed_tools());
-    cmd.arg("--disallowedTools").arg(agent_disallowed_tools());
+    if is_pr {
+        cmd.arg("--allowedTools").arg(pr_allowed_tools());
+    } else {
+        cmd.arg("--allowedTools").arg(agent_allowed_tools());
+        cmd.arg("--disallowedTools").arg(agent_disallowed_tools());
+    }
     cmd.arg("--permission-mode").arg("default");
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     #[cfg(unix)]
@@ -891,7 +916,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let system = build_system(req.include_memory, req.system.as_deref());
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             state.progress.lock().unwrap().retain(|_, p| !p.done);
-            spawn_agent_run(conn, system, req.prompt, run_id.clone(), state.running.clone(), state.progress.clone());
+            spawn_agent_run(conn, system, req.prompt, run_id.clone(), req.mode, state.running.clone(), state.progress.clone());
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/agent-poll") => {
