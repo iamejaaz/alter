@@ -1019,13 +1019,20 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 prompt: String,
                 #[serde(default)]
                 title: Option<String>,
+                #[serde(rename = "connectionId", default)]
+                connection_id: Option<String>,
+                #[serde(default)]
+                model: Option<String>,
             }
             let req: O = match serde_json::from_str(body) {
                 Ok(r) => r,
                 Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
             };
             use tauri::Emitter;
-            let _ = app.emit("alter://open-chat", serde_json::json!({ "prompt": req.prompt, "title": req.title }));
+            let _ = app.emit(
+                "alter://open-chat",
+                serde_json::json!({ "prompt": req.prompt, "title": req.title, "connectionId": req.connection_id, "model": req.model }),
+            );
             if let Some(w) = app
                 .get_webview_window("main")
                 .or_else(|| app.webview_windows().into_values().next())

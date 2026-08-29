@@ -260,9 +260,14 @@ export default function App() {
   // Extension "Open in Alter" handoff: the bridge emits this event; open a new
   // chat on a Claude Code connection pre-filled with the ticket prompt (NOT sent
   // — the user hits Enter to start the autonomous session).
-  const openSeededRef = useRef<(prompt: string, title?: string) => void>(() => {});
-  openSeededRef.current = (prompt: string, title?: string) => {
-    const claude = (settings.connections ?? []).find((c) => isClaudeCodeUrl(c.baseUrl));
+  const openSeededRef = useRef<(prompt: string, title?: string, connectionId?: string, model?: string) => void>(
+    () => {}
+  );
+  openSeededRef.current = (prompt: string, title?: string, connectionId?: string, model?: string) => {
+    const conns = settings.connections ?? [];
+    // Use the connection the extension picked (its support model); fall back to a
+    // Claude Code connection so the seeded chat can still run tools.
+    const conn = (connectionId && conns.find((c) => c.id === connectionId)) || conns.find((c) => isClaudeCodeUrl(c.baseUrl));
     const convId = newId();
     setConversations((prev) => [
       {
@@ -270,8 +275,8 @@ export default function App() {
         title: title || prompt.slice(0, 40),
         messages: [],
         createdAt: Date.now(),
-        connectionId: claude?.id ?? settings.activeConnectionId,
-        model: claude?.model ?? settings.model,
+        connectionId: conn?.id ?? settings.activeConnectionId,
+        model: conn && isClaudeCodeUrl(conn.baseUrl) && model ? model : conn?.model ?? settings.model,
         effort: settings.effort,
         projectId: activeProjectId ?? undefined,
       },
@@ -282,8 +287,8 @@ export default function App() {
   };
   useEffect(() => {
     let un: (() => void) | undefined;
-    void listen<{ prompt: string; title?: string }>("alter://open-chat", (e) =>
-      openSeededRef.current(e.payload.prompt, e.payload.title)
+    void listen<{ prompt: string; title?: string; connectionId?: string; model?: string }>("alter://open-chat", (e) =>
+      openSeededRef.current(e.payload.prompt, e.payload.title, e.payload.connectionId, e.payload.model)
     ).then((u) => (un = u));
     return () => un?.();
   }, []);

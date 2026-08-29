@@ -188,7 +188,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const r = await bridge("/open-chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: msg.prompt, title: msg.title }),
+          body: JSON.stringify({ prompt: msg.prompt, title: msg.title, connectionId: msg.connectionId, model: msg.model }),
         });
         sendResponse(r.ok ? { ok: true } : { ok: false, error: r.body.error || hint(r) });
       } else if (msg.type === "assistant") {
