@@ -176,8 +176,12 @@
   display: flex;
   gap: 6px;
 }
+#sup-foot-actions {
+  display: flex;
+  gap: 6px;
+}
 #sup-create-pr {
-  width: 100%;
+  flex: 1;
   background: #232329;
   color: #e4e4e7;
   border: 1px solid #3f3f46;
@@ -191,6 +195,24 @@
   background: #2c2c34;
 }
 #sup-create-pr:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.sup-ghost {
+  background: transparent;
+  color: #a1a1aa;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: 12px/1 inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sup-ghost:hover {
+  color: #e4e4e7;
+  background: #232329;
+}
+.sup-ghost:disabled {
   opacity: 0.5;
   cursor: default;
 }

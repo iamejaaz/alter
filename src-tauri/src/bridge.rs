@@ -1013,8 +1013,55 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run fr: {e}") }).to_string()),
             }
         }
+        (tiny_http::Method::Post, "/assistant") => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                task: String,
+            }
+            let req: A = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
+            };
+            let task = req.task.trim();
+            if task.is_empty() {
+                return (400, "{\"error\":\"empty task\"}".into());
+            }
+            match launch_fr_assistant(task) {
+                Ok(_) => (200, "{\"ok\":true}".into()),
+                Err(e) => (500, serde_json::json!({ "error": e }).to_string()),
+            }
+        }
         _ => (404, "{\"error\":\"not found\"}".into()),
     }
+}
+
+// Open a Terminal running `fr assistant claude` seeded with `task` — a full,
+// interactive (permission-prompting) Frappe agent the user drives, distinct from
+// the scoped headless agent. macOS only for now.
+#[cfg(target_os = "macos")]
+fn launch_fr_assistant(task: &str) -> Result<(), String> {
+    let dir = agent_workdir();
+    let esc_sh = |s: &str| s.replace('\'', "'\\''");
+    let script = format!(
+        "#!/bin/sh\ncd '{}' 2>/dev/null\nexec fr assistant claude -- '{}'\n",
+        esc_sh(&dir),
+        esc_sh(task)
+    );
+    let path = std::env::temp_dir().join(format!("alter-handoff-{}.sh", gen_token()));
+    std::fs::write(&path, script).map_err(|e| e.to_string())?;
+    let p = path.to_string_lossy().replace('"', "\\\"");
+    let osa = format!("tell application \"Terminal\"\nactivate\ndo script \"sh {p}\"\nend tell");
+    std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(osa)
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn launch_fr_assistant(_task: &str) -> Result<(), String> {
+    Err("fr assistant handoff is only wired for macOS right now".into())
 }
 
 // Signal-terminate the process group led by `pid` (negative pid = the group), so
