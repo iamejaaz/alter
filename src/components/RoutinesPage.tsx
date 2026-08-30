@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Routine, Schedule, Connection, newId, scheduleLabel } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
+import { Chevron } from "./Icons";
 
 interface Props {
   routines: Routine[];
@@ -274,15 +275,18 @@ export default function RoutinesPage({
               {connections.length > 0 && (
                 <div>
                   <label className="text-xs text-[var(--txt-dim)]">Run on</label>
-                  <select
-                    value={draft.connectionId}
-                    onChange={(e) => setDraft({ ...draft, connectionId: e.target.value })}
-                    className={`${input} mt-1 cursor-pointer`}
-                  >
-                    {connections.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                  <div className="relative mt-1">
+                    <select
+                      value={draft.connectionId}
+                      onChange={(e) => setDraft({ ...draft, connectionId: e.target.value })}
+                      className={`${input} appearance-none pr-8 cursor-pointer`}
+                    >
+                      {connections.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <Chevron />
+                  </div>
                 </div>
               )}
 

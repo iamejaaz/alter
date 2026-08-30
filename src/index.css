@@ -90,12 +90,3 @@ input {
   animation: fade-up 0.25s ease-out;
 }
 
-/* Strip native OS chrome from all selects; add a consistent chevron. */
-select {
-  -webkit-appearance: none;
-  appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%2371717a' stroke-width='1.4'><path d='M1 1l4 4 4-4'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 0.7rem center;
-  padding-right: 1.9rem;
-}

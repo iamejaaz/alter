@@ -328,14 +328,22 @@ export default function App() {
   // instead of using the raw first 40 characters.
   const generateTitle = async (cid: string, firstMessage: string) => {
     try {
+      // Resolve the chat's OWN connection (per-chat model), not the global default.
+      const conv = conversations.find((c) => c.id === cid);
+      const conn = (settings.connections ?? []).find(
+        (c) => c.id === (conv?.connectionId ?? settings.activeConnectionId)
+      );
+      const baseUrl = conn?.baseUrl ?? settings.baseUrl;
+      const apiKey = conn?.apiKey ?? settings.apiKey;
+      const model = conn?.model ?? settings.model;
       let title = "";
-      if (isClaudeCodeUrl(settings.baseUrl)) {
+      if (isClaudeCodeUrl(baseUrl)) {
         title = await invoke<string>("claude_title", { text: firstMessage });
-      } else if (settings.apiKey) {
+      } else if (apiKey) {
         title = await invoke<string>("quick_complete", {
-          url: settings.baseUrl.replace(/\/$/, ""),
-          apiKey: settings.apiKey,
-          model: settings.model,
+          url: baseUrl.replace(/\/$/, ""),
+          apiKey,
+          model,
           prompt: `Generate a 3-6 word title in Title Case (no quotes, no trailing punctuation) for a chat that starts with this message. Reply with ONLY the title.\n\nMessage: ${firstMessage.slice(0, 500)}`,
         });
       }
