@@ -253,3 +253,6 @@
   outline: none;
   border-color: #4f46e5;
 }
+#alter-panel.alter-collapsed { height: auto; max-height: none; }
+#alter-panel.alter-collapsed #alter-panel-body,
+#alter-panel.alter-collapsed #alter-panel-foot { display: none; }

@@ -11,11 +11,16 @@ repo="$root/apps/$app"
 [ -d "$repo/.git" ] || repo="$PWD"   # allow running from inside the app repo
 cd "$repo"
 
-git fetch --quiet origin 2>/dev/null || true
+# Prefer upstream (frappe/frappe): local branches and a fork's `origin` can be
+# badly stale (a real run found the local version-15-hotfix 3 years old, which
+# would have wrongly read as "fixed"). Fetch upstream, fall back to origin.
+git fetch --quiet upstream 2>/dev/null || git fetch --quiet origin 2>/dev/null || true
 for ref in develop version-16-hotfix version-15-hotfix; do
-  full=$(git rev-parse --verify "$ref" 2>/dev/null || git rev-parse --verify "origin/$ref" 2>/dev/null || true)
+  full=$(git rev-parse --verify "upstream/$ref" 2>/dev/null \
+    || git rev-parse --verify "origin/$ref" 2>/dev/null \
+    || git rev-parse --verify "$ref" 2>/dev/null || true)
   if [ -z "$full" ]; then
-    echo "=== $ref: not found locally (try: git fetch origin $ref) ==="; echo; continue
+    echo "=== $ref: not found (try: git fetch upstream $ref) ==="; echo; continue
   fi
   echo "=== $ref ($(git rev-parse --short "$full")) : $path ==="
   git show "$full:$path" 2>/dev/null || echo "(path absent at this ref)"

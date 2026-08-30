@@ -302,3 +302,6 @@
 .sup-write-note.err {
   color: #f87171;
 }
+#sup-panel.sup-collapsed { height: auto; max-height: none; }
+#sup-panel.sup-collapsed #sup-body,
+#sup-panel.sup-collapsed #sup-foot { display: none; }

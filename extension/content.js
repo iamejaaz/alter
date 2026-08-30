@@ -407,12 +407,18 @@ function openPanel() {
       <span id="alter-panel-title">Alter — PR review</span>
       <div>
         <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
+        <button id="alter-min" title="Minimize">–</button>
         <button id="alter-close" title="Close">×</button>
       </div>
     </div>
     <div id="alter-panel-body"></div>
     <div id="alter-panel-foot"></div>`;
   document.body.appendChild(el);
+  el.querySelector("#alter-min").addEventListener("click", () => {
+    const min = el.classList.toggle("alter-collapsed");
+    el.querySelector("#alter-min").textContent = min ? "▢" : "–";
+    el.querySelector("#alter-min").title = min ? "Expand" : "Minimize";
+  });
   el.querySelector("#alter-stop").addEventListener("click", () => {
     if (activeRun) activeRun.stop();
   });

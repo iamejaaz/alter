@@ -67,11 +67,17 @@ Find where the buggy code path exists, checking newest first and recording each:
 ```sh
 scripts/across-versions.sh frappe/website/doctype/web_form/web_form.py
 ```
+**FETCH UPSTREAM FIRST** — `git -C apps/<app> fetch upstream` — and compare the
+`upstream/*` refs (frappe/frappe), NOT the local branches. Local branches and a
+fork's `origin` can be badly stale: a real run found the local `version-15-hotfix`
+**3 years old**, which would have wrongly concluded "fixed". This is the #1 cause
+of a diagnosis flip-flopping between runs — always compare against fresh upstream.
+
 Check, in order:
-1. **develop** — is it still broken on the latest line?
-2. **version-16-hotfix**
-3. **version-15-hotfix** — the customer's line (also `git show <customer-ref>:path`
-   for their exact commit, which is usually already in the local repo).
+1. **upstream/develop** — is it still broken on the latest line?
+2. **upstream/version-16-hotfix**
+3. **upstream/version-15-hotfix** — the customer's line (also `git show
+   <customer-ref>:path` for their exact commit when you have it).
 
 Interpret:
 - Fixed on develop/v16 but broken on the customer's version → the fix is a
