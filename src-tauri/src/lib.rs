@@ -332,6 +332,47 @@ fn claude_title(text: String) -> Result<String, String> {
     }
 }
 
+// One-shot, non-streaming completion on a given connection — used to turn a
+// natural-language routine description into structured JSON. Claude Code runs
+// `claude -p`; everything else is an OpenAI-compatible call.
+#[tauri::command]
+async fn complete_once(
+    base_url: String,
+    api_key: String,
+    model: String,
+    system: String,
+    prompt: String,
+) -> Result<String, String> {
+    if base_url.starts_with("claude-code") {
+        let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
+        let mut cmd = tokio::process::Command::new("claude");
+        cmd.arg("-p").arg(&full);
+        if !model.is_empty() && model != "claude-code" {
+            cmd.arg("--model").arg(&model);
+        }
+        let out = cmd.output().await.map_err(|e| e.to_string())?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        }
+    } else {
+        let client = http_client()?;
+        let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+        let body = serde_json::json!({
+            "model": model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+            "stream": false
+        });
+        let resp = client.post(&url).bearer_auth(&api_key).json(&body).send().await.map_err(|e| e.to_string())?;
+        let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        v["choices"][0]["message"]["content"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| v["error"]["message"].as_str().unwrap_or("no response").to_string())
+    }
+}
+
 #[tauri::command]
 fn claude_version() -> Result<String, String> {
     use std::process::Command;
@@ -691,12 +732,12 @@ async fn run_due_routines(dir: &std::path::Path) {
         Ok(v) => v,
         Err(_) => return,
     };
-    let api_key = state["settings"]["apiKey"].as_str().unwrap_or("");
-    let base_url = state["settings"]["baseUrl"].as_str().unwrap_or("");
-    let model = state["settings"]["model"].as_str().unwrap_or("");
-    if api_key.is_empty() || base_url.is_empty() {
-        return;
-    }
+    let settings = &state["settings"];
+    let connections = settings["connections"].as_array().cloned().unwrap_or_default();
+    let default_base = settings["baseUrl"].as_str().unwrap_or("").to_string();
+    let default_key = settings["apiKey"].as_str().unwrap_or("").to_string();
+    let default_model = settings["model"].as_str().unwrap_or("").to_string();
+
     let memory_facts: Vec<String> = state["memories"]
         .as_array()
         .map(|a| a.iter().filter_map(|m| m["text"].as_str().map(|s| format!("- {}", s))).collect())
@@ -730,24 +771,63 @@ async fn run_due_routines(dir: &std::path::Path) {
         let id = r["id"].as_str().unwrap_or("");
         let name = r["name"].as_str().unwrap_or("Routine");
         let prompt = r["prompt"].as_str().unwrap_or("");
-        let every = r["everyMinutes"].as_u64().unwrap_or(60).max(1);
-        let last = runs[id].as_u64().unwrap_or(0);
-        if now.saturating_sub(last) < every * 60_000 {
+
+        // Resolve the connection this routine runs on (falls back to the default).
+        let (base_url, api_key, mut model) = match r["connectionId"].as_str() {
+            Some(cid) if !cid.is_empty() => connections
+                .iter()
+                .find(|c| c["id"].as_str() == Some(cid))
+                .map(|c| {
+                    (
+                        c["baseUrl"].as_str().unwrap_or("").to_string(),
+                        c["apiKey"].as_str().unwrap_or("").to_string(),
+                        c["model"].as_str().unwrap_or("").to_string(),
+                    )
+                })
+                .unwrap_or((default_base.clone(), default_key.clone(), default_model.clone())),
+            _ => (default_base.clone(), default_key.clone(), default_model.clone()),
+        };
+        if let Some(m) = r["model"].as_str() {
+            if !m.is_empty() {
+                model = m.to_string();
+            }
+        }
+        let is_cc = base_url.starts_with("claude-code");
+        if base_url.is_empty() || (!is_cc && api_key.is_empty()) {
             continue;
         }
-        let body = serde_json::json!({
-            "model": model,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-            "stream": false
-        });
-        let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
-        let resp = client.post(&url).bearer_auth(api_key).json(&body).send().await;
-        let content = match resp {
-            Ok(r) => match r.json::<serde_json::Value>().await {
-                Ok(j) => j["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string(),
-                Err(e) => format!("(routine error parsing response: {})", e),
-            },
-            Err(e) => format!("(routine error: {})", e),
+
+        let last = runs[id].as_u64().unwrap_or(0);
+        if !routine_due(&r["schedule"], r["everyMinutes"].as_u64().unwrap_or(60), last, now) {
+            continue;
+        }
+
+        let content = if is_cc {
+            let full = format!("{system}\n\n{prompt}");
+            let mut cmd = tokio::process::Command::new("claude");
+            cmd.arg("-p").arg(&full);
+            if !model.is_empty() && model != "claude-code" {
+                cmd.arg("--model").arg(&model);
+            }
+            match cmd.output().await {
+                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+                Ok(o) => format!("(routine error: {})", String::from_utf8_lossy(&o.stderr).trim()),
+                Err(e) => format!("(routine error running claude: {})", e),
+            }
+        } else {
+            let body = serde_json::json!({
+                "model": model,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                "stream": false
+            });
+            let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+            match client.post(&url).bearer_auth(&api_key).json(&body).send().await {
+                Ok(rp) => match rp.json::<serde_json::Value>().await {
+                    Ok(j) => j["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string(),
+                    Err(e) => format!("(routine error parsing response: {})", e),
+                },
+                Err(e) => format!("(routine error: {})", e),
+            }
         };
         runs[id] = serde_json::json!(now);
 
@@ -760,6 +840,51 @@ async fn run_due_routines(dir: &std::path::Path) {
         }
         let _ = std::fs::write(dir.join("results.json"), results.to_string());
         let _ = std::fs::write(dir.join("runs.json"), runs.to_string());
+    }
+}
+
+// Is a routine due now? interval → elapsed since last; daily/weekly → local
+// wall-clock time reached today and not already run since today's target.
+fn routine_due(sched: &serde_json::Value, every_minutes: u64, last: u64, now: u64) -> bool {
+    use chrono::{Datelike, Local, TimeZone};
+    let kind = sched.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+    if kind == "daily" || kind == "weekly" {
+        let time = sched.get("time").and_then(|t| t.as_str()).unwrap_or("09:00");
+        let (hh, mm) = match time.split_once(':') {
+            Some((h, m)) => (h.trim().parse::<u32>().unwrap_or(9), m.trim().parse::<u32>().unwrap_or(0)),
+            None => (9, 0),
+        };
+        let now_dt = match Local.timestamp_millis_opt(now as i64).single() {
+            Some(d) => d,
+            None => return false,
+        };
+        if kind == "weekly" {
+            let wd = now_dt.weekday().num_days_from_sunday() as u64; // 0=Sun
+            let ok = sched
+                .get("days")
+                .and_then(|d| d.as_array())
+                .map(|arr| arr.iter().any(|x| x.as_u64() == Some(wd)))
+                .unwrap_or(false);
+            if !ok {
+                return false;
+            }
+        }
+        let target = match now_dt.date_naive().and_hms_opt(hh, mm, 0) {
+            Some(naive) => match Local.from_local_datetime(&naive).single() {
+                Some(t) => t.timestamp_millis() as u64,
+                None => return false,
+            },
+            None => return false,
+        };
+        now >= target && last < target
+    } else {
+        let every = if kind == "interval" {
+            sched.get("everyMinutes").and_then(|e| e.as_u64()).unwrap_or(every_minutes)
+        } else {
+            every_minutes
+        }
+        .max(1);
+        now.saturating_sub(last) >= every * 60_000
     }
 }
 
@@ -956,6 +1081,7 @@ pub fn run() {
             open_external,
             quick_complete,
             claude_title,
+            complete_once,
             git_pr,
             bridge::bridge_info,
             bridge::bridge_sync,

@@ -74,13 +74,31 @@ export interface MemoryItem {
   createdAt: number;
 }
 
+export type Schedule =
+  | { kind: "interval"; everyMinutes: number }
+  | { kind: "daily"; time: string } // "HH:MM" local
+  | { kind: "weekly"; time: string; days: number[] }; // 0=Sun … 6=Sat
+
 export interface Routine {
   id: string;
   name: string;
   prompt: string;
-  everyMinutes: number;
+  everyMinutes: number; // legacy / interval fallback
+  schedule?: Schedule;
+  connectionId?: string; // run on the connection it was created with
+  model?: string;
   lastRun: number | null;
   enabled: boolean;
+}
+
+export function scheduleLabel(r: Routine): string {
+  const s = r.schedule;
+  if (!s || s.kind === "interval") return `every ${s ? s.everyMinutes : r.everyMinutes}m`;
+  if (s.kind === "daily") return `daily at ${s.time}`;
+  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const d = [...s.days].sort((a, b) => a - b);
+  const isWeekdays = d.length === 5 && d.every((x) => x >= 1 && x <= 5);
+  return `${isWeekdays ? "weekdays" : d.map((x) => names[x]).join(", ")} at ${s.time}`;
 }
 
 export interface Skill {

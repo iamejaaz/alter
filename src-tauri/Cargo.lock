@@ -47,6 +47,7 @@ dependencies = [
 name = "alter"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures-util",
  "headless_chrome",
  "reqwest 0.12.28",
