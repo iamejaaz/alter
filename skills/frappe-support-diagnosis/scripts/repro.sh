@@ -28,6 +28,31 @@ elif [ -n "${ALTER_REPRO_ROOT:-}" ]; then
 fi
 [ -n "$bench" ] || { echo "no bench for '$ver' — pick its folder in Alter → Settings → Repro benches (or set $key)." >&2; exit 2; }
 
+# Create the reusable repro site once if it's missing on this bench (then it's
+# reused forever — repros roll back, so this is a one-time cost per bench).
+if [ ! -d "$bench/sites/$site" ]; then
+  echo ">> $site missing on $ver — creating it (one-time)"
+  apps_list="${REPRO_APPS:-hrms erpnext}"
+  if [ -f "$bench/bench.toml" ] && command -v pilot >/dev/null 2>&1; then
+    name="$(basename "$bench")"
+    pilot -b "$name" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" --apps frappe $apps_list \
+      || pilot -b "$name" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" \
+      || { echo "!! couldn't create $site via pilot" >&2; exit 3; }
+  elif command -v bench >/dev/null 2>&1; then
+    if [ -z "${MYSQL_ROOT_PASSWORD:-}" ]; then
+      echo "!! $site missing and MYSQL_ROOT_PASSWORD not set (bench new-site would prompt and hang)." >&2
+      echo "   Create it once:  (cd $bench && bench new-site $site --admin-password admin && bench --site $site install-app $apps_list)" >&2
+      echo "   or set MYSQL_ROOT_PASSWORD so this can create it automatically." >&2
+      exit 3
+    fi
+    ( cd "$bench" && bench new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" --mariadb-root-password "$MYSQL_ROOT_PASSWORD" ) \
+      || { echo "!! new-site $site failed" >&2; exit 3; }
+    for app in $apps_list; do ( cd "$bench" && bench --site "$site" install-app "$app" ) || true; done
+  else
+    echo "!! $site missing and no bench/pilot CLI to create it." >&2; exit 3
+  fi
+fi
+
 echo "== reproduce on $ver :: $bench (site $site) =="
 cd "$bench"
 # Run the frappe console via the bench's own venv python + bench_helper. This
