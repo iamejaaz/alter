@@ -136,15 +136,13 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
   };
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="w-[520px] max-h-[80vh] overflow-y-auto rounded-xl border border-[var(--bd-soft)] bg-[var(--modal)] p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold">Settings</h2>
-          <button onClick={onClose} className="text-[var(--txt-faint)] hover:text-[var(--txt)]">×</button>
-        </div>
+    <div className="absolute inset-0 z-10 flex flex-col bg-[var(--bg)]">
+      <header className="flex items-center gap-2 px-6 py-4 border-b border-[var(--bd-soft)]">
+        <button onClick={onClose} className="text-[var(--txt-faint)] hover:text-[var(--txt)] text-sm">←</button>
+        <h1 className="text-sm font-semibold">Settings</h1>
+      </header>
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-2xl px-6 py-6">
 
         <div className="flex gap-1 mb-4 rounded-lg bg-[var(--panel)] p-1 w-fit">
           {(["connection", "memory"] as const).map((t) => (
@@ -412,6 +410,7 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

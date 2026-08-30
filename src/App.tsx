@@ -105,12 +105,14 @@ export default function App() {
   );
   const [showProjects, setShowProjects] = useState(false);
   const [skills, setSkills] = useState<Skill[]>(() => storage.loadSkills());
-  const [view, setView] = useState<"chat" | "routines" | "skills">("chat");
+  const [view, setView] = useState<"chat" | "routines" | "skills" | "settings">(
+    storage.loadSettings().apiKey ? "chat" : "settings"
+  );
+  const setShowSettings = (v: boolean) => setView(v ? "settings" : "chat");
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
   const [input, setInput] = useState("");
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
-  const [showSettings, setShowSettings] = useState(!storage.loadSettings().apiKey);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [sharedMemory, setSharedMemory] = useState(""); // ~/.claude/CLAUDE.md — shared with Claude Code
@@ -1256,6 +1258,18 @@ export default function App() {
           />
         )}
         {view === "skills" && <SkillsPage skills={skills} onChange={setSkills} onBack={() => setView("chat")} />}
+        {view === "settings" && (
+          <SettingsPanel
+            settings={settings}
+            memories={memories}
+            onSave={(s) => {
+              setSettings(s);
+              storage.saveSettings(s);
+            }}
+            onDeleteMemory={(id) => setMemories((prev) => prev.filter((m) => m.id !== id))}
+            onClose={() => setView("chat")}
+          />
+        )}
         <header
           data-tauri-drag-region
           className="flex items-center gap-2 h-12 px-4 shrink-0 border-b border-[var(--bd-soft)]"
@@ -1773,18 +1787,6 @@ export default function App() {
         />
       )}
 
-      {showSettings && (
-        <SettingsPanel
-          settings={settings}
-          memories={memories}
-          onSave={(s) => {
-            setSettings(s);
-            storage.saveSettings(s);
-          }}
-          onDeleteMemory={(id) => setMemories((prev) => prev.filter((m) => m.id !== id))}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
     </div>
   );
 }
