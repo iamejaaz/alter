@@ -376,6 +376,9 @@ pub fn bridge_set_repro_root(
     root: String,
     benches: std::collections::HashMap<String, String>,
     #[allow(non_snake_case)] mariadbPassword: String,
+    #[allow(non_snake_case)] frappeSite: String,
+    #[allow(non_snake_case)] frappeApiKey: String,
+    #[allow(non_snake_case)] frappeApiSecret: String,
 ) {
     // Set every repro var on the whole process env so in-process spawns (Alter
     // chat's claude_code, the bridge's agents) inherit them for free. The
@@ -394,6 +397,9 @@ pub fn bridge_set_repro_root(
         set(&key, path);
     }
     set("MYSQL_ROOT_PASSWORD", &mariadbPassword);
+    set("FRAPPE_SITE", &frappeSite);
+    set("FRAPPE_API_KEY", &frappeApiKey);
+    set("FRAPPE_API_SECRET", &frappeApiSecret);
     *state.repro_root.lock().unwrap() = root;
     *state.repro_env.lock().unwrap() = exports;
 }

@@ -40,8 +40,11 @@ dressed up as a conclusion.
 ## Method
 
 ### 1. Read the ticket
-`fr -s support.frappe.io doc get "HD Ticket" <id> --json` (see the `frappectl`
-skill). Pull related tickets/data with `fr query` / `fr doc list` when the report
+`fr doc get "HD Ticket" <id> --json` (see the `frappectl` skill). Run **bare**
+`fr` — the environment provides the site + credentials (FRAPPE_SITE/API_KEY/
+API_SECRET); do NOT pass `-s <profile>` (it hits the macOS keychain and prompts).
+Only fall back to `-s support.frappe.io` if bare fr says no site/creds are set.
+Pull related tickets/data with `fr query` / `fr doc list` when the report
 is thin. Look for a sibling ticket on the same site with more detail.
 
 ### 2. Establish the facts

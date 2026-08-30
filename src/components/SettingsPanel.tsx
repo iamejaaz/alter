@@ -375,6 +375,32 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
                 className="mt-1 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
               />
             </div>
+
+            <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+              <p className="text-sm text-[var(--txt)]">Frappe credentials</p>
+              <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
+                Set these so the support agent's <code>fr</code> reads credentials from the environment instead of the macOS keychain (which prompts for a password every run). Stored locally.
+              </p>
+              <input
+                value={draft.frappeSite ?? ""}
+                onChange={(e) => setDraft({ ...draft, frappeSite: e.target.value })}
+                placeholder="Site URL (e.g. https://support.frappe.io)"
+                className="w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+              />
+              <input
+                value={draft.frappeApiKey ?? ""}
+                onChange={(e) => setDraft({ ...draft, frappeApiKey: e.target.value })}
+                placeholder="API key"
+                className="mt-1.5 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+              />
+              <input
+                type="password"
+                value={draft.frappeApiSecret ?? ""}
+                onChange={(e) => setDraft({ ...draft, frappeApiSecret: e.target.value })}
+                placeholder="API secret"
+                className="mt-1.5 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+              />
+            </div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)]">
                 Cancel

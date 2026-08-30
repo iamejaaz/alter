@@ -264,8 +264,18 @@ export default function App() {
       root: settings.reproRoot ?? "",
       benches: settings.reproBenches ?? {},
       mariadbPassword: settings.mariadbRootPassword ?? "",
+      frappeSite: settings.frappeSite ?? "",
+      frappeApiKey: settings.frappeApiKey ?? "",
+      frappeApiSecret: settings.frappeApiSecret ?? "",
     }).catch(() => {});
-  }, [settings.reproRoot, settings.reproBenches, settings.mariadbRootPassword]);
+  }, [
+    settings.reproRoot,
+    settings.reproBenches,
+    settings.mariadbRootPassword,
+    settings.frappeSite,
+    settings.frappeApiKey,
+    settings.frappeApiSecret,
+  ]);
   useEffect(() => storage.saveSkills(skills), [skills]);
   // Extension "Open in Alter" handoff: the bridge emits this event; open a new
   // chat on a Claude Code connection pre-filled with the ticket prompt (NOT sent

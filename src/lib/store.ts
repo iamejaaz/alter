@@ -69,6 +69,11 @@ export interface Settings {
   reproRoot?: string; // optional: a folder holding per-version benches (convention)
   reproBenches?: Record<string, string>; // version -> existing bench folder (preferred)
   mariadbRootPassword?: string; // lets the agent auto-create a repro site (classic bench)
+  // Frappe API creds — set so `fr` reads them from the env instead of the macOS
+  // keychain (which prompts for a password every agent run).
+  frappeSite?: string;
+  frappeApiKey?: string;
+  frappeApiSecret?: string;
 }
 
 export interface MemoryItem {
