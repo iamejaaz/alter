@@ -23,4 +23,16 @@ done
 
 echo "== reproduce on $ver :: $bench (site $site) =="
 cd "$bench"
-bench --site "$site" console < "$script"
+# Run the frappe console via the bench's own venv python + bench_helper. This
+# works for BOTH a classic frappe-bench AND a pilot bench (pilot doesn't install
+# the `bench` CLI; it drives frappe as `env/bin/python -m frappe.utils.bench_helper`).
+# The console auto-inits + connects the site, so the script can use `frappe.*`
+# directly — just assert the bug and frappe.db.rollback() at the end.
+py="$bench/env/bin/python"
+if [ -x "$py" ]; then
+  "$py" -m frappe.utils.bench_helper frappe --site "$site" console < "$script"
+elif command -v bench >/dev/null 2>&1; then
+  bench --site "$site" console < "$script"
+else
+  echo "no venv python at $py and no 'bench' CLI — can't open a console" >&2; exit 2
+fi

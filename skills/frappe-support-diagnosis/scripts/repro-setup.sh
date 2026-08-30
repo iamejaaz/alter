@@ -1,7 +1,13 @@
 #!/bin/sh
 # One-time: scaffold per-version benches for the repro flow. Creates
 # <root>/bench-<version> for develop, version-16, version-15 — each with frappe
-# (+ hrms, erpnext) and ONE reusable repro site. This is the slow part (bench
+# (+ hrms, erpnext) and ONE reusable repro site.
+#
+# ALTERNATIVE: frappe/pilot manages benches/sites too. If you use it, create
+# benches named by version (e.g. `pilot new develop`, `pilot new version-15`)
+# under its benches dir and point Settings → Repro benches there. repro.sh works
+# with pilot benches — it runs the console via env/bin/python (pilot doesn't
+# install the `bench` CLI). This is the slow part (bench
 # init downloads + builds per version); it's paid ONCE. After this, each repro
 # reuses the site and rolls back (frappe.db.rollback), so runs are seconds — no
 # per-run new-site/drop-site.

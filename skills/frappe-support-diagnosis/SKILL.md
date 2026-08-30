@@ -106,8 +106,10 @@ new-site/drop-site.
    develop → the fix is a **backport** (find the fixing PR). This tells you the
    fix strategy before you write a line of fix.
 
-Write the repro as a bench-console script that builds the exact scenario and
-asserts the bug, wrapped so it leaves **no residue** (roll back at the end):
+Benches can be classic `frappe-bench` or `pilot`-managed (same `apps/`, `sites/`,
+`env/` layout — `repro.sh` handles both). The console auto-inits + connects the
+site, so the script uses `frappe.*` directly (no `frappe.init`/`connect` needed)
+and just asserts the bug, wrapped so it leaves **no residue** (roll back):
 ```python
 import frappe
 reproduced = False
