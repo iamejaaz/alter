@@ -132,6 +132,19 @@ fn agent_disallowed_tools() -> String {
     fr_rules(FR_WRITE_VERBS).join(" ")
 }
 
+// Allowlist for VERIFYING a PR on a throwaway repro bench: fetch + checkout the
+// PR branch, run bench (migrate / tests / console), inspect with git/gh. No
+// `git push` — verification only. Runs against a repro bench, not the user's work.
+fn verify_allowed_tools() -> String {
+    let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch"].iter().map(|s| s.to_string()).collect();
+    t.push("Bash(git:*)".to_string());
+    t.push("Bash(bench:*)".to_string());
+    for g in ["gh pr view", "gh pr diff", "gh pr checkout", "gh pr checks", "gh pr list", "gh issue view"] {
+        t.push(format!("Bash({g}:*)"));
+    }
+    t.join(" ")
+}
+
 // Bounded write allowlist for turning a diagnosed fix into a PR: edit files,
 // branch, commit, push (to a fork), open the PR. No bypassPermissions, no rm,
 // no arbitrary shell — only the git/gh verbs the flow needs.
@@ -225,6 +238,7 @@ fn spawn_agent_run(
     progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
 ) {
     let is_pr = mode.as_deref() == Some("pr");
+    let is_verify = mode.as_deref() == Some("verify");
     progress.lock().unwrap().insert(run_id.clone(), AgentProgress::default());
     let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
     let mut cmd = std::process::Command::new("claude");
@@ -242,6 +256,8 @@ fn spawn_agent_run(
     }
     if is_pr {
         cmd.arg("--allowedTools").arg(pr_allowed_tools());
+    } else if is_verify {
+        cmd.arg("--allowedTools").arg(verify_allowed_tools());
     } else {
         cmd.arg("--allowedTools").arg(agent_allowed_tools());
         cmd.arg("--disallowedTools").arg(agent_disallowed_tools());

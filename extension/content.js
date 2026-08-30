@@ -99,6 +99,33 @@ async function followUp(q) {
 const DRAFT_SYSTEM =
   "You are Ejaaz writing the review comment to post on this PR. Terse, plain English, @author-addressed where useful, cite file:line, and include a ```suggestion block when a concrete fix fits. No preamble, no praise-fluff, no meta. Output ONLY the comment body, ready to paste.";
 
+// Verify a PR by actually running it on a throwaway repro bench (SWE-agent-style
+// reproducer). Uses the per-version repro benches; never touches the user's own
+// checkout (works via `git -C <bench>/apps/<repo>`), and always restores the branch.
+const VERIFY_SYSTEM = [
+  "You verify a GitHub PR by RUNNING it on a throwaway repro bench, not by reading the diff. Benches: $ALTER_REPRO_DEVELOP / $ALTER_REPRO_VERSION_16 / $ALTER_REPRO_VERSION_15 (echo them first). Pick the one matching the PR's base branch (a develop-targeted PR → $ALTER_REPRO_DEVELOP). If none is set, say so and stop.",
+  "Work only via `git -C <bench>/apps/<repo>` so you never disturb the user's own checkout.",
+  "Steps: 1) record the current branch (rev-parse --abbrev-ref HEAD). 2) fetch + checkout the PR: git -C <path> fetch origin pull/<num>/head:pr-<num> && git -C <path> checkout pr-<num>. 3) if there are schema/patch changes, `bench --site repro.localhost migrate`. 4) run the change — prefer the PR's OWN tests (`bench --site repro.localhost run-tests --module <touched module>`), else a bench console script that exercises the changed path and asserts the outcome. 5) ALWAYS restore: `git -C <path> checkout <original-branch>` and delete pr-<num>, leaving the bench clean.",
+  "Output: **Verified** — works on <version> (what you ran + the result), or **Failed** — what broke (paste the error), or **Couldn't verify** — why (no repro bench, no tests to run, etc.). Terse and honest — NEVER claim verified without actually running something.",
+].join(" ");
+
+async function verifyOnBench() {
+  if (!session) return;
+  appendBlock("user").textContent = "Verify on bench";
+  const p = session.parts;
+  const block = appendBlock("assistant");
+  const a = await streamAgent(block, {
+    connectionId: session.connectionId,
+    includeMemory: true,
+    model: session.model,
+    mode: "verify",
+    system: VERIFY_SYSTEM,
+    prompt: `Verify PR ${p.owner}/${p.repo}#${p.num}. Check its base branch with gh, pick the matching repro bench, run it, and report.`,
+    label: "verify",
+  });
+  session.verify = a;
+}
+
 async function draftComment() {
   if (!session) return;
   appendBlock("user").textContent = "Draft comment";
@@ -450,6 +477,7 @@ function renderFooter() {
   foot.innerHTML = `
     <div id="alter-foot-btns">
       <button id="alter-draft">✍️ Draft comment</button>
+      <button id="alter-verify">🔬 Verify on bench</button>
       <button id="alter-post-review" class="alter-ghost">Post review as-is…</button>
     </div>
     <div id="alter-foot-ask">
@@ -460,6 +488,12 @@ function renderFooter() {
   foot.querySelector("#alter-draft").addEventListener("click", (e) => {
     e.target.disabled = true;
     draftComment().finally(() => {
+      if (e.target.isConnected) e.target.disabled = false;
+    });
+  });
+  foot.querySelector("#alter-verify").addEventListener("click", (e) => {
+    e.target.disabled = true;
+    verifyOnBench().finally(() => {
       if (e.target.isConnected) e.target.disabled = false;
     });
   });
