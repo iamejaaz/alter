@@ -81,15 +81,17 @@ import {
   Message,
   Project,
   Routine,
+  Schedule,
   Settings,
   Skill,
   isClaudeCodeUrl,
   newId,
+  scheduleLabel,
   storage,
 } from "./lib/store";
-import RoutinesPanel from "./components/RoutinesPanel";
+import RoutinesPage from "./components/RoutinesPage";
 import ProjectsPanel from "./components/ProjectsPanel";
-import SkillsPanel from "./components/SkillsPanel";
+import SkillsPage from "./components/SkillsPage";
 import ConfirmHost from "./components/ConfirmHost";
 
 export default function App() {
@@ -102,9 +104,8 @@ export default function App() {
     () => localStorage.getItem("alter.activeProject")
   );
   const [showProjects, setShowProjects] = useState(false);
-  const [showRoutines, setShowRoutines] = useState(false);
   const [skills, setSkills] = useState<Skill[]>(() => storage.loadSkills());
-  const [showSkills, setShowSkills] = useState(false);
+  const [view, setView] = useState<"chat" | "routines" | "skills">("chat");
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
   const [input, setInput] = useState("");
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
@@ -377,6 +378,59 @@ export default function App() {
     return raw.length > 240 ? raw.slice(0, 240) + "…" : raw;
   };
 
+  // Turn a natural-language description into a routine (name + prompt + schedule)
+  // via a one-shot completion on the active connection. Returns null if it isn't
+  // a scheduling request.
+  const parseRoutine = async (description: string): Promise<Partial<Routine> | null> => {
+    const conns = settings.connections ?? [];
+    const conn = conns.find((c) => c.id === settings.activeConnectionId);
+    const baseUrl = conn?.baseUrl ?? settings.baseUrl;
+    const apiKey = conn?.apiKey ?? settings.apiKey;
+    const model = conn?.model ?? settings.model;
+    const system = [
+      "You convert a natural-language routine request into JSON for a scheduler. Output ONLY a JSON object — no prose, no code fences.",
+      'Shape: {"name": string, "prompt": string, "schedule": Schedule} where Schedule is one of:',
+      '{"kind":"interval","everyMinutes":number} | {"kind":"daily","time":"HH:MM"} | {"kind":"weekly","time":"HH:MM","days":[0-6]}',
+      "time is 24h local. days: 0=Sunday…6=Saturday; \"weekdays\"=[1,2,3,4,5]. \"every morning\"=daily 09:00 unless a time is given.",
+      "name = a short 3-5 word label. prompt = the instruction to run each time, in the user's voice.",
+      'If the text is NOT a scheduling/routine request, output {"notRoutine": true}.',
+      `Current local time: ${new Date().toString()}.`,
+    ].join("\n");
+    let raw: string;
+    try {
+      raw = await invoke<string>("complete_once", { baseUrl, apiKey, model, system, prompt: description });
+    } catch {
+      return null;
+    }
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    try {
+      const obj = JSON.parse(m[0]);
+      if (obj.notRoutine || !obj.name || !obj.prompt || !obj.schedule) return null;
+      return { name: obj.name, prompt: obj.prompt, schedule: obj.schedule as Schedule };
+    } catch {
+      return null;
+    }
+  };
+
+  const addRoutineFromParsed = (p: Partial<Routine>): Routine => {
+    const conn = (settings.connections ?? []).find((c) => c.id === settings.activeConnectionId);
+    const schedule = p.schedule as Schedule;
+    const r: Routine = {
+      id: newId(),
+      name: p.name || "Routine",
+      prompt: p.prompt || "",
+      everyMinutes: schedule.kind === "interval" ? schedule.everyMinutes : 60,
+      schedule,
+      connectionId: settings.activeConnectionId,
+      model: conn?.model,
+      lastRun: null,
+      enabled: true,
+    };
+    setRoutines((prev) => [...prev, r]);
+    return r;
+  };
+
   const send = async (opts?: {
     text?: string;
     forceNew?: boolean;
@@ -387,6 +441,38 @@ export default function App() {
     const text = (opts?.text ?? input).trim();
     const atts = opts?.text ? [] : attachments;
     if (!text && atts.length === 0) return;
+
+    // Create a routine from natural language: an explicit "/routine …", or a
+    // schedule-shaped message (confirmed before it turns into a routine).
+    if (!opts?.text && !atts.length) {
+      const slash = /^\/routine\b/i.test(text);
+      const scheduley =
+        /\b(every|each|daily|weekly|hourly|remind me|schedule|routine)\b/i.test(text) &&
+        /\b(day|morning|evening|night|hour|minute|week|weekday|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|midnight|\d\s*(am|pm)|\d{1,2}:\d{2})\b/i.test(text);
+      if (slash || (scheduley && text.length < 240)) {
+        const desc = slash ? text.replace(/^\/routine\b/i, "").trim() : text;
+        if (slash && !desc) {
+          setInput("");
+          setView("routines");
+          return;
+        }
+        const parsed = await parseRoutine(desc);
+        if (parsed?.schedule) {
+          const label = scheduleLabel({ schedule: parsed.schedule, everyMinutes: 60 } as Routine);
+          if (slash || (await confirmDialog(`Create routine “${parsed.name}” — ${label}?\n\n${parsed.prompt}\n\nCancel to send as a normal message.`))) {
+            addRoutineFromParsed(parsed);
+            setInput("");
+            setInfo(`Routine created: ${parsed.name} — ${label}.`);
+            return;
+          }
+        } else if (slash) {
+          setInput("");
+          setView("routines");
+          return;
+        }
+      }
+    }
+
     const targetId = opts?.targetConvId ?? (opts?.forceNew ? null : activeId);
     // If that conversation is mid-generation, queue this message to auto-send when it finishes.
     if (!opts?.targetConvId && targetId && streamingIds.includes(targetId)) {
@@ -1029,7 +1115,8 @@ export default function App() {
     { cmd: "/chat", desc: "Chat only, no tools", run: () => applyMode("chat") },
     { cmd: "/folder", desc: "Attach a working folder", run: () => void chooseFolder() },
     { cmd: "/attach", desc: "Attach images or files", run: () => fileInputRef.current?.click() },
-    { cmd: "/routines", desc: "Open routines", run: () => setShowRoutines(true) },
+    { cmd: "/routine", desc: "Create a routine from a description", run: () => setView("routines") },
+    { cmd: "/routines", desc: "Open routines", run: () => setView("routines") },
     { cmd: "/settings", desc: "Open settings", run: () => setShowSettings(true) },
   ];
   // Ghost-text autocomplete: complete from a recent message that starts with the current input.
@@ -1064,8 +1151,8 @@ export default function App() {
   const paletteCommands: Command[] = [
     { id: "new", label: "New chat", hint: "⌘N", section: "Actions", run: () => setActiveId(null) },
     { id: "settings", label: "Open settings", section: "Actions", run: () => setShowSettings(true) },
-    { id: "routines", label: "Open routines", section: "Actions", run: () => setShowRoutines(true) },
-    { id: "skills", label: "Open skills", section: "Actions", run: () => setShowSkills(true) },
+    { id: "routines", label: "Open routines", section: "Actions", run: () => setView("routines") },
+    { id: "skills", label: "Open skills", section: "Actions", run: () => setView("skills") },
     { id: "projects", label: "Manage projects", section: "Actions", run: () => setShowProjects(true) },
     { id: "proj-all", label: "Project: All chats", section: "Projects", run: () => selectProject(null) },
     ...projects.map((p) => ({
@@ -1134,11 +1221,26 @@ export default function App() {
         onRename={(id, title) => updateConversation(id, (c) => ({ ...c, title }))}
         onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}
         onOpenSettings={() => setShowSettings(true)}
-        onOpenRoutines={() => setShowRoutines(true)}
-        onOpenSkills={() => setShowSkills(true)}
+        onOpenRoutines={() => setView("routines")}
+        onOpenSkills={() => setView("skills")}
       />
 
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="relative flex-1 flex flex-col min-w-0">
+        {view === "routines" && (
+          <RoutinesPage
+            routines={routines}
+            connections={settings.connections ?? []}
+            activeConnectionId={settings.activeConnectionId}
+            onChange={setRoutines}
+            onRunNow={(r) => {
+              setView("chat");
+              void send({ text: r.prompt, forceNew: true, title: `⏱ ${r.name}` });
+            }}
+            onBack={() => setView("chat")}
+            parseRoutine={parseRoutine}
+          />
+        )}
+        {view === "skills" && <SkillsPage skills={skills} onChange={setSkills} onBack={() => setView("chat")} />}
         <header
           data-tauri-drag-region
           className="flex items-center gap-2 h-12 px-4 shrink-0 border-b border-[var(--bd-soft)]"
@@ -1645,8 +1747,6 @@ export default function App() {
 
       <ConfirmHost />
 
-      {showSkills && <SkillsPanel skills={skills} onChange={setSkills} onClose={() => setShowSkills(false)} />}
-
       {showProjects && (
         <ProjectsPanel
           projects={projects}
@@ -1655,18 +1755,6 @@ export default function App() {
             if (activeProjectId && !p.some((x) => x.id === activeProjectId)) selectProject(null);
           }}
           onClose={() => setShowProjects(false)}
-        />
-      )}
-
-      {showRoutines && (
-        <RoutinesPanel
-          routines={routines}
-          onChange={setRoutines}
-          onRunNow={(r) => {
-            setShowRoutines(false);
-            void send({ text: r.prompt, forceNew: true, title: `⏱ ${r.name}` });
-          }}
-          onClose={() => setShowRoutines(false)}
         />
       )}
 
