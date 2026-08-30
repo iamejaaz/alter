@@ -35,6 +35,10 @@ if [ ! -d "$bench/sites/$site" ]; then
   apps_list="${REPRO_APPS:-hrms erpnext}"
   if [ -f "$bench/bench.toml" ] && command -v pilot >/dev/null 2>&1; then
     name="$(basename "$bench")"
+    # clone any missing apps into the bench at this version, then create the site
+    for app in $apps_list; do
+      [ -d "$bench/apps/$app" ] || { echo "   get-app $app@$ver"; pilot -b "$name" get-app "https://github.com/frappe/$app" --branch "$ver" || echo "   (couldn't get $app@$ver)"; }
+    done
     pilot -b "$name" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" --apps frappe $apps_list \
       || pilot -b "$name" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" \
       || { echo "!! couldn't create $site via pilot" >&2; exit 3; }
@@ -47,7 +51,14 @@ if [ ! -d "$bench/sites/$site" ]; then
     fi
     ( cd "$bench" && bench new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" --mariadb-root-password "$MYSQL_ROOT_PASSWORD" ) \
       || { echo "!! new-site $site failed" >&2; exit 3; }
-    for app in $apps_list; do ( cd "$bench" && bench --site "$site" install-app "$app" ) || true; done
+    # clone (get-app) any missing apps at this version, then install them on the site
+    for app in $apps_list; do
+      if [ ! -d "$bench/apps/$app" ]; then
+        echo "   get-app $app@$ver (one-time clone + deps)"
+        ( cd "$bench" && bench get-app --branch "$ver" "$app" ) || { echo "   (couldn't get $app@$ver — skipping)"; continue; }
+      fi
+      ( cd "$bench" && bench --site "$site" install-app "$app" ) || true
+    done
   else
     echo "!! $site missing and no bench/pilot CLI to create it." >&2; exit 3
   fi
