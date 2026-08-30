@@ -68,6 +68,7 @@ export interface Settings {
   activeConnectionId?: string;
   reproRoot?: string; // optional: a folder holding per-version benches (convention)
   reproBenches?: Record<string, string>; // version -> existing bench folder (preferred)
+  mariadbRootPassword?: string; // lets the agent auto-create a repro site (classic bench)
 }
 
 export interface MemoryItem {

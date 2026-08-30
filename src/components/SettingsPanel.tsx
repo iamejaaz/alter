@@ -366,6 +366,16 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
                   );
                 })}
               </div>
+              <label className="mt-3 block text-[11px] text-[var(--txt-faint)]">
+                MariaDB root password <span className="text-[var(--txt-faint)]">(optional — lets the agent auto-create a missing repro site; stored locally)</span>
+              </label>
+              <input
+                type="password"
+                value={draft.mariadbRootPassword ?? ""}
+                onChange={(e) => setDraft({ ...draft, mariadbRootPassword: e.target.value })}
+                placeholder="leave blank to create sites yourself"
+                className="mt-1 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+              />
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)]">

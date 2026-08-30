@@ -261,8 +261,9 @@ export default function App() {
     void invoke("bridge_set_repro_root", {
       root: settings.reproRoot ?? "",
       benches: settings.reproBenches ?? {},
+      mariadbPassword: settings.mariadbRootPassword ?? "",
     }).catch(() => {});
-  }, [settings.reproRoot, settings.reproBenches]);
+  }, [settings.reproRoot, settings.reproBenches, settings.mariadbRootPassword]);
   useEffect(() => storage.saveSkills(skills), [skills]);
   // Extension "Open in Alter" handoff: the bridge emits this event; open a new
   // chat on a Claude Code connection pre-filled with the ticket prompt (NOT sent
