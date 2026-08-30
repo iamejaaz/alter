@@ -94,8 +94,11 @@ an isolated sandbox, and ASSERT the buggy outcome — never eyeball it.
 **Sandbox** = a throwaway Frappe site on a **per-version bench**. The benches live
 under `$ALTER_REPRO_ROOT` (the folder set in Alter → Settings → Repro benches):
 `bench-develop`, `bench-version-16`, `bench-version-15`, each with frappe + the
-relevant apps (hrms/erpnext) installed. Run `echo "$ALTER_REPRO_ROOT"`; if unset,
-tell the user to set it in Settings.
+relevant apps (hrms/erpnext) and ONE reusable repro site (`repro.localhost`). Run
+`echo "$ALTER_REPRO_ROOT"`; if unset, tell the user to set it in Settings (and to
+run `scripts/repro-setup.sh` once to scaffold the benches). The site is reused
+every run and the script rolls back — so a repro is seconds, never a per-run
+new-site/drop-site.
 
 **Order — develop FIRST, then narrow:**
 1. **develop** — does the bug reproduce on latest? If YES → it needs a **new fix**.
