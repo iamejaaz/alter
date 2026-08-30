@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { open } from "@tauri-apps/plugin-dialog";
 import { isClaudeCodeUrl, MemoryItem, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
 import { testConnection } from "../lib/api";
 import { Chevron } from "./Icons";
@@ -331,6 +332,34 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
                 </div>
               </div>
             )}
+            <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+              <p className="text-sm text-[var(--txt)]">Repro benches folder</p>
+              <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
+                A folder holding per-version benches (bench-develop, bench-version-16, bench-version-15) that the support agent uses to reproduce bugs. Exposed to agents as ALTER_REPRO_ROOT.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-xs text-[var(--txt-dim)]">
+                  {draft.reproRoot || "not set"}
+                </code>
+                <button
+                  onClick={async () => {
+                    const picked = await open({ directory: true, title: "Select the folder with your per-version benches" });
+                    if (typeof picked === "string") setDraft({ ...draft, reproRoot: picked });
+                  }}
+                  className="rounded-md border border-[var(--bd)] px-3 py-1.5 text-xs text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
+                >
+                  Choose…
+                </button>
+                {draft.reproRoot && (
+                  <button
+                    onClick={() => setDraft({ ...draft, reproRoot: "" })}
+                    className="rounded-md px-2 py-1.5 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)]"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)]">
                 Cancel

@@ -36,6 +36,9 @@ pub struct BridgeState {
     // so the extension gets Claude-Code-style activity without needing the
     // service worker to consume a stream (which MV3 buffers).
     pub progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
+    // Folder of per-version repro benches (Alter → Settings → Repro benches),
+    // exposed to agents as ALTER_REPRO_ROOT so they can reproduce a bug.
+    pub repro_root: Mutex<String>,
 }
 
 #[derive(Default, Clone, serde::Serialize)]
@@ -214,6 +217,7 @@ fn spawn_agent_run(
     prompt: String,
     run_id: String,
     mode: Option<String>,
+    repro_root: String,
     running: Arc<Mutex<std::collections::HashMap<String, u32>>>,
     progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
 ) {
@@ -240,6 +244,9 @@ fn spawn_agent_run(
         cmd.arg("--disallowedTools").arg(agent_disallowed_tools());
     }
     cmd.arg("--permission-mode").arg("default");
+    if !repro_root.is_empty() {
+        cmd.env("ALTER_REPRO_ROOT", &repro_root);
+    }
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     #[cfg(unix)]
     {
@@ -342,6 +349,18 @@ pub fn bridge_info(state: State<BridgeState>) -> serde_json::Value {
 #[tauri::command]
 pub fn bridge_sync(state: State<BridgeState>, connections: Vec<BridgeConn>) {
     *state.conns.lock().unwrap() = connections;
+}
+
+#[tauri::command]
+pub fn bridge_set_repro_root(state: State<BridgeState>, root: String) {
+    // Set it on the whole process env so in-process spawns (Alter chat's
+    // claude_code, the bridge's agents) inherit ALTER_REPRO_ROOT for free. The
+    // fr-assistant Terminal launch (a fresh login shell) exports it explicitly
+    // from the stored value below.
+    if !root.is_empty() {
+        std::env::set_var("ALTER_REPRO_ROOT", &root);
+    }
+    *state.repro_root.lock().unwrap() = root;
 }
 
 // Reasoning models (e.g. laguna) wrap their thinking in <think>…</think>; the
@@ -918,7 +937,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let system = build_system(req.include_memory, req.system.as_deref());
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             state.progress.lock().unwrap().retain(|_, p| !p.done);
-            spawn_agent_run(conn, system, req.prompt, run_id.clone(), req.mode, state.running.clone(), state.progress.clone());
+            let repro_root = state.repro_root.lock().unwrap().clone();
+            spawn_agent_run(conn, system, req.prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone());
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/agent-poll") => {
@@ -1058,7 +1078,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             if task.is_empty() {
                 return (400, "{\"error\":\"empty task\"}".into());
             }
-            match launch_fr_assistant(task) {
+            let repro_root = state.repro_root.lock().unwrap().clone();
+            match launch_fr_assistant(task, &repro_root) {
                 Ok(_) => (200, "{\"ok\":true}".into()),
                 Err(e) => (500, serde_json::json!({ "error": e }).to_string()),
             }
@@ -1071,11 +1092,17 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
 // interactive (permission-prompting) Frappe agent the user drives, distinct from
 // the scoped headless agent. macOS only for now.
 #[cfg(target_os = "macos")]
-fn launch_fr_assistant(task: &str) -> Result<(), String> {
+fn launch_fr_assistant(task: &str, repro_root: &str) -> Result<(), String> {
     let dir = agent_workdir();
     let esc_sh = |s: &str| s.replace('\'', "'\\''");
+    let export = if repro_root.is_empty() {
+        String::new()
+    } else {
+        format!("export ALTER_REPRO_ROOT='{}'\n", esc_sh(repro_root))
+    };
     let script = format!(
-        "#!/bin/sh\ncd '{}' 2>/dev/null\nexec fr assistant claude -- '{}'\n",
+        "#!/bin/sh\n{}cd '{}' 2>/dev/null\nexec fr assistant claude -- '{}'\n",
+        export,
         esc_sh(&dir),
         esc_sh(task)
     );
@@ -1092,7 +1119,7 @@ fn launch_fr_assistant(task: &str) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn launch_fr_assistant(_task: &str) -> Result<(), String> {
+fn launch_fr_assistant(_task: &str, _repro_root: &str) -> Result<(), String> {
     Err("fr assistant handoff is only wired for macOS right now".into())
 }
 

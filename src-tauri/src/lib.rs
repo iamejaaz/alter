@@ -1085,6 +1085,7 @@ pub fn run() {
             git_pr,
             bridge::bridge_info,
             bridge::bridge_sync,
+            bridge::bridge_set_repro_root,
             browser::browser_open,
             browser::browser_read,
             browser::browser_click,

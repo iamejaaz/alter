@@ -86,27 +86,49 @@ Interpret:
 - Broken on develop too → a **new fix** is needed.
 State the exact refs you compared and the verdict per version.
 
-### 5. Reproduce
-A trace is not proof. Reproduce the trigger:
-- **Bench console** (preferred for framework logic). Pipe a script — don't rely on
-  an interactive REPL headless:
-  ```sh
-  bench --site <local-test-site> console <<'PY'
-  import frappe
-  # set up the exact scenario (e.g. a web form submit with an empty Attach field
-  # on an existing record) and assert the buggy outcome (the File gets deleted).
-  PY
-  ```
-  or `bench --site <site> execute <dotted.path> --kwargs '{...}'` for a single
-  method. Use a throwaway local site (`bench new-site` with the relevant apps), or
-  an existing dev site — never a production site.
-- **Config/data-specific bugs** (the trigger depends on the customer's exact
-  setup, e.g. a web form's `allow_edit`): local can't conjure their config. Use a
-  **Frappe Cloud test site restored from the customer's backup, scrubbed of PII** —
-  that's the only faithful repro. Recommend this rather than guessing.
-- **Read-only agent:** don't attempt writes. Produce the trace + version triage
-  and say reproduction needs a bench session — hand off via "Continue in… →
-  fr assistant / Alter chat".
+### 5. Reproduce — develop first, then the customer's version
+A trace is a hypothesis; reproduction is proof. Mirror how automated repro works
+(SWE-agent / OpenHands / MarsCode "Reproducer"): write a repro SCRIPT, run it in
+an isolated sandbox, and ASSERT the buggy outcome — never eyeball it.
+
+**Sandbox** = a throwaway Frappe site on a **per-version bench**. The benches live
+under `$ALTER_REPRO_ROOT` (the folder set in Alter → Settings → Repro benches):
+`bench-develop`, `bench-version-16`, `bench-version-15`, each with frappe + the
+relevant apps (hrms/erpnext) installed. Run `echo "$ALTER_REPRO_ROOT"`; if unset,
+tell the user to set it in Settings.
+
+**Order — develop FIRST, then narrow:**
+1. **develop** — does the bug reproduce on latest? If YES → it needs a **new fix**.
+2. If NO on develop but YES on the customer's line (v16/v15) → already fixed on
+   develop → the fix is a **backport** (find the fixing PR). This tells you the
+   fix strategy before you write a line of fix.
+
+Write the repro as a bench-console script that builds the exact scenario and
+asserts the bug, wrapped so it leaves **no residue** (roll back at the end):
+```python
+import frappe
+reproduced = False
+try:
+    # build the trigger (e.g. web_form accept() with an empty Attach on an
+    # existing doc) and set reproduced = <the buggy outcome actually happened>
+    print("REPRODUCED" if reproduced else "NOT REPRODUCED")
+finally:
+    frappe.db.rollback()   # never persist test state
+```
+Run it per version with the helper (routes to the right bench, runs on its repro
+site, rolls back):
+```sh
+scripts/repro.sh develop /tmp/repro.py
+scripts/repro.sh version-15 /tmp/repro.py
+```
+
+- **Config/data-specific bugs** (need the customer's exact setup, e.g. a web
+  form's `allow_edit`): reproduce the CONFIG on a fresh site (ask them for the
+  web-form export). NEVER restore a PII-laden production backup into an
+  agent-reachable site.
+- **Read-only triage agent:** you can't run bench. Produce the trace + version
+  triage and hand off — "Continue in… → fr assistant / Alter chat" — to run the
+  repro above. Say clearly that repro was not run and what would confirm it.
 
 ### 6. Check gh for an existing fix
 Search open AND closed:

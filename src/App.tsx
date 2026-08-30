@@ -257,6 +257,9 @@ export default function App() {
   useEffect(() => {
     void invoke("bridge_sync", { connections: settings.connections ?? [] }).catch(() => {});
   }, [settings.connections]);
+  useEffect(() => {
+    void invoke("bridge_set_repro_root", { root: settings.reproRoot ?? "" }).catch(() => {});
+  }, [settings.reproRoot]);
   useEffect(() => storage.saveSkills(skills), [skills]);
   // Extension "Open in Alter" handoff: the bridge emits this event; open a new
   // chat on a Claude Code connection pre-filled with the ticket prompt (NOT sent
