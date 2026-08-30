@@ -873,6 +873,20 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 .collect();
             (200, serde_json::to_string(&list).unwrap_or_else(|_| "[]".into()))
         }
+        (tiny_http::Method::Get, "/repro-info") => {
+            // Which repro benches are configured (so the extension can gate the
+            // Verify-on-bench action). Read the same env the agents get.
+            let mut versions: Vec<String> = Vec::new();
+            for v in ["develop", "version-16", "version-15"] {
+                let key = format!("ALTER_REPRO_{}", v.to_uppercase().replace('-', "_"));
+                if std::env::var(&key).map(|s| !s.is_empty()).unwrap_or(false) {
+                    versions.push(v.to_string());
+                }
+            }
+            let has_root = std::env::var("ALTER_REPRO_ROOT").map(|s| !s.is_empty()).unwrap_or(false);
+            let configured = has_root || !versions.is_empty();
+            (200, serde_json::json!({ "configured": configured, "versions": versions }).to_string())
+        }
         (tiny_http::Method::Post, "/run") => {
             let req: RunReq = match serde_json::from_str(body) {
                 Ok(r) => r,

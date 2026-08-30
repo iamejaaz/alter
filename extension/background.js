@@ -130,6 +130,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return;
         }
         sendResponse({ ok: true, text: await res.text() });
+      } else if (msg.type === "repro-info") {
+        const r = await bridge("/repro-info");
+        sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: hint(r) });
       } else if (msg.type === "connections") {
         const r = await bridge("/connections");
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: hint(r) });

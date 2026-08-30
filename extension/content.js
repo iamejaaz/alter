@@ -491,11 +491,20 @@ function renderFooter() {
       if (e.target.isConnected) e.target.disabled = false;
     });
   });
-  foot.querySelector("#alter-verify").addEventListener("click", (e) => {
+  const verifyBtn = foot.querySelector("#alter-verify");
+  verifyBtn.addEventListener("click", (e) => {
     e.target.disabled = true;
     verifyOnBench().finally(() => {
       if (e.target.isConnected) e.target.disabled = false;
     });
+  });
+  // Gate Verify on bench: disable it until a repro bench is configured in Alter.
+  send({ type: "repro-info" }).then((r) => {
+    if (!(r && r.ok && r.data && r.data.configured)) {
+      verifyBtn.disabled = true;
+      verifyBtn.title = "Set up a repro bench in Alter → Settings → Repro benches first";
+      verifyBtn.textContent = "🔬 Verify on bench — set up a bench";
+    }
   });
   foot.querySelector("#alter-post-review").addEventListener("click", () => renderPostPreview(session.review));
   const input = foot.querySelector("#alter-ask");
