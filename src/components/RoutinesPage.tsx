@@ -274,11 +274,18 @@ export default function RoutinesPage({
               {connections.length > 0 && (
                 <div>
                   <label className="text-xs text-[var(--txt-dim)]">Run on</label>
-                  <select value={draft.connectionId} onChange={(e) => setDraft({ ...draft, connectionId: e.target.value })} className={`${input} mt-1`}>
-                    {connections.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                  <div className="relative mt-1">
+                    <select
+                      value={draft.connectionId}
+                      onChange={(e) => setDraft({ ...draft, connectionId: e.target.value })}
+                      className={`${input} appearance-none pr-9 cursor-pointer`}
+                    >
+                      {connections.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--txt-faint)] text-[10px]">▼</span>
+                  </div>
                 </div>
               )}
 
