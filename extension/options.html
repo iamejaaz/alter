@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        padding: 32px 20px 48px;
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #16161a;
+        color: #e4e4e7;
+      }
+      .wrap { max-width: 520px; margin: 0 auto; }
+      h1 { font-size: 18px; margin: 0 0 2px; }
+      .sub { color: #a1a1aa; font-size: 12px; margin: 0 0 22px; }
+      .card { background: #1c1c22; border: 1px solid #26262c; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+      .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #a1a1aa; margin: 0 0 12px; }
+      label { display: block; font-size: 11px; color: #a1a1aa; margin: 12px 0 4px; }
+      label:first-of-type { margin-top: 0; }
+      input, select {
+        width: 100%;
+        box-sizing: border-box;
+        background: #232329;
+        border: 1px solid #34343c;
+        color: #e4e4e7;
+        border-radius: 8px;
+        padding: 8px 9px;
+        font: inherit;
+      }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .row input { flex: 1; }
+      button {
+        background: #4f46e5; color: #fff; border: 0; border-radius: 8px;
+        padding: 8px 14px; font: inherit; cursor: pointer;
+      }
+      button.ghost { background: #232329; border: 1px solid #34343c; color: #e4e4e7; }
+      .status { margin-top: 14px; font-size: 12px; min-height: 16px; }
+      .ok { color: #4ade80; }
+      .err { color: #f87171; }
+      .hint { color: #71717a; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Alter settings</h1>
+      <p class="sub">Uses your desktop app's models. No keys are stored here.</p>
+
+      <div class="card">
+        <h2>Connection</h2>
+        <label>Pairing token <span class="hint">(Alter → Settings → Browser bridge)</span></label>
+        <div class="row">
+          <input id="token" type="password" placeholder="paste token" />
+          <button id="save" class="ghost">Save</button>
+        </div>
+        <label>Claude Code model <span class="hint">(when an action uses Claude Code)</span></label>
+        <select id="claude-model">
+          <option value="">Default (Opus)</option>
+          <option value="opus">Opus 5</option>
+          <option value="sonnet">Sonnet 5</option>
+          <option value="haiku">Haiku</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <h2>Model per action</h2>
+        <label>PR review</label>
+        <select id="m-prReview"></select>
+        <label>Grammar</label>
+        <select id="m-grammar"></select>
+        <label>Support agent <span class="hint">(use Claude Code — needs tools)</span></label>
+        <select id="m-support"></select>
+        <label>Page summary</label>
+        <select id="m-summarize"></select>
+      </div>
+
+      <div class="status" id="status"></div>
+    </div>
+    <script src="options.js"></script>
+  </body>
+</html>

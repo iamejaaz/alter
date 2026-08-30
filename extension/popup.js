@@ -1,10 +1,8 @@
 const $ = (id) => document.getElementById(id);
-const ACTIONS = ["prReview", "grammar", "support", "summarize"];
+const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
 const SUMMARY_SYSTEM =
   "Summarize the page for a busy reader. Lead with a one-line what-this-is, then 3-6 tight bullets of the key points. Plain text, no preamble.";
-
-const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
 function setStatus(text, cls) {
   const el = $("status");
@@ -12,60 +10,20 @@ function setStatus(text, cls) {
   el.className = "status " + (cls || "");
 }
 
-async function loadConnections() {
-  const stored = await chrome.storage.local.get(["token", "models", "claudeModel"]);
-  $("token").value = stored.token || "";
-  const models = stored.models || {};
-  // Default the Claude model to Sonnet — cheaper against the session limit.
-  $("claude-model").value = stored.claudeModel != null ? stored.claudeModel : "sonnet";
-
+async function refresh() {
   const r = await send({ type: "connections" });
-  if (!r || !r.ok) {
-    setStatus(r?.error || "Not paired yet — paste your token and Save.", "err");
-    ACTIONS.forEach((a) => ($("m-" + a).innerHTML = "<option>—</option>"));
-    return;
-  }
-  const conns = r.data || [];
-  const claude = conns.find((c) => c.isClaudeCode);
-  ACTIONS.forEach((a) => {
-    const sel = $("m-" + a);
-    sel.innerHTML = "";
-    // Support needs a tool-capable agent — default it to Claude Code.
-    const preferred = models[a] || (a === "support" && claude ? claude.id : null);
-    conns.forEach((c) => {
-      const o = document.createElement("option");
-      o.value = c.id;
-      o.textContent = c.name;
-      if (preferred === c.id) o.selected = true;
-      sel.appendChild(o);
-    });
-  });
-  // Persist whatever is shown (defaults included) so an untouched dropdown still
-  // counts as a real choice — otherwise its action reports "no model".
-  await saveModels();
-  setStatus(`Connected · ${conns.length} models`, "ok");
+  if (r && r.ok) setStatus(`Connected · ${(r.data || []).length} models`, "ok");
+  else setStatus(r?.error || "Not paired — open Settings to add your token.", "err");
 }
 
-async function saveModels() {
-  const models = {};
-  ACTIONS.forEach((a) => (models[a] = $("m-" + a).value));
-  await chrome.storage.local.set({ models, claudeModel: $("claude-model").value });
-}
-
-$("save").addEventListener("click", async () => {
-  await chrome.storage.local.set({ token: $("token").value.trim() });
-  setStatus("Saved. Checking…");
-  loadConnections();
-});
-
-ACTIONS.forEach((a) => $("m-" + a).addEventListener("change", saveModels));
-$("claude-model").addEventListener("change", saveModels);
+$("settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
 
 $("describe-page").addEventListener("click", async () => {
   const out = $("summary");
-  const connectionId = $("m-summarize").value;
+  const { models } = await chrome.storage.local.get("models");
+  const connectionId = models && models.summarize;
   if (!connectionId) {
-    out.innerHTML = '<span class="err">Pick a model for page summary first.</span>';
+    out.innerHTML = '<span class="err">Pick a page-summary model in Settings first.</span>';
     return;
   }
   out.textContent = "Reading the page…";
@@ -96,4 +54,4 @@ $("describe-page").addEventListener("click", async () => {
   }
 });
 
-loadConnections();
+refresh();
