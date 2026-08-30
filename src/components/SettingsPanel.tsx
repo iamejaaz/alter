@@ -333,31 +333,38 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
               </div>
             )}
             <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-              <p className="text-sm text-[var(--txt)]">Repro benches folder</p>
+              <p className="text-sm text-[var(--txt)]">Repro benches</p>
               <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
-                A folder holding per-version benches (bench-develop, bench-version-16, bench-version-15) that the support agent uses to reproduce bugs. Exposed to agents as ALTER_REPRO_ROOT.
+                Point each version at an existing bench folder. The support agent reproduces bugs there — develop first, then the customer's version.
               </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-xs text-[var(--txt-dim)]">
-                  {draft.reproRoot || "not set"}
-                </code>
-                <button
-                  onClick={async () => {
-                    const picked = await open({ directory: true, title: "Select the folder with your per-version benches" });
-                    if (typeof picked === "string") setDraft({ ...draft, reproRoot: picked });
-                  }}
-                  className="rounded-md border border-[var(--bd)] px-3 py-1.5 text-xs text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
-                >
-                  Choose…
-                </button>
-                {draft.reproRoot && (
-                  <button
-                    onClick={() => setDraft({ ...draft, reproRoot: "" })}
-                    className="rounded-md px-2 py-1.5 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)]"
-                  >
-                    Clear
-                  </button>
-                )}
+              <div className="space-y-1.5">
+                {["develop", "version-16", "version-15"].map((ver) => {
+                  const path = draft.reproBenches?.[ver] || "";
+                  const setPath = (p: string) =>
+                    setDraft({ ...draft, reproBenches: { ...(draft.reproBenches ?? {}), [ver]: p } });
+                  return (
+                    <div key={ver} className="flex items-center gap-2">
+                      <span className="w-20 shrink-0 text-xs text-[var(--txt-dim)]">{ver}</span>
+                      <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-xs text-[var(--txt-dim)]">
+                        {path || "not set"}
+                      </code>
+                      <button
+                        onClick={async () => {
+                          const picked = await open({ directory: true, title: `Select the ${ver} bench folder` });
+                          if (typeof picked === "string") setPath(picked);
+                        }}
+                        className="rounded-md border border-[var(--bd)] px-3 py-1.5 text-xs text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
+                      >
+                        Choose…
+                      </button>
+                      {path && (
+                        <button onClick={() => setPath("")} className="text-xs text-[var(--txt-faint)] hover:text-[var(--txt)]">
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-1">

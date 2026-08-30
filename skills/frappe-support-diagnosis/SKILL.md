@@ -91,14 +91,15 @@ A trace is a hypothesis; reproduction is proof. Mirror how automated repro works
 (SWE-agent / OpenHands / MarsCode "Reproducer"): write a repro SCRIPT, run it in
 an isolated sandbox, and ASSERT the buggy outcome — never eyeball it.
 
-**Sandbox** = a throwaway Frappe site on a **per-version bench**. The benches live
-under `$ALTER_REPRO_ROOT` (the folder set in Alter → Settings → Repro benches):
-`bench-develop`, `bench-version-16`, `bench-version-15`, each with frappe + the
-relevant apps (hrms/erpnext) and ONE reusable repro site (`repro.localhost`). Run
-`echo "$ALTER_REPRO_ROOT"`; if unset, tell the user to set it in Settings (and to
-run `scripts/repro-setup.sh` once to scaffold the benches). The site is reused
-every run and the script rolls back — so a repro is seconds, never a per-run
-new-site/drop-site.
+**Sandbox** = a throwaway Frappe site on a **per-version bench**. The user picks a
+bench folder per version in Alter → Settings → Repro benches, exposed as
+`$ALTER_REPRO_DEVELOP`, `$ALTER_REPRO_VERSION_16`, `$ALTER_REPRO_VERSION_15` (or a
+folder-of-benches under `$ALTER_REPRO_ROOT` as a fallback). Each bench has frappe
++ the relevant apps and ONE reusable repro site (`repro.localhost`). Don't parse
+these yourself — just call `scripts/repro.sh <version> <script.py>`; it resolves
+the bench. If none is configured, tell the user to set them in Settings (and
+`scripts/repro-setup.sh` can scaffold missing ones). The site is reused and the
+script rolls back, so a repro is seconds — never a per-run new-site/drop-site.
 
 **Order — develop FIRST, then narrow:**
 1. **develop** — does the bug reproduce on latest? If YES → it needs a **new fix**.

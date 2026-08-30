@@ -39,6 +39,9 @@ pub struct BridgeState {
     // Folder of per-version repro benches (Alter → Settings → Repro benches),
     // exposed to agents as ALTER_REPRO_ROOT so they can reproduce a bug.
     pub repro_root: Mutex<String>,
+    // Shell `export …` lines for the repro env vars, prepended to the fr-assistant
+    // Terminal launch (a fresh login shell that doesn't inherit the app env).
+    pub repro_env: Mutex<String>,
 }
 
 #[derive(Default, Clone, serde::Serialize)]
@@ -352,15 +355,29 @@ pub fn bridge_sync(state: State<BridgeState>, connections: Vec<BridgeConn>) {
 }
 
 #[tauri::command]
-pub fn bridge_set_repro_root(state: State<BridgeState>, root: String) {
-    // Set it on the whole process env so in-process spawns (Alter chat's
-    // claude_code, the bridge's agents) inherit ALTER_REPRO_ROOT for free. The
-    // fr-assistant Terminal launch (a fresh login shell) exports it explicitly
-    // from the stored value below.
-    if !root.is_empty() {
-        std::env::set_var("ALTER_REPRO_ROOT", &root);
+pub fn bridge_set_repro_root(
+    state: State<BridgeState>,
+    root: String,
+    benches: std::collections::HashMap<String, String>,
+) {
+    // Set every repro var on the whole process env so in-process spawns (Alter
+    // chat's claude_code, the bridge's agents) inherit them for free. The
+    // fr-assistant Terminal launch (a fresh login shell) exports them from the
+    // `repro_env` string below.
+    let mut exports = String::new();
+    let mut set = |k: &str, v: &str| {
+        if !v.is_empty() {
+            std::env::set_var(k, v);
+            exports.push_str(&format!("export {}='{}'\n", k, v.replace('\'', "'\\''")));
+        }
+    };
+    set("ALTER_REPRO_ROOT", &root);
+    for (ver, path) in &benches {
+        let key = format!("ALTER_REPRO_{}", ver.to_uppercase().replace('-', "_"));
+        set(&key, path);
     }
     *state.repro_root.lock().unwrap() = root;
+    *state.repro_env.lock().unwrap() = exports;
 }
 
 // Reasoning models (e.g. laguna) wrap their thinking in <think>…</think>; the
@@ -1078,8 +1095,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             if task.is_empty() {
                 return (400, "{\"error\":\"empty task\"}".into());
             }
-            let repro_root = state.repro_root.lock().unwrap().clone();
-            match launch_fr_assistant(task, &repro_root) {
+            let repro_env = state.repro_env.lock().unwrap().clone();
+            match launch_fr_assistant(task, &repro_env) {
                 Ok(_) => (200, "{\"ok\":true}".into()),
                 Err(e) => (500, serde_json::json!({ "error": e }).to_string()),
             }
@@ -1092,17 +1109,12 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
 // interactive (permission-prompting) Frappe agent the user drives, distinct from
 // the scoped headless agent. macOS only for now.
 #[cfg(target_os = "macos")]
-fn launch_fr_assistant(task: &str, repro_root: &str) -> Result<(), String> {
+fn launch_fr_assistant(task: &str, repro_env: &str) -> Result<(), String> {
     let dir = agent_workdir();
     let esc_sh = |s: &str| s.replace('\'', "'\\''");
-    let export = if repro_root.is_empty() {
-        String::new()
-    } else {
-        format!("export ALTER_REPRO_ROOT='{}'\n", esc_sh(repro_root))
-    };
     let script = format!(
         "#!/bin/sh\n{}cd '{}' 2>/dev/null\nexec fr assistant claude -- '{}'\n",
-        export,
+        repro_env,
         esc_sh(&dir),
         esc_sh(task)
     );
@@ -1119,7 +1131,7 @@ fn launch_fr_assistant(task: &str, repro_root: &str) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn launch_fr_assistant(_task: &str, _repro_root: &str) -> Result<(), String> {
+fn launch_fr_assistant(_task: &str, _repro_env: &str) -> Result<(), String> {
     Err("fr assistant handoff is only wired for macOS right now".into())
 }
 

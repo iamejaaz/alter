@@ -66,7 +66,8 @@ export interface Settings {
   effort?: Effort; // reasoning effort — Claude Code --effort / HTTP reasoning_effort
   connections?: Connection[];
   activeConnectionId?: string;
-  reproRoot?: string; // folder of per-version repro benches (support diagnosis)
+  reproRoot?: string; // optional: a folder holding per-version benches (convention)
+  reproBenches?: Record<string, string>; // version -> existing bench folder (preferred)
 }
 
 export interface MemoryItem {

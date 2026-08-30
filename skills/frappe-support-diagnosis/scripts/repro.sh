@@ -10,16 +10,23 @@
 set -eu
 ver="${1:?usage: repro.sh <develop|version-16|version-15> <script.py>}"
 script="${2:?need a python repro script path}"
-root="${ALTER_REPRO_ROOT:-}"
-[ -n "$root" ] || { echo "ALTER_REPRO_ROOT is not set — set it in Alter → Settings → Repro benches (a folder holding your per-version benches)." >&2; exit 2; }
 [ -f "$script" ] || { echo "no such script: $script" >&2; exit 2; }
 site="${ALTER_REPRO_SITE:-repro.localhost}"
 
+# Resolve the bench for this version. Prefer an explicit per-version path picked
+# in Settings (ALTER_REPRO_DEVELOP / ALTER_REPRO_VERSION_16 / ALTER_REPRO_VERSION_15);
+# fall back to a folder-of-benches convention under ALTER_REPRO_ROOT.
+key="ALTER_REPRO_$(printf '%s' "$ver" | tr 'a-z-' 'A-Z_')"
+eval "explicit=\${$key:-}"
 bench=""
-for cand in "$root/bench-$ver" "$root/$ver" "$root/frappe-bench-$ver"; do
-  [ -d "$cand/apps/frappe" ] && bench="$cand" && break
-done
-[ -n "$bench" ] || { echo "no bench for '$ver' under $root (looked for bench-$ver, $ver, frappe-bench-$ver)." >&2; exit 2; }
+if [ -n "$explicit" ] && [ -d "$explicit/apps/frappe" ]; then
+  bench="$explicit"
+elif [ -n "${ALTER_REPRO_ROOT:-}" ]; then
+  for cand in "$ALTER_REPRO_ROOT/bench-$ver" "$ALTER_REPRO_ROOT/$ver" "$ALTER_REPRO_ROOT/frappe-bench-$ver"; do
+    [ -d "$cand/apps/frappe" ] && bench="$cand" && break
+  done
+fi
+[ -n "$bench" ] || { echo "no bench for '$ver' — pick its folder in Alter → Settings → Repro benches (or set $key)." >&2; exit 2; }
 
 echo "== reproduce on $ver :: $bench (site $site) =="
 cd "$bench"
