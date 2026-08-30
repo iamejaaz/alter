@@ -678,7 +678,9 @@ export default function App() {
     const fallbacks: Settings[] = [
       settings,
       ...(settings.connections ?? [])
-        .filter((c) => c.id !== settings.activeConnectionId)
+        // Skip Claude Code — it isn't an HTTP endpoint; calling it via streamChat
+        // builds an invalid `claude-code://local/chat/completions` URL.
+        .filter((c) => c.id !== settings.activeConnectionId && !isClaudeCodeUrl(c.baseUrl))
         .map((c) => ({ ...settings, baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, activeConnectionId: c.id })),
     ];
     let activeSettings = settings;
