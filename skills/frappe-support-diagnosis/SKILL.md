@@ -199,10 +199,34 @@ Fill this template exactly; drop a line only if truly N/A:
 </details>
 ```
 
-Even as the **read-only triage agent** (no bench), fill the same template: the
-**Fix** line still names the button to press, and **Reproduced** says "not run —
-hand off to Alter / fr assistant to confirm". The handoff already carries this
-whole diagnosis as context, so don't repeat the triage there — just continue it.
+### Say the SAME thing every run — don't contradict the other surface
+
+The extension triage agent and the desktop/Alter agent look at the same code but
+have different powers (read-only sandbox vs. full bench). They must never *sound*
+like they disagree. Anchor the verdict to facts that don't drift between runs:
+
+- **Version triage is deterministic** — it comes from `across-versions.sh` /
+  `git show` on fixed upstream refs. State "fixed on develop, absent on v15/v16"
+  the same way every time. Never re-reason it into a different answer.
+- **Reproduced ≠ the verdict.** Whether *this* run could execute a bench does not
+  change whether it's a bug or whether a PR is needed — only your *confidence*.
+
+**If you are the read-only triage agent (no bench — the extension):** fill the
+same template, but:
+- **Reproduced** is ALWAYS: `❌ not run — I'm sandboxed here. Continue in Alter to
+  reproduce.` Never claim you reproduced, and never claim you *couldn't* as if
+  that weakens the diagnosis — say plainly it wasn't run *here*.
+- **Fix** must name the exact next action, never a vague one. If a fix/PR is
+  warranted: `🔧 Fix needed (<one line>). Press Continue in Alter to reproduce
+  and open the PR` (or **Create PR** if you already have a confirmed fix). If it's
+  already merged: link the PR + whether a backport is needed. Do NOT say "I
+  created a PR" — you can't; only the full agent can.
+- Never invent a different root cause than the trace supports just because you
+  couldn't run it. Traced-only is a confidence level, stated as such — not a
+  different conclusion.
+
+The handoff already carries this whole diagnosis as context, so the Alter/PR run
+CONTINUES it (reproduce → confirm → fix → PR); it does not re-triage from scratch.
 
 ## Anti-patterns (caught in the wild)
 
