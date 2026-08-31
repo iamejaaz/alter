@@ -218,7 +218,7 @@ part names a code thing, move it to Evidence.
 ```
 **<🔴 Bug (severity: low/med/high) | 🟢 Not a bug / works as designed | 🟡 Bug — needs one fact>** · <one-line what-it-is> · **<✅ Fixed everywhere | ⚠️ Fixed on develop, NOT on v15/v16 | ❌ Not fixed anywhere | ❔ unknown>**
 
-**What's going on** — <2 sentences MAX, plain English, like you're telling a teammate. NO code names/paths — those go in Evidence.> <Confirmed by repro | Traced | By design>.
+**What's going on** — <explain it in SIMPLE English, like to a non-technical colleague: what the customer does → what they see → the plain reason why. Use an everyday analogy if it helps. 2-3 short sentences. NO code names/paths (those go in Evidence).> <Confirmed by repro | Traced | By design>.
 
 **Fix / next step** — one of:
   • ✅ Merged: <PR link>. <On the customer's line | Needs backport to v15/v16>.

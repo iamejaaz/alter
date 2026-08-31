@@ -33,7 +33,7 @@ State the actual ask in one line, then commit to a confident, plain verdict (don
 - Config issue → name the setting/state.
 - Real malfunction → 🔴 Bug, name it, Reproduced = "not run — press Confirm on bench".
 If you're not fully sure of the internal mechanism, still give your best confident read and add "press Confirm on bench to verify in code" — do NOT go trace it yourself now.
-VISIBLE answer = plain English for a non-technical teammate: NO file paths / line numbers / function names (any code detail goes only in a collapsible Evidence drawer). SHORT.`,
+VISIBLE answer = SIMPLE English for a non-technical teammate — actually EXPLAIN it (what the customer does → what they see → the plain reason why), an everyday analogy if it helps; NO file paths / line numbers / function names (code detail goes only in a collapsible Evidence drawer). SHORT.`,
   draft: (id) =>
     `Draft a reply to the customer for HD Ticket ${id}. Read the WHOLE thread first (description + all replies/comments) so you answer their CURRENT ask, not the stale opening description; verify facts against the code/gh — but the reply must be simple and human. ${REPLY_VOICE}`,
 };
