@@ -166,22 +166,38 @@ Do the same for `frappe/hrms` / `frappe/erpnext` when the code lives there.
 
 ## Output — scannable in one minute, depth on demand
 
-The reader must grade **"is it a bug, and is it fixed?"** in one glance, then drill
-in only if they want to. So: a one-line verdict, then the essentials as short
-lines, then push every block of evidence into a **collapsed `<details>`**.
+The reader must grade **"is it a bug, and is it fixed?"** in one glance. Default
+to the SHORT block ONLY. Depth is optional and must be *earned* by the ticket.
+
+**Proportionality — match the output to the finding. This is the #1 rule.**
+- The short block below is usually the WHOLE answer. For a simple, clear, or
+  low-severity finding (a config/user-error, a "works as designed", an obvious
+  one-file bug, fixture noise) **STOP after it.** No `<details>`, no evidence
+  dump, no repro scripts, no essays.
+- The template is a CEILING, not a checklist to fill maximally. Every line you
+  add must earn its place. If the verdict + root cause + fix already answer it,
+  you're done — resist adding more.
+- Add a `<details>` block ONLY when the bug is genuinely contested or complex and
+  someone would actually open it. **At most ONE** collapsible (Evidence), and
+  keep it short. Never a second/third collapsible.
+- NEVER invent extra sections the template doesn't have — no "answers to their N
+  disposition questions", no multiple repro scripts, no "severity, honestly"
+  side-essays. If they want that, they'll ask.
+- Rough budget: trivial/low-severity ⇒ 4–6 lines total, no collapsible.
+  Confirmed real bug ⇒ the short block + at most one tight Evidence block.
 
 Hard rules:
-- Both surfaces (Alter chat + the support panel) render `<details>`/`<summary>`.
-  Put anything longer than ~2 lines inside a `<details>` — never dump it inline.
-- The always-visible part stays under ~8 lines. Terse, Ejaaz's voice, no preamble.
-- **No wide markdown tables** — the panel can't render them. Use short
-  `key — value` lines instead.
+- Both surfaces render `<details>`/`<summary>` — but see Proportionality: use it
+  rarely, not by default.
+- The always-visible part stays under ~8 lines. Terse, plain, no preamble.
+- **No wide markdown tables** — use short `key — value` lines instead.
 - Status emojis carry the verdict so it's scannable at a glance.
 
-Fill this template exactly; drop a line only if truly N/A:
+Fill this template — but drop any line the finding doesn't need (see
+Proportionality); do NOT pad it back to full length:
 
 ```
-**<🔴 Bug | 🟢 Not a bug / works as designed | 🟡 Bug — needs one fact to confirm>** · <one-line what-it-is> · **<✅ Fixed on develop & the customer's line | ⚠️ Fixed on develop, NOT on v15/v16 | ❌ Not fixed anywhere | ❔ fix status unknown>**
+**<🔴 Bug | 🟢 Not a bug / works as designed | 🟡 Bug — needs one fact to confirm>** <(severity: low/med/high) if a bug> · <one-line what-it-is> · **<✅ Fixed on develop & the customer's line | ⚠️ Fixed on develop, NOT on v15/v16 | ❌ Not fixed anywhere | ❔ fix status unknown>**
 
 **Root cause** — <≤2 sentences, plain English, no file paths here>. <Confirmed by repro | Traced only — unconfirmed>.
 
@@ -196,15 +212,11 @@ Fill this template exactly; drop a line only if truly N/A:
 
 **Ask the customer** (paste-ready) — <1–3 crisp questions, or "none — verdict is conclusive">.
 
+<!-- OPTIONAL, and only for a genuinely complex/contested bug — omit entirely for
+     simple or low-severity findings: -->
 <details><summary>Evidence — refs &amp; version triage</summary>
 
-<per-version findings as short lines, e.g. `upstream/develop @ e2e1006be4 — guard present, file.py:240`; the customer-ref check; what you ruled out and why>
-
-</details>
-
-<details><summary>Reproduction steps</summary>
-
-<the repro script, how you ran it, and its output — include only if you reproduced or attempted it>
+<per-version findings as short lines, e.g. `upstream/develop @ e2e1006be4 — guard present, file.py:240`; the customer-ref check; what you ruled out and why. Keep it tight. Include the repro script/output here too if you actually ran one — do NOT add a separate collapsible for it.>
 
 </details>
 ```
