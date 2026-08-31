@@ -97,9 +97,21 @@ async function runVerb(verb) {
   // Seed the transcript with this result so follow-ups carry the diagnosis as
   // context — otherwise each follow-up is a fresh run that can't see what it said.
   if (raw) supSession.transcript.push({ q: VERB_LABELS[verb] || verb, a: raw });
-  // A fast Diagnose stops at the classification — offer the heavy bench pass.
-  if (verb === "diagnose") supSession.canDeepen = true;
-  renderFooter();
+  if (verb === "diagnose") {
+    // If the fast read calls it a likely BUG (🔴/🟡), auto-verify it on a bench so
+    // a bug-call is never shown unconfirmed — the fast read can be confidently
+    // wrong on a subtle mechanism. Not-a-bug verdicts (🟢) stay fast; the button
+    // is still there to deepen manually if wanted.
+    const likelyBug = raw && /🔴|🟡/.test(raw);
+    supSession.canDeepen = !likelyBug;
+    renderFooter();
+    if (likelyBug) {
+      toast("Looks like a bug — verifying on a bench before calling it…");
+      await runDeepDiagnose();
+    }
+  } else {
+    renderFooter();
+  }
 }
 
 // The opt-in heavy pass: full version triage + reproduction + gh, continuing from
