@@ -21,7 +21,7 @@ const SUPPORT_SYSTEM = [
 const SUPPORT_MODEL = "sonnet";
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REPLY_VOICE, followupParams } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REPLY_VOICE, followupParams, nearBottom, stickBottom, pinToBottom } = window.ALTER;
 
 const VERBS = {
   summarize: (id) =>
@@ -255,17 +255,18 @@ function pollRun(el, runId, opts) {
     }, 1000);
 
     const renderSteps = (steps) => {
-      for (let i = shown; i < steps.length; i++) {
-        const d = document.createElement("div");
-        d.className = "sup-step" + (steps[i].indexOf("▸ ") === 0 ? " sup-step-tool" : " sup-step-say");
-        d.textContent = steps[i];
-        stepsEl.appendChild(d);
-      }
-      shown = steps.length;
-      if (shown) {
-        const body = document.getElementById("sup-body");
-        if (body) body.scrollTop = body.scrollHeight;
-      }
+      if (steps.length <= shown) return;
+      // Only follow the stream to the bottom if the user is already there — if
+      // they scrolled up to read, don't yank them back down on each new step.
+      pinToBottom(document.getElementById("sup-body"), () => {
+        for (let i = shown; i < steps.length; i++) {
+          const d = document.createElement("div");
+          d.className = "sup-step" + (steps[i].indexOf("▸ ") === 0 ? " sup-step-tool" : " sup-step-say");
+          d.textContent = steps[i];
+          stepsEl.appendChild(d);
+        }
+        shown = steps.length;
+      });
     };
 
     activeRun = {
@@ -304,17 +305,19 @@ function pollRun(el, runId, opts) {
         cleanup();
         if (p.error) return fail(p.error);
         workEl.remove();
+        const body = document.getElementById("sup-body");
+        const wasAtBottom = nearBottom(body);
         const ans = document.createElement("div");
         ans.className = "sup-answer";
         renderAnswer(ans, p.text || "");
         el.appendChild(ans);
-        // Long answer (a full diagnosis): jump to its start so it reads top-down.
-        // Short answer (a follow-up/reply): keep scrolled to the bottom so it's in view.
-        const body = document.getElementById("sup-body");
-        if (body && ans.getBoundingClientRect().height > body.clientHeight) {
-          ans.scrollIntoView({ block: "start", behavior: "smooth" });
-        } else if (body) {
-          body.scrollTop = body.scrollHeight;
+        // Only reposition if the user was following along at the bottom — if they
+        // scrolled up to read, leave them where they are.
+        if (wasAtBottom && body) {
+          // Long answer (a full diagnosis): jump to its start so it reads top-down.
+          // Short answer (a follow-up/reply): keep it in view at the bottom.
+          if (ans.getBoundingClientRect().height > body.clientHeight) ans.scrollIntoView({ block: "start", behavior: "smooth" });
+          else stickBottom(body);
         }
         resolve(p.text || "");
       }

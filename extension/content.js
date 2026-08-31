@@ -15,7 +15,7 @@ const REVIEW_SYSTEM = [
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REPLY_VOICE, followupParams } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REPLY_VOICE, followupParams, nearBottom, stickBottom, pinToBottom } = window.ALTER;
 
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
@@ -251,17 +251,17 @@ function pollRun(el, runId, opts) {
     }, 1000);
 
     const renderSteps = (steps) => {
-      for (let i = shown; i < steps.length; i++) {
-        const d = document.createElement("div");
-        d.className = "alter-step" + (steps[i].indexOf("▸ ") === 0 ? " alter-step-tool" : " alter-step-say");
-        d.textContent = steps[i];
-        stepsEl.appendChild(d);
-      }
-      shown = steps.length;
-      if (shown) {
-        const body = document.getElementById("alter-panel-body");
-        if (body) body.scrollTop = body.scrollHeight;
-      }
+      if (steps.length <= shown) return;
+      // Only follow the stream to the bottom if the user is already there.
+      pinToBottom(document.getElementById("alter-panel-body"), () => {
+        for (let i = shown; i < steps.length; i++) {
+          const d = document.createElement("div");
+          d.className = "alter-step" + (steps[i].indexOf("▸ ") === 0 ? " alter-step-tool" : " alter-step-say");
+          d.textContent = steps[i];
+          stepsEl.appendChild(d);
+        }
+        shown = steps.length;
+      });
     };
 
     activeRun = {
@@ -303,15 +303,14 @@ function pollRun(el, runId, opts) {
         const ans = document.createElement("div");
         ans.className = "alter-answer";
         const clean = displayText(p.text || "") ?? (p.text || "");
+        const body = document.getElementById("alter-panel-body");
+        const wasAtBottom = nearBottom(body);
         ans.innerHTML = mini(clean);
         el.appendChild(ans);
-        // Long answer (full review): jump to its start. Short answer (follow-up):
-        // keep scrolled to the bottom so it's in view.
-        const body = document.getElementById("alter-panel-body");
-        if (body && ans.getBoundingClientRect().height > body.clientHeight) {
-          ans.scrollIntoView({ block: "start", behavior: "smooth" });
-        } else if (body) {
-          body.scrollTop = body.scrollHeight;
+        // Only reposition if the user was following along at the bottom.
+        if (wasAtBottom && body) {
+          if (ans.getBoundingClientRect().height > body.clientHeight) ans.scrollIntoView({ block: "start", behavior: "smooth" });
+          else stickBottom(body);
         }
         resolve(clean);
       }
