@@ -14,6 +14,9 @@ const REVIEW_SYSTEM = [
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
+// Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
+const { escapeHtml, humanizeErr, mini, REPLY_VOICE, followupParams } = window.ALTER;
+
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
   return m ? { owner: m[1], repo: m[2], num: m[3] } : null;
@@ -80,6 +83,10 @@ async function followUp(q) {
   if (!session || !q.trim()) return;
   appendBlock("user").textContent = q;
   const t = session.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
+  // Normal CHAT about the PR you already reviewed — not a fresh review each time
+  // (shared voice logic in window.ALTER). file:line is fine when they actually
+  // ask about the code; a message to post uses the plain reply voice.
+  const { system, label } = followupParams(q, "The work here is your review of a GitHub PR; cite file:line only when the question is actually about the code.");
   const prompt =
     `PR diff (may be truncated):\n${session.diff}${session.note}\n\n` +
     `Your review:\n${session.review}${t}\n\nUser: ${q}\nYou:`;
@@ -88,10 +95,9 @@ async function followUp(q) {
     connectionId: session.connectionId,
     includeMemory: true,
     model: session.model,
-    system:
-      "You are the maintainer discussing your review of this PR with the author. Answer the question specifically and concisely; reference file:line where relevant.",
+    system,
     prompt,
-    label: "followup",
+    label,
   });
   session.transcript.push({ q, a });
 }
@@ -394,34 +400,6 @@ function ensureButton() {
   b.addEventListener("click", () => run());
   wrap.appendChild(b);
   document.body.appendChild(wrap);
-}
-
-function escapeHtml(s) {
-  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-}
-function humanizeErr(raw) {
-  const s = String(raw || "");
-  const m = s.match(/(?:session|usage|weekly)\s+limit[^\n.]*?(resets?[^\n.]*)/i);
-  if (m || /hit your (?:session|usage|weekly) limit|limit reached/i.test(s)) {
-    return "⏳ Claude session limit reached" + (m && m[1] ? " — " + m[1].trim() : "") +
-      ". All Claude models share this cap; wait for the reset or use an HTTP model in the Alter app meanwhile.";
-  }
-  return s || "No response — check the Alter app is running.";
-}
-function mini(md) {
-  const blocks = [];
-  // Pull fenced code blocks out first so nothing inside them gets reformatted.
-  let s = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
-    blocks.push(`<pre class="md-pre"><code>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`);
-    return ` ${blocks.length - 1} `;
-  });
-  s = escapeHtml(s)
-    .replace(/^#{1,6}\s+(.*)$/gm, "<b class='md-h'>$1</b>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/^\s*[-*]\s+(.*)$/gm, "• $1")
-    .replace(/\n/g, "<br>");
-  return s.replace(/ (\d+) /g, (_, i) => blocks[+i]);
 }
 
 function openPanel() {

@@ -2,16 +2,26 @@
   "manifest_version": 3,
   "name": "Alter",
   "version": "0.1.0",
-  "description": "Use your Alter models on any page — review PRs, fix grammar, and more. No API keys in the browser.",
-  "permissions": ["storage", "activeTab", "scripting", "contextMenus"],
+  "description": "Use your Alter models on any page \u2014 review PRs, fix grammar, and more. No API keys in the browser.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "contextMenus"
+  ],
   "host_permissions": [
     "http://127.0.0.1:8765/*",
     "http://localhost:8765/*",
     "https://github.com/*",
     "https://patch-diff.githubusercontent.com/*"
   ],
-  "background": { "service_worker": "background.js" },
-  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -30,21 +40,42 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://github.com/*/*/pull/*"],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://github.com/*/*/pull/*"
+      ],
+      "js": [
+        "shared.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["grammar.js"],
-      "css": ["grammar.css"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "grammar.js"
+      ],
+      "css": [
+        "grammar.css"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://support.frappe.io/*"],
-      "js": ["support.js"],
-      "css": ["support.css"],
+      "matches": [
+        "https://support.frappe.io/*"
+      ],
+      "js": [
+        "shared.js",
+        "support.js"
+      ],
+      "css": [
+        "support.css"
+      ],
       "run_at": "document_idle"
     }
   ]
