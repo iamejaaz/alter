@@ -27,7 +27,7 @@ const VERBS = {
   summarize: (id) =>
     `Summarize HD Ticket ${id}: the issue in one line, customer + product/version, urgency, and what they've already tried. Terse.`,
   diagnose: (id) =>
-    `Use the frappe-support-diagnosis skill and follow it. FIRST decide: is this even a bug, or expected behavior / a config or user issue / a customisation they must script themselves? DEFAULT to "not a bug" — most tickets are. Only call it a bug if the framework clearly does something it shouldn't; if the answer is "write a script / change a setting / it's separate by design", say that plainly — that IS the answer. Then, for a real bug only: read it via fr, find the code across ALL installed apps (ls apps/ first — never assume "custom"), triage versions (develop → v16 → v15), check gh, and reproduce via repro.sh ONLY if that decides bug-vs-not or which-version. Do NOT reproduce expected behavior or exhaustively verify every side-claim just to be thorough. Follow the Output PROPORTIONALITY rule: SHORT, match length to the finding, no <details> or extra sections for a simple verdict. Diagnose HD Ticket ${id}.`,
+    `Use the frappe-support-diagnosis skill in FAST MODE — be quick (aim for a handful of tool calls, ~30s). Do ONLY: read the ticket (bare fr), establish the facts, take a quick peek at the relevant code if you need it, then CLASSIFY — bug / customisation / functional-query / config / user-error — and give the answer. DEFAULT to "not a bug"; most tickets are. If it's not a framework bug, give the real answer (the setting, the script, why it's intended) — you're DONE. If it IS likely a bug, state the root cause you can see, and set Reproduced to "not run — press Confirm on bench". Do NOT do version triage, do NOT reproduce, do NOT search gh in fast mode — those are the "Confirm on bench" step the user triggers if they want them. Follow the Output format + PROPORTIONALITY (SHORT, no <details> for a simple verdict). Diagnose HD Ticket ${id}.`,
   draft: (id) =>
     `Draft a reply to the customer for HD Ticket ${id}. Read it via fr and verify any facts against the code/gh — but the reply must be simple and human. ${REPLY_VOICE}`,
 };
@@ -91,7 +91,28 @@ async function runVerb(verb) {
   // Seed the transcript with this result so follow-ups carry the diagnosis as
   // context — otherwise each follow-up is a fresh run that can't see what it said.
   if (raw) supSession.transcript.push({ q: VERB_LABELS[verb] || verb, a: raw });
+  // A fast Diagnose stops at the classification — offer the heavy bench pass.
+  if (verb === "diagnose") supSession.canDeepen = true;
   renderFooter();
+}
+
+// The opt-in heavy pass: full version triage + reproduction + gh, continuing from
+// the fast diagnosis. This is where the slow work happens — only when asked.
+async function runDeepDiagnose() {
+  if (!supSession) return;
+  appendBlock("user").textContent = "Confirm on bench";
+  const t = supSession.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
+  const block = appendBlock("assistant");
+  const a = await streamAgent(block, {
+    connectionId: supSession.connectionId,
+    agent: true,
+    includeMemory: true,
+    model: supSession.model,
+    system: SUPPORT_SYSTEM,
+    prompt: `HD Ticket ${supSession.id}.${t}\n\nNow CONFIRM this on a bench — the full method: version triage (develop → v16 → v15 via across-versions.sh), reproduce via repro.sh (develop first), and check gh once for an existing fix/PR. Update the verdict with what you find (versions affected, reproduced yes/no, any existing PR + backport). Continue from the diagnosis above — do NOT re-triage from scratch. If it turned out not to be a bug, just say the trace held and stop. Keep it proportionate.\nYou:`,
+    label: "Confirm on bench",
+  });
+  supSession.transcript.push({ q: "Confirm on bench", a });
 }
 
 const VERB_LABELS = {
@@ -579,6 +600,7 @@ function renderFooter() {
           <button data-act="pr">Prepare fix<span>local branch, you review</span></button>
         </div>
       </div>
+      ${supSession && supSession.canDeepen ? '<button id="sup-deepen">🔬 Confirm on bench</button>' : ""}
       ${supSession && supSession.fixPrepared ? '<button id="sup-pr-push">Push &amp; open PR</button>' : ""}
     </div>
     <div id="sup-foot-ask"><input id="sup-ask" placeholder="Ask a follow-up…" /><button id="sup-ask-send">Send</button></div>`;
@@ -596,6 +618,8 @@ function renderFooter() {
       else if (act === "pr") runPr();
     })
   );
+  const deepBtn = foot.querySelector("#sup-deepen");
+  if (deepBtn) deepBtn.addEventListener("click", () => { supSession.canDeepen = false; renderFooter(); runDeepDiagnose(); });
   const pushBtn = foot.querySelector("#sup-pr-push");
   if (pushBtn) pushBtn.addEventListener("click", () => runPrPush());
   const input = foot.querySelector("#sup-ask");

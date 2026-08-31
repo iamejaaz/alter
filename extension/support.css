@@ -204,7 +204,8 @@
   gap: 8px;
   align-items: center;
 }
-#sup-pr-push {
+#sup-pr-push,
+#sup-deepen {
   background: #232329;
   color: #e4e4e7;
   border: 1px solid #3f3f46;
@@ -214,7 +215,8 @@
   font-weight: 600;
   cursor: pointer;
 }
-#sup-pr-push:hover {
+#sup-pr-push:hover,
+#sup-deepen:hover {
   background: #2c2c34;
 }
 .sup-menu-wrap {
