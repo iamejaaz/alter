@@ -66,7 +66,17 @@ async function runVerb(verb) {
   if (!connectionId)
     return setBody('<span class="sup-err">Pick a model for support in the Alter popup (use Claude Code — it needs tools).</span>');
 
-  supSession = { id, connectionId, model: claudeModel != null ? claudeModel : SUPPORT_MODEL, transcript: [] };
+  // Triage (summarize/diagnose/draft/follow-ups) runs on the FAST model — it's a
+  // read task and a heavy model there is pure latency (7-8 min vs ~1-2). The
+  // user's chosen model (claudeModel, e.g. opus) is reserved for writing the fix
+  // in Create-PR, where reasoning actually matters.
+  supSession = {
+    id,
+    connectionId,
+    model: SUPPORT_MODEL,
+    fixModel: claudeModel != null ? claudeModel : SUPPORT_MODEL,
+    transcript: [],
+  };
   const block = appendBlock("assistant");
   const raw = await streamAgent(block, {
     connectionId,
@@ -115,7 +125,7 @@ async function runPr() {
     connectionId: supSession.connectionId,
     agent: true,
     includeMemory: true,
-    model: supSession.model,
+    model: supSession.fixModel,
     mode: "pr",
     system: PR_SYSTEM,
     prompt: `HD Ticket ${supSession.id}. Your diagnosis and the fix Ejaaz wants:${t}\n\n${q}\nYou:`,
@@ -135,7 +145,7 @@ async function runPrPush() {
     connectionId: supSession.connectionId,
     agent: true,
     includeMemory: true,
-    model: supSession.model,
+    model: supSession.fixModel,
     mode: "pr-push",
     system: PR_PUSH_SYSTEM,
     prompt: `HD Ticket ${supSession.id}. Push the prepared fix branch and open the PR.${t}\n\nYou:`,
@@ -409,7 +419,7 @@ async function reconnectIfActive() {
   }
   const verb = /diagn/i.test(rec.label) ? "diagnose" : /draft/i.test(rec.label) ? "draft" : "summarize";
   openPanel(verb);
-  supSession = { id, connectionId: rec.connectionId, model: rec.model, transcript: [] };
+  supSession = { id, connectionId: rec.connectionId, model: rec.model, fixModel: rec.model, transcript: [] };
   const note = document.createElement("div");
   note.className = "sup-step sup-step-say";
   note.textContent = "Reconnected to a run in progress…";

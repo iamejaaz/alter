@@ -38,8 +38,22 @@ bug needs a repro; not every answer needs a wall of evidence. Judge, don't grind
 
 ## Method
 
-Do only the steps the verdict needs. If step 1–2 already show "not a bug", say so
-and stop — you don't owe steps 3–6.
+**Work fast — every step is a slow model round-trip, so do the FEWEST.** Aim to
+finish in a handful of tool calls, not dozens. Budget:
+1. Read the ticket + establish facts (steps 1–2). **Then classify: bug, or
+   customisation / functional-query / config / user-error?**
+2. If it's **not a clear framework bug**, STOP now — give the answer (the setting,
+   the script, why it's intended). No code hunt, no version triage, no repro, no
+   gh. Most tickets end here.
+3. Only for a genuine framework bug: locate the code (step 3), triage versions
+   (step 4), and — only if it changes the verdict — reproduce **once** (step 5) and
+   check gh **once** (step 6).
+
+Hard caps: **one** repro attempt (never a second "variant"), **one** gh search
+pass, and never re-verify the customer's side-claims for thoroughness. If a repro
+needs heavy fixtures (creating DocTypes/Workflows) or you can't settle it in one
+go, trace it and say "unconfirmed" rather than grinding. Batch shell work into few
+calls. Stop the moment the verdict is decided.
 
 ### 1. Read the ticket
 `fr doc get "HD Ticket" <id> --json`. Run **bare** `fr` — the environment provides
