@@ -12,6 +12,31 @@ dressed up as a conclusion.
 
 ## Ground rules
 
+- **"Is it even a bug?" comes FIRST — default to NOT a bug.** Most support tickets
+  are expected behavior, a misunderstanding, a config/permission issue, or a
+  customisation the customer must write themselves — NOT a framework defect. Decide
+  bug-vs-not *before* you go deep. It's a bug only if the framework does something
+  it clearly shouldn't. Strong "not a bug" tells:
+  - The "fix" would be a custom Server/Client Script, a hook, or a setting → then
+    it's **working as designed**, and *that guidance IS the answer* — don't dress
+    it up as a defect.
+  - Two things the customer expects to be linked are **separate by design**
+    (e.g. `docstatus` vs `workflow_state`, permissions vs sharing, a report total
+    vs a ledger). Frappe deliberately keeps many things independent; that's not a
+    bug just because the customer wanted them coupled.
+  - The behavior is documented, long-standing, or guarded elsewhere for the normal
+    path (the customer hit it via an edge path).
+  When it's not a bug, say so plainly and give the real answer (the setting, the
+  script, why it's intended). "Works as designed — here's how to get what you want"
+  is a *better* outcome than a wrong bug report.
+- **Reproducing a mechanism is NOT proving a bug.** Running code and seeing
+  "docstatus=2 but workflow_state unchanged" only confirms *what the code does* —
+  it says nothing about whether that's *wrong*. Never let a green repro talk you
+  into "bug". The bug judgment is separate and comes from: is this behavior
+  intended? So DON'T reproduce config/expected-behavior questions — repro only
+  when it actually changes a bug-vs-not or which-version verdict. Don't
+  reproduce, or exhaustively verify every side-claim the customer made, just to
+  be thorough — answer the question that was asked.
 - **Never assume. Check.** The most common failure is claiming "that doctype is a
   custom app, I can't see it" or "the customer's commit isn't available" — both
   are usually wrong. Run `ls apps/` and `git cat-file -t <ref>` before you say
@@ -20,8 +45,10 @@ dressed up as a conclusion.
   DocType/web form, the error text, or a config flag you need isn't in the ticket
   and you can't derive it, STOP and ask the user precise questions. Do not invent
   the missing piece.
-- **Reproduce before you conclude.** A code-trace is a hypothesis. If you can run
-  a bench, confirm it (see step 5). If you can't, say the root cause is
+- **Reproduce a real bug before you conclude it's real — not everything.** A
+  code-trace of a genuine defect is a hypothesis worth confirming on a bench (step
+  5). But if you've already decided it's expected/config/not-a-bug, skip repro —
+  there's nothing to prove. For a real bug you couldn't run, say the root cause is
   *unconfirmed* and what would confirm it.
 - **Git is READ-ONLY during diagnosis.** Inspect with `git -C apps/<app> show
   <ref>:path`, `git -C apps/<app> log`/`diff`/`cat-file` — the bench root isn't a
@@ -257,5 +284,10 @@ CONTINUES it (reproduce → confirm → fix → PR); it does not re-triage from 
 - ❌ WebFetching a file from GitHub when the customer's commit is already local
   (`git show <ref>:path`).
 - ❌ Presenting a code-trace as a confirmed root cause without reproducing.
+- ❌ Calling expected/by-design behavior a "bug" because you reproduced the
+  mechanism — e.g. "`docstatus` cancels but `workflow_state` doesn't sync" is two
+  independent fields behaving as designed; the answer is a custom script, not a fix.
+- ❌ Reproducing on a bench, or verifying every side-claim the customer made, when
+  the verdict is "works as designed" and repro proves nothing.
 - ❌ Guessing which of several plausible bugs fired instead of asking for the one
   fact that disambiguates.
