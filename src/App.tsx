@@ -1088,18 +1088,32 @@ export default function App() {
     const money = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`;
     const total = conversations.reduce((s, c) => s + (c.costUsd ?? 0), 0);
     const priced = conversations.filter((c) => c.costUsd != null);
-    const lines = [
-      "**Usage** — Alter's own tally from Claude Code's result events. Instant, no model call.",
-      "",
-      `Total spend: ${money(total)} across ${priced.length} Claude Code chat${priced.length === 1 ? "" : "s"}`,
-      active
-        ? `This chat: ${active.lastTokens ? active.lastTokens.toLocaleString() + " context tokens" : "—"}${
-            active.costUsd != null ? " · " + money(active.costUsd) : ""
-          }`
-        : "",
-      "",
-      "_Subscription %/limit and reset time live in the Claude Code terminal's `/usage`. Alter shows the limit when a chat actually hits it._",
-    ]
+    const conn = (settings.connections ?? []).find((c) => c.id === (active?.connectionId ?? settings.activeConnectionId));
+    const onClaudeCode = conn ? isClaudeCodeUrl(conn.baseUrl) : isClaudeCodeUrl(settings.baseUrl);
+    const provider = conn && conn.name !== "Default" ? conn.name : conn?.model || settings.model || "this connection";
+    const chatTokens = active?.lastTokens ? active.lastTokens.toLocaleString() + " context tokens" : "—";
+    const ccLifetime = priced.length
+      ? `Claude Code (separate): ${money(total)} across ${priced.length} chat${priced.length === 1 ? "" : "s"}`
+      : "";
+    const lines = (
+      onClaudeCode
+        ? [
+            "**Usage** — Alter's own tally from Claude Code's result events. Instant, no model call.",
+            "",
+            `Total spend: ${money(total)} across ${priced.length} Claude Code chat${priced.length === 1 ? "" : "s"}`,
+            active ? `This chat: ${chatTokens}${active.costUsd != null ? " · " + money(active.costUsd) : ""}` : "",
+            "",
+            "_Subscription %/limit and reset time live in the Claude Code terminal's `/usage`. Alter shows the limit when a chat actually hits it._",
+          ]
+        : [
+            `**Usage** — this chat runs on **${provider}** over HTTP. Alter tracks token counts here, not cost — only Claude Code reports spend, so there's nothing to tally for this provider.`,
+            "",
+            `This chat: ${chatTokens}`,
+            ccLifetime,
+            "",
+            `_For actual spend on ${provider}, check the provider or gateway's own dashboard._`,
+          ]
+    )
       .filter(Boolean)
       .join("\n");
     if (active) {
