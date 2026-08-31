@@ -48,9 +48,13 @@ bug needs a repro; not every answer needs a wall of evidence. Judge, don't grind
   Ask yourself: *does my proposed fix ADD behavior* ("also sync Y on cancel", "make
   it auto-register Z", "have it update W too")? Then you're describing an
   enhancement the customer wants, not a defect — the framework isn't *wrong*, it
-  just doesn't do the extra thing. Classify it **customisation**: the support
-  answer is the hook / Server Script / setting that does X, and you may add a
-  one-line "could be a framework enhancement" note — but do NOT stamp it 🔴 Bug.
+  just doesn't do the extra thing. Classify it **customisation** and describe the
+  mechanism **generically**: "custom code that runs on <the event>" — do NOT assume
+  they use, or already have, a **Server Script** (that's one specific Frappe
+  feature/DocType; saying "your Server Script" implies everyone has one). Name the
+  concrete options as *options* — "via a Server Script, or a `doc_events` hook in a
+  custom app" — not as the default. You may add a one-line "could be a framework
+  enhancement" note — but do NOT stamp it 🔴 Bug.
   A deliberate `if` that skips something (e.g. "skip validation on cancel") is a
   design decision, not an accidental gap — don't read intent as oversight.
   (Contrast a *real* bug: cancelling a file deletes the bytes but leaves the DB
