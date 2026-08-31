@@ -551,6 +551,8 @@ export default function App() {
       messages: [...c.messages, userMsg, { role: "assistant", content: "" }],
     }));
 
+    if (freshConv && !opts?.title) void generateTitle(convId, text);
+
     const mode = settings.mode ?? "auto";
     // Gemini reasoning models require a proprietary "thought_signature" round-trip that
     // the OpenAI tool format can't carry, so they error on multi-turn tool use.
@@ -665,7 +667,6 @@ export default function App() {
             ...(content ? [{ role: "assistant", content } as Message] : []),
           ],
         }));
-        if (freshConv && !opts?.title) void generateTitle(convId, text);
       } catch (e: unknown) {
         const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
         if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
@@ -816,7 +817,6 @@ export default function App() {
         if (clean || full) msgs.push({ role: "assistant", content: clean || full });
         return { ...c, messages: msgs };
       });
-      if (freshConv && !opts?.title) void generateTitle(convId, text);
       if (found.length) {
         const fresh = found.filter((f) => !memories.some((m) => m.text === f));
         setMemories((prev) => [
