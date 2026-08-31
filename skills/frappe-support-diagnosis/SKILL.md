@@ -70,11 +70,17 @@ Find where the buggy code path exists, checking newest first and recording each:
 ```sh
 scripts/across-versions.sh frappe/website/doctype/web_form/web_form.py
 ```
-**FETCH UPSTREAM FIRST** — `git -C apps/<app> fetch upstream` — and compare the
-`upstream/*` refs (frappe/frappe), NOT the local branches. Local branches and a
-fork's `origin` can be badly stale: a real run found the local `version-15-hotfix`
-**3 years old**, which would have wrongly concluded "fixed". This is the #1 cause
-of a diagnosis flip-flopping between runs — always compare against fresh upstream.
+**FETCH UPSTREAM FIRST, BUT NARROW** — fetch only the 3 branches you triage, with
+`--no-tags`; a plain `git fetch upstream` drags in frappe's thousands of tags and
+is the slowest step in the whole run:
+```sh
+git -C apps/<app> fetch --no-tags upstream develop version-16-hotfix version-15-hotfix
+```
+`across-versions.sh` already does this (and skips the fetch if it ran in the last
+10 min). Then compare the `upstream/*` refs (frappe/frappe), NOT the local
+branches: local branches and a fork's `origin` can be badly stale — a real run
+found the local `version-15-hotfix` **3 years old**, which would have wrongly
+concluded "fixed". This is the #1 cause of a diagnosis flip-flopping between runs.
 
 Check, in order:
 1. **upstream/develop** — is it still broken on the latest line?
@@ -148,19 +154,55 @@ gh search prs   --repo frappe/frappe "<symptom>" --state all --limit 20
 Also try the fixing symbol (`gh search prs --repo frappe/frappe <function_name>`).
 Do the same for `frappe/hrms` / `frappe/erpnext` when the code lives there.
 
-## Output
+## Output — scannable in one minute, depth on demand
 
-Terse, in Ejaaz's voice — no preamble, no praise-fluff:
+The reader must grade **"is it a bug, and is it fixed?"** in one glance, then drill
+in only if they want to. So: a one-line verdict, then the essentials as short
+lines, then push every block of evidence into a **collapsed `<details>`**.
 
-- **Classification** — functional-query vs bug vs config/user-error.
-- **Root cause** — the mechanism, with the exact file + refs you checked, and
-  whether it's confirmed (reproduced) or a leading hypothesis (traced only).
-- **Versions affected** — develop / v16 / v15, and whether already fixed (→ which
-  commit/PR to backport).
-- **Reproduction** — what you ran and saw, or what's needed to confirm.
-- **Known issue/PR** — link it, or say none found and what you searched.
-- **Suggested next step** — the smallest concrete action; if blocked, the exact
-  questions/access you need.
+Hard rules:
+- Both surfaces (Alter chat + the support panel) render `<details>`/`<summary>`.
+  Put anything longer than ~2 lines inside a `<details>` — never dump it inline.
+- The always-visible part stays under ~8 lines. Terse, Ejaaz's voice, no preamble.
+- **No wide markdown tables** — the panel can't render them. Use short
+  `key — value` lines instead.
+- Status emojis carry the verdict so it's scannable at a glance.
+
+Fill this template exactly; drop a line only if truly N/A:
+
+```
+**<🔴 Bug | 🟢 Not a bug / works as designed | 🟡 Bug — needs one fact to confirm>** · <one-line what-it-is> · **<✅ Fixed on develop & the customer's line | ⚠️ Fixed on develop, NOT on v15/v16 | ❌ Not fixed anywhere | ❔ fix status unknown>**
+
+**Root cause** — <≤2 sentences, plain English, no file paths here>. <Confirmed by repro | Traced only — unconfirmed>.
+
+**Fix** — pick one:
+  • ✅ Merged: <PR link>. <Already on the customer's line | Needs backport to v15/v16>.
+  • 🔧 No fix yet — I can open one: press **Create PR** here, or **Continue in Alter** for a full agent run. The fix: <one line>.
+  • ❔ Can't tell until <the one fact you need>.
+
+**Reproduced** — <✅ version-15 on repro.localhost → "<result line>" | ❌ not run — <what's needed, or "no bench reachable">>.
+
+**Related** — <PR/issue links · discuss.frappe.io threads · sibling tickets — or "none found (searched: <terms>)">.
+
+**Ask the customer** (paste-ready) — <1–3 crisp questions, or "none — verdict is conclusive">.
+
+<details><summary>Evidence — refs &amp; version triage</summary>
+
+<per-version findings as short lines, e.g. `upstream/develop @ e2e1006be4 — guard present, file.py:240`; the customer-ref check; what you ruled out and why>
+
+</details>
+
+<details><summary>Reproduction steps</summary>
+
+<the repro script, how you ran it, and its output — include only if you reproduced or attempted it>
+
+</details>
+```
+
+Even as the **read-only triage agent** (no bench), fill the same template: the
+**Fix** line still names the button to press, and **Reproduced** says "not run —
+hand off to Alter / fr assistant to confirm". The handoff already carries this
+whole diagnosis as context, so don't repeat the triage there — just continue it.
 
 ## Anti-patterns (caught in the wild)
 

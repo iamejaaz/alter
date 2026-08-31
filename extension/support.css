@@ -80,6 +80,29 @@
   font-size: 13px;
   color: #fff;
 }
+#sup-body details {
+  margin: 6px 0;
+  border: 1px solid #26262c;
+  border-radius: 8px;
+  background: #131317;
+}
+#sup-body details > summary {
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #a1a1aa;
+  list-style: none;
+  user-select: none;
+}
+#sup-body details > summary::-webkit-details-marker { display: none; }
+#sup-body details > summary::before {
+  content: "▸ ";
+  color: #71717a;
+}
+#sup-body details[open] > summary::before { content: "▾ "; }
+#sup-body details[open] > summary { color: #d4d4d8; border-bottom: 1px solid #26262c; }
+#sup-body .det-body { padding: 8px 10px; color: #b4b4bd; font-size: 12px; line-height: 1.5; }
+#sup-body .det-body code { font-size: 11px; }
 #sup-body .md-pre {
   background: #0f0f12;
   border: 1px solid #26262c;
