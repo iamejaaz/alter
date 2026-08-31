@@ -125,6 +125,17 @@ fn agent_allowed_tools() -> String {
     for g in ["gh pr view", "gh pr list", "gh issue view", "gh issue list", "gh search"] {
         t.push(format!("Bash({g}:*)"));
     }
+    // The ONE bench-exec hole: the repro helper, by its installed absolute path.
+    // It runs a repro script on a LOCAL disposable bench (rollback, no residue) —
+    // the only way a read-only triage run can actually confirm a bug. Live-site
+    // writes stay blocked (fr writes are disallowed separately); this reaches the
+    // user's throwaway benches only. Scoped to this exact command, nothing else.
+    let rel = ".claude/skills/frappe-support-diagnosis/scripts/repro.sh";
+    t.push(format!("Bash(~/{rel}:*)"));
+    if let Some(home) = std::env::var_os("HOME") {
+        let abs = std::path::Path::new(&home).join(rel);
+        t.push(format!("Bash({}:*)", abs.display()));
+    }
     t.join(" ")
 }
 

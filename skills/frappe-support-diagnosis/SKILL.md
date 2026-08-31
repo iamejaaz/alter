@@ -131,11 +131,21 @@ finally:
     frappe.db.rollback()   # never persist test state
 ```
 Run it per version with the helper (routes to the right bench, runs on its repro
-site, rolls back):
+site, rolls back). **Even the read-only extension agent may run this** — it's the
+one bench command allowed there, by its installed absolute path, and it only ever
+touches your local disposable benches. Call it by that path (`~` expands), and
+pipe the script on **stdin** with `-` so no scratch file / `Write` tool is needed:
 ```sh
-scripts/repro.sh develop /tmp/repro.py
-scripts/repro.sh version-15 /tmp/repro.py
+~/.claude/skills/frappe-support-diagnosis/scripts/repro.sh develop - <<'PY'
+import frappe
+# … build the trigger, set reproduced = <bug actually happened> …
+print("REPRODUCED" if reproduced else "NOT REPRODUCED")
+frappe.db.rollback()
+PY
 ```
+(A file path still works too: `…/repro.sh version-15 /tmp/repro.py`.) If the
+helper reports "no bench for '<ver>'", that version's folder isn't set — say so
+and fall back to the trace; don't claim a repro you didn't run.
 
 - **Config/data-specific bugs** (need the customer's exact setup, e.g. a web
   form's `allow_edit`): reproduce the CONFIG on a fresh site (ask them for the
@@ -211,19 +221,20 @@ like they disagree. Anchor the verdict to facts that don't drift between runs:
 - **Reproduced ≠ the verdict.** Whether *this* run could execute a bench does not
   change whether it's a bug or whether a PR is needed — only your *confidence*.
 
-**If you are the read-only triage agent (no bench — the extension):** fill the
-same template, but:
-- **Reproduced** is ALWAYS: `❌ not run — I'm sandboxed here. Continue in Alter to
-  reproduce.` Never claim you reproduced, and never claim you *couldn't* as if
-  that weakens the diagnosis — say plainly it wasn't run *here*.
-- **Fix** must name the exact next action, never a vague one. If a fix/PR is
-  warranted: `🔧 Fix needed (<one line>). Press Continue in Alter to reproduce
-  and open the PR` (or **Create PR** if you already have a confirmed fix). If it's
+**If you are the read-only triage agent (the extension):** you STILL reproduce —
+run `repro.sh` (the one allowed bench command, shown above) on the local benches,
+just like the full agent. Fill the same template:
+- **Reproduced** reports what the helper actually printed: `✅ version-15 on
+  repro.localhost → "REPRODUCED"`, or `❌ NOT REPRODUCED`, or — only if that
+  version's bench isn't configured — `⚠️ not run (no version-15 bench set)`. Run
+  it before you conclude; don't default to "can't reproduce" just because you're
+  the extension. That old assumption was wrong — the bench is reachable here.
+- **Fix** names the exact next action. If a fix/PR is warranted: `🔧 Fix needed
+  (<one line>). Press **Create PR**, or **Continue in Alter** for a full run`. If
   already merged: link the PR + whether a backport is needed. Do NOT say "I
-  created a PR" — you can't; only the full agent can.
-- Never invent a different root cause than the trace supports just because you
-  couldn't run it. Traced-only is a confidence level, stated as such — not a
-  different conclusion.
+  created a PR" — you can't open PRs from the read-only run; the Create-PR button
+  or Alter does that.
+- Never invent a different root cause than the trace/repro supports.
 
 The handoff already carries this whole diagnosis as context, so the Alter/PR run
 CONTINUES it (reproduce → confirm → fix → PR); it does not re-triage from scratch.

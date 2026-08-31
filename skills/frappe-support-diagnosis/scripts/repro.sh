@@ -1,6 +1,7 @@
 #!/bin/sh
 # Run a reproduction script on the per-version bench, on its repro site.
 # Usage: repro.sh <develop|version-16|version-15> <script.py>
+#        repro.sh <develop|version-16|version-15> -   # read the script from stdin
 #
 # Benches live under $ALTER_REPRO_ROOT (set in Alter → Settings → Repro benches):
 #   $ALTER_REPRO_ROOT/bench-develop, bench-version-16, bench-version-15
@@ -8,8 +9,14 @@
 # ($ALTER_REPRO_SITE, default repro.localhost). The script should assert the bug
 # and roll back (frappe.db.rollback) so nothing persists.
 set -eu
-ver="${1:?usage: repro.sh <develop|version-16|version-15> <script.py>}"
-script="${2:?need a python repro script path}"
+ver="${1:?usage: repro.sh <develop|version-16|version-15> <script.py|->}"
+script="${2:?need a python repro script path (or - for stdin)}"
+if [ "$script" = "-" ]; then
+  tmp="$(mktemp -t alter-repro.XXXXXX.py)"
+  trap 'rm -f "$tmp"' EXIT
+  cat > "$tmp"
+  script="$tmp"
+fi
 [ -f "$script" ] || { echo "no such script: $script" >&2; exit 2; }
 site="${ALTER_REPRO_SITE:-repro.localhost}"
 
