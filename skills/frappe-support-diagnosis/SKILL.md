@@ -76,8 +76,8 @@ requirement on the customer's **latest** messages, not the first one.
 fr doc get "HD Ticket" <id> --json                              # ticket + description
 # the email thread (standard Frappe Communication — reliable across helpdesk versions):
 fr query "select creation, sender, content from \`tabCommunication\` where reference_doctype='HD Ticket' and reference_name='<id>' order by creation"
-# internal notes (adapt fields via \`fr doctype 'HD Ticket Comment'\` if this errors):
-fr query "select creation, content from \`tabHD Ticket Comment\` where reference_ticket='<id>' order by creation"
+# internal notes (verified fields):
+fr query "select creation, commented_by, content from \`tabHD Ticket Comment\` where reference_ticket='<id>' order by creation"
 ```
 Run **bare** `fr` — the environment provides site + credentials (FRAPPE_SITE/
 API_KEY/API_SECRET); do NOT pass `-s <profile>` (it hits the macOS keychain and
@@ -86,9 +86,18 @@ Read every reply before you conclude; pull siblings/related with `fr query` when
 the thread is thin. **State the actual ask in one line before diagnosing** — if the
 thread and description disagree, the thread wins.
 
-### 2. Establish the facts
-Frappe version + installed apps (often in a version field on the ticket), the
-DocType/feature, the exact steps, and the exact error. Missing and blocking? Ask.
+### 2. Establish the facts — the ticket's custom fields already have them
+`fr doc get "HD Ticket" <id> --json` returns support.frappe.io's **custom fields**;
+read them instead of asking the customer for what's already there:
+- `custom_app` — the product (Frappe Framework / ERPNext / HRMS / …) → which app to look in.
+- `custom_installed_apps` — apps **and their versions**; `custom_released_version` — the version. This is your version source; don't ask "what version?" if these are set.
+- `custom_reference_module` / `custom_sub_reference_module` — the area.
+- `custom_site_name` / `custom_bench_name` / `custom_dashboard_link` — the customer's site; **`custom_allow_database_access` = Yes** means you may query their site directly (via `fr -s <that-site>`) to pull the real config/data instead of guessing.
+- `custom_is_security_issue` = checked → treat as sensitive: keep exploit/vuln details OUT of any public PR/issue (see PII rule).
+
+Then confirm the DocType/feature, exact steps, and exact error from the thread. A
+fact that's genuinely absent *and* blocking → ask; a fact sitting in a custom
+field → just read it.
 
 ### 3. Locate the code — across ALL installed apps
 ```sh
