@@ -156,14 +156,27 @@ fn verify_allowed_tools() -> String {
     t.join(" ")
 }
 
-// Bounded write allowlist for turning a diagnosed fix into a PR: edit files,
-// branch, commit, push (to a fork), open the PR. No bypassPermissions, no rm,
-// no arbitrary shell — only the git/gh verbs the flow needs.
+// Bounded write allowlist for PREPARING a diagnosed fix: edit files, branch,
+// commit — and STOP. Deliberately NO `git push` and NO `gh pr create`: the fix
+// lands on a local branch for the user to review; pushing/opening the PR is a
+// separate, explicit step (pr_push_allowed_tools). No bypassPermissions, no rm.
 fn pr_allowed_tools() -> String {
     let mut t: Vec<String> = ["Read", "Grep", "Glob", "Edit", "Write", "WebFetch"].iter().map(|s| s.to_string()).collect();
     for g in [
         "git fetch", "git status", "git diff", "git log", "git show", "git branch",
-        "git checkout", "git switch", "git add", "git commit", "git push", "git restore",
+        "git checkout", "git switch", "git add", "git commit", "git restore",
+    ] {
+        t.push(format!("Bash({g}:*)"));
+    }
+    t.join(" ")
+}
+
+// The explicit second step: push the already-prepared local branch to the fork
+// and open the PR. Only the push + gh-pr verbs plus reads to compose the PR.
+fn pr_push_allowed_tools() -> String {
+    let mut t: Vec<String> = ["Read", "Grep", "Glob"].iter().map(|s| s.to_string()).collect();
+    for g in [
+        "git status", "git diff", "git log", "git show", "git branch", "git push",
         "gh pr create", "gh pr view", "gh pr list", "gh repo view",
     ] {
         t.push(format!("Bash({g}:*)"));
@@ -249,6 +262,7 @@ fn spawn_agent_run(
     progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
 ) {
     let is_pr = mode.as_deref() == Some("pr");
+    let is_pr_push = mode.as_deref() == Some("pr-push");
     let is_verify = mode.as_deref() == Some("verify");
     progress.lock().unwrap().insert(run_id.clone(), AgentProgress::default());
     let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
@@ -267,6 +281,8 @@ fn spawn_agent_run(
     }
     if is_pr {
         cmd.arg("--allowedTools").arg(pr_allowed_tools());
+    } else if is_pr_push {
+        cmd.arg("--allowedTools").arg(pr_push_allowed_tools());
     } else if is_verify {
         cmd.arg("--allowedTools").arg(verify_allowed_tools());
     } else {

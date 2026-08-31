@@ -91,18 +91,24 @@ const VERB_LABELS = {
 };
 
 const PR_SYSTEM = [
-  "You are Ejaaz creating a GitHub PR from a fix you already diagnosed. Work in the local frappe checkout (the current directory / apps/frappe).",
-  "You have WRITE tools now (Edit/Write, git, gh pr create) — but you are creating a PR, NOT merging. Never merge, never push to frappe/frappe directly.",
-  "Steps, in order: 1) `git fetch`; 2) create a fresh branch off the right base (usually `develop`) with a descriptive name; 3) apply the diagnosed fix to the code with Edit/Write; 4) `git add` ONLY the files you changed and `git commit` with a conventional, type-prefixed message (fix:/feat:/…) — no AI/Claude attribution, no Co-Authored-By; 5) push the branch to Ejaaz's fork: `git push https://github.com/iamejaaz/frappe.git HEAD:<branch>`; 6) open the PR against frappe/frappe: `gh pr create --repo frappe/frappe --head iamejaaz:<branch> --base <base> --title \"<type: …>\" --body \"<short body>\"`.",
-  "PR style: short title with a type prefix, terse body, no fluff, no security details, no AI attribution. Reference the ticket by number in the body, not customer PII.",
-  "If the working tree has unrelated uncommitted changes, still branch and stage ONLY your own files — never commit unrelated work. If anything is ambiguous or risky, STOP and say what you need instead of guessing.",
+  "You are Ejaaz preparing a fix on a LOCAL branch from a diagnosis. Work in the local frappe checkout (current dir / apps/frappe). You have Edit/Write + git, but NO push and NO `gh pr create` — you STOP after committing, so Ejaaz reviews before anything leaves the machine.",
+  "IMPLEMENT THE FIX EXACTLY AS EJAAZ ASKED IT in the conversation above — if he specified an approach (e.g. 'gate it behind developer mode', 'just this one line'), do THAT, not your own bigger idea. Make the SMALLEST change that fixes the reported issue. Do NOT refactor, move/rename files wholesale, or expand scope. If his intended approach is unclear or the fix is genuinely large/risky, STOP and ask instead of guessing.",
+  "Steps: 1) `git fetch` the base; 2) create a fresh branch off the right base (usually `develop`) with a descriptive name; 3) apply the fix with Edit/Write; 4) `git add` ONLY the files you changed and `git commit` with a conventional, type-prefixed message (fix:/feat:/…) — no AI/Claude attribution, no Co-Authored-By.",
+  "If the working tree has unrelated uncommitted changes, branch and stage ONLY your own files — never commit unrelated work.",
+  "Then STOP. Do NOT push, do NOT open a PR. End with: the branch name, `git diff --stat` of what you changed, and a one-line summary — then say 'Review it; hit \"Push & open PR\" when you're happy.' Keep the whole final message short.",
+].join(" ");
+
+const PR_PUSH_SYSTEM = [
+  "You are Ejaaz pushing an ALREADY-PREPARED fix branch (it's checked out with a commit on it) and opening the PR. You have git push + `gh pr create` only.",
+  "Steps: 1) confirm the current branch + `git log -1` is the intended fix (NOT develop/main — if it is, STOP); 2) push it to Ejaaz's fork: `git push https://github.com/iamejaaz/frappe.git HEAD:<branch>`; 3) open the PR against frappe/frappe: `gh pr create --repo frappe/frappe --head iamejaaz:<branch> --base <base> --title \"<type: …>\" --body \"<short body>\"`.",
+  "PR style: short type-prefixed title, terse body, no fluff, no security details, no AI attribution. Reference the ticket by number, never customer PII. Note any needed backport (v15/v16) in the body.",
   "End your final message with the PR URL on its own line.",
 ].join(" ");
 
 async function runPr() {
   if (!supSession) return;
-  const q = "Create the PR for the fix you diagnosed above.";
-  appendBlock("user").textContent = "Create PR";
+  const q = "Prepare the fix for the issue diagnosed above, on a local branch, then stop for review.";
+  appendBlock("user").textContent = "Prepare fix";
   const t = supSession.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
   const block = appendBlock("assistant");
   const a = await streamAgent(block, {
@@ -112,10 +118,30 @@ async function runPr() {
     model: supSession.model,
     mode: "pr",
     system: PR_SYSTEM,
-    prompt: `HD Ticket ${supSession.id}. Your diagnosis and proposed fix:${t}\n\n${q}\nYou:`,
-    label: "Create PR",
+    prompt: `HD Ticket ${supSession.id}. Your diagnosis and the fix Ejaaz wants:${t}\n\n${q}\nYou:`,
+    label: "Prepare fix",
   });
-  supSession.transcript.push({ q: "Create PR", a });
+  supSession.transcript.push({ q: "Prepare fix", a });
+  supSession.fixPrepared = true;
+  renderFooter();
+}
+
+async function runPrPush() {
+  if (!supSession) return;
+  appendBlock("user").textContent = "Push & open PR";
+  const t = supSession.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
+  const block = appendBlock("assistant");
+  const a = await streamAgent(block, {
+    connectionId: supSession.connectionId,
+    agent: true,
+    includeMemory: true,
+    model: supSession.model,
+    mode: "pr-push",
+    system: PR_PUSH_SYSTEM,
+    prompt: `HD Ticket ${supSession.id}. Push the prepared fix branch and open the PR.${t}\n\nYou:`,
+    label: "Push & open PR",
+  });
+  supSession.transcript.push({ q: "Push & open PR", a });
 }
 
 function toast(text, isErr) {
@@ -540,9 +566,10 @@ function renderFooter() {
         <div id="sup-menu" class="sup-menu" hidden>
           <button data-act="alter">Alter chat<span>autonomous, in-app</span></button>
           <button data-act="assistant">fr assistant<span>Terminal, supervised</span></button>
-          <button data-act="pr">Create PR<span>scoped — just the PR</span></button>
+          <button data-act="pr">Prepare fix<span>local branch, you review</span></button>
         </div>
       </div>
+      ${supSession && supSession.fixPrepared ? '<button id="sup-pr-push">Push &amp; open PR</button>' : ""}
     </div>
     <div id="sup-foot-ask"><input id="sup-ask" placeholder="Ask a follow-up…" /><button id="sup-ask-send">Send</button></div>`;
   const menu = foot.querySelector("#sup-menu");
@@ -559,6 +586,8 @@ function renderFooter() {
       else if (act === "pr") runPr();
     })
   );
+  const pushBtn = foot.querySelector("#sup-pr-push");
+  if (pushBtn) pushBtn.addEventListener("click", () => runPrPush());
   const input = foot.querySelector("#sup-ask");
   const go = () => {
     const q = input.value.trim();
