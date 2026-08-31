@@ -67,12 +67,24 @@ needs heavy fixtures (creating DocTypes/Workflows) or you can't settle it in one
 go, trace it and say "unconfirmed" rather than grinding. Batch shell work into few
 calls. Stop the moment the verdict is decided.
 
-### 1. Read the ticket
-`fr doc get "HD Ticket" <id> --json`. Run **bare** `fr` — the environment provides
-site + credentials (FRAPPE_SITE/API_KEY/API_SECRET); do NOT pass `-s <profile>` (it
-hits the macOS keychain and prompts). Fall back to `-s support.frappe.io` only if
-bare `fr` says no site/creds. Pull siblings/related with `fr query`/`fr doc list`
-when the report is thin.
+### 1. Read the WHOLE thread — not just the description
+The opening `description` is rarely the real requirement; the customer clarifies
+what they actually want in the **replies**. Reading only the description is the #1
+cause of a misleading verdict — you MUST read the full conversation and base the
+requirement on the customer's **latest** messages, not the first one.
+```sh
+fr doc get "HD Ticket" <id> --json                              # ticket + description
+# the email thread (standard Frappe Communication — reliable across helpdesk versions):
+fr query "select creation, sender, content from \`tabCommunication\` where reference_doctype='HD Ticket' and reference_name='<id>' order by creation"
+# internal notes (adapt fields via \`fr doctype 'HD Ticket Comment'\` if this errors):
+fr query "select creation, content from \`tabHD Ticket Comment\` where reference_ticket='<id>' order by creation"
+```
+Run **bare** `fr` — the environment provides site + credentials (FRAPPE_SITE/
+API_KEY/API_SECRET); do NOT pass `-s <profile>` (it hits the macOS keychain and
+prompts). Fall back to `-s support.frappe.io` only if bare `fr` says no site/creds.
+Read every reply before you conclude; pull siblings/related with `fr query` when
+the thread is thin. **State the actual ask in one line before diagnosing** — if the
+thread and description disagree, the thread wins.
 
 ### 2. Establish the facts
 Frappe version + installed apps (often in a version field on the ticket), the
@@ -175,6 +187,8 @@ than re-triaging.
 
 ## Anti-patterns
 
+- ❌ Diagnosing from the ticket `description` alone. The real ask is in the
+  replies — read the whole Communication thread and answer their *latest* ask.
 - ❌ Calling expected/by-design behavior a "bug" because you reproduced the
   mechanism. Reproducing ≠ proving a defect.
 - ❌ Reproducing, or verifying every customer side-claim, when the verdict is
