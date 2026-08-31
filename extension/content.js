@@ -157,6 +157,10 @@ async function postToGh(event, body, btn) {
     if (note) note.innerHTML = `<span class="alter-err">Nothing to post — the comment is empty.</span>`;
     return;
   }
+  // Outward action — confirm the destination + kind before it leaves the machine.
+  const dest = `${session.parts.owner}/${session.parts.repo}#${session.parts.num}`;
+  const kind = event === "request_changes" ? "a 🔴 Request-changes review" : "a comment";
+  if (!window.confirm(`Post ${kind} to ${dest}?\n\nThis is public and posts as you.`)) return;
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Posting…";
