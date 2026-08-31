@@ -31,11 +31,15 @@ bug needs a repro; not every answer needs a wall of evidence. Judge, don't grind
   Before Cancel script" if the thread says so). Frame anything about their setup as
   the thing to check: "if X is set / isn't set, that explains it — can you confirm?"
   Keep the two apart: framework = decided; their config = asked.
-- **Trace to the DECISIVE line — don't stop at a plausible mid-point.** "It calls
-  the same `.cancel()`, so the hooks are identical" is *not* an answer — follow the
-  path to where behavior actually diverges (e.g. `_save` runs `if self._action !=
-  "cancel": self._validate()` — so on cancel the whole validate/workflow-sync path
-  is SKIPPED). A verdict built on an unchecked assumption is worse than "unknown".
+- **When you DO trace, trace to the DECISIVE line — don't stop at a plausible
+  mid-point.** "It calls the same `.cancel()`, so the hooks are identical" is *not*
+  an answer — follow the path to where behavior actually diverges (e.g. `_save` runs
+  `if self._action != "cancel": self._validate()` — so on cancel the whole
+  validate/workflow-sync path is SKIPPED). A verdict built on an unchecked
+  assumption is worse than "unknown". BUT: a **fast first read** need not trace at
+  all — answer from your Frappe knowledge + the thread, give a confident verdict,
+  and leave the code-level trace/verification to the confirm-on-bench pass. Don't
+  grind a multi-file trace when a quick knowledgeable answer will do.
 - **The bar for 🔴 Bug is HIGH — clear it before you use the word.** A bug is the
   framework **malfunctioning**: it crashes, loses or corrupts data, returns a
   *wrong* result, or violates its own **documented/obvious contract**. That is a
