@@ -252,6 +252,7 @@ export default function App() {
     return () => document.removeEventListener("click", onClick);
   }, []);
   useEffect(() => storage.saveConversations(conversations), [conversations]);
+  useEffect(() => setError(null), [activeId, settings.activeConnectionId, settings.model]);
   useEffect(() => storage.saveMemories(memories), [memories]);
   useEffect(() => storage.saveRoutines(routines), [routines]);
   useEffect(() => storage.saveProjects(projects), [projects]);
