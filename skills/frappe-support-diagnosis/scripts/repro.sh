@@ -56,7 +56,17 @@ if [ ! -d "$bench/sites/$site" ]; then
       echo "   or set MYSQL_ROOT_PASSWORD so this can create it automatically." >&2
       exit 3
     fi
-    ( cd "$bench" && bench new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" --mariadb-root-password "$MYSQL_ROOT_PASSWORD" ) \
+    # Bench renamed --mariadb-root-password → --db-root-password (with an alias on
+    # newer versions, absent on some). Probe the help and use whichever exists.
+    pwflag=""
+    help="$(cd "$bench" && bench new-site --help 2>/dev/null)"
+    if printf '%s' "$help" | grep -q -- "--db-root-password"; then pwflag="--db-root-password"
+    elif printf '%s' "$help" | grep -q -- "--mariadb-root-password"; then pwflag="--mariadb-root-password"; fi
+    if [ -z "$pwflag" ]; then
+      echo "!! bench new-site on this bench has neither --db-root-password nor --mariadb-root-password; create $site manually." >&2
+      exit 3
+    fi
+    ( cd "$bench" && bench new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" "$pwflag" "$MYSQL_ROOT_PASSWORD" ) \
       || { echo "!! new-site $site failed" >&2; exit 3; }
     # clone (get-app) any missing apps at this version, then install them on the site
     for app in $apps_list; do
