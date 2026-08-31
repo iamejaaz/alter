@@ -49,35 +49,37 @@ if [ ! -d "$bench/sites/$site" ]; then
     pilot -b "$name" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" --apps frappe $apps_list \
       || pilot -b "$name" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" \
       || { echo "!! couldn't create $site via pilot" >&2; exit 3; }
-  elif command -v bench >/dev/null 2>&1; then
+  else
+    # Resolve the CLASSIC bench CLI. `command -v bench` can point at a shadowing
+    # binary (e.g. frappe/pilot's `bench` at ~/pilot/bench, whose `new-site` only
+    # takes --admin-password) — so pick the first candidate whose new-site help
+    # actually has a db-root-password flag, and remember which flag name it uses.
+    BENCHBIN=""; pwflag=""
+    for cand in /opt/homebrew/bin/bench /usr/local/bin/bench "$(command -v bench 2>/dev/null)"; do
+      [ -n "$cand" ] && [ -x "$cand" ] || continue
+      h="$("$cand" new-site --help 2>/dev/null)"
+      if printf '%s' "$h" | grep -q -- "--db-root-password"; then BENCHBIN="$cand"; pwflag="--db-root-password"; break
+      elif printf '%s' "$h" | grep -q -- "--mariadb-root-password"; then BENCHBIN="$cand"; pwflag="--mariadb-root-password"; break; fi
+    done
+    if [ -z "$BENCHBIN" ]; then
+      echo "!! no classic 'bench' CLI with a db-root-password flag found (is ~/pilot/bench shadowing it on PATH?). Create $site manually." >&2
+      exit 3
+    fi
     if [ -z "${MYSQL_ROOT_PASSWORD:-}" ]; then
-      echo "!! $site missing and MYSQL_ROOT_PASSWORD not set (bench new-site would prompt and hang)." >&2
-      echo "   Create it once:  (cd $bench && bench new-site $site --admin-password admin && bench --site $site install-app $apps_list)" >&2
-      echo "   or set MYSQL_ROOT_PASSWORD so this can create it automatically." >&2
+      echo "!! $site missing and MYSQL_ROOT_PASSWORD not set ($BENCHBIN new-site would prompt and hang)." >&2
+      echo "   Set MYSQL_ROOT_PASSWORD (Alter → Settings → MariaDB root password) so this can auto-create it." >&2
       exit 3
     fi
-    # Bench renamed --mariadb-root-password → --db-root-password (with an alias on
-    # newer versions, absent on some). Probe the help and use whichever exists.
-    pwflag=""
-    help="$(cd "$bench" && bench new-site --help 2>/dev/null)"
-    if printf '%s' "$help" | grep -q -- "--db-root-password"; then pwflag="--db-root-password"
-    elif printf '%s' "$help" | grep -q -- "--mariadb-root-password"; then pwflag="--mariadb-root-password"; fi
-    if [ -z "$pwflag" ]; then
-      echo "!! bench new-site on this bench has neither --db-root-password nor --mariadb-root-password; create $site manually." >&2
-      exit 3
-    fi
-    ( cd "$bench" && bench new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" "$pwflag" "$MYSQL_ROOT_PASSWORD" ) \
+    ( cd "$bench" && "$BENCHBIN" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" "$pwflag" "$MYSQL_ROOT_PASSWORD" ) \
       || { echo "!! new-site $site failed" >&2; exit 3; }
     # clone (get-app) any missing apps at this version, then install them on the site
     for app in $apps_list; do
       if [ ! -d "$bench/apps/$app" ]; then
         echo "   get-app $app@$ver (one-time clone + deps)"
-        ( cd "$bench" && bench get-app --branch "$ver" "$app" ) || { echo "   (couldn't get $app@$ver — skipping)"; continue; }
+        ( cd "$bench" && "$BENCHBIN" get-app --branch "$ver" "$app" ) || { echo "   (couldn't get $app@$ver — skipping)"; continue; }
       fi
-      ( cd "$bench" && bench --site "$site" install-app "$app" ) || true
+      ( cd "$bench" && "$BENCHBIN" --site "$site" install-app "$app" ) || true
     done
-  else
-    echo "!! $site missing and no bench/pilot CLI to create it." >&2; exit 3
   fi
 fi
 
