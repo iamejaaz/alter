@@ -35,66 +35,65 @@ elif [ -n "${ALTER_REPRO_ROOT:-}" ]; then
 fi
 [ -n "$bench" ] || { echo "no bench for '$ver' — pick its folder in Alter → Settings → Repro benches (or set $key)." >&2; exit 2; }
 
+# Resolve the CLASSIC bench CLI once (used for both site creation and the
+# console). `command -v bench` can point at a SHADOWING binary — frappe/pilot's
+# `bench` at ~/pilot/bench, whose `new-site` only takes --admin-password and whose
+# help lacks a db-root-password flag — so pick the first candidate whose new-site
+# help actually has one, and note the flag name (bench renamed
+# --mariadb-root-password → --db-root-password). Empty on a genuine pilot bench.
+CLBENCH=""; PWFLAG=""
+for cand in /opt/homebrew/bin/bench /usr/local/bin/bench "$(command -v bench 2>/dev/null)"; do
+  [ -n "$cand" ] && [ -x "$cand" ] || continue
+  h="$("$cand" new-site --help 2>/dev/null)"
+  if printf '%s' "$h" | grep -q -- "--db-root-password"; then CLBENCH="$cand"; PWFLAG="--db-root-password"; break
+  elif printf '%s' "$h" | grep -q -- "--mariadb-root-password"; then CLBENCH="$cand"; PWFLAG="--mariadb-root-password"; break; fi
+done
+is_pilot() { [ -f "$bench/bench.toml" ] && command -v pilot >/dev/null 2>&1; }
+
 # Create the reusable repro site once if it's missing on this bench (then it's
 # reused forever — repros roll back, so this is a one-time cost per bench).
 if [ ! -d "$bench/sites/$site" ]; then
   echo ">> $site missing on $ver — creating it (one-time)"
   apps_list="${REPRO_APPS:-hrms erpnext}"
-  if [ -f "$bench/bench.toml" ] && command -v pilot >/dev/null 2>&1; then
+  if is_pilot; then
     name="$(basename "$bench")"
-    # clone any missing apps into the bench at this version, then create the site
     for app in $apps_list; do
       [ -d "$bench/apps/$app" ] || { echo "   get-app $app@$ver"; pilot -b "$name" get-app "https://github.com/frappe/$app" --branch "$ver" || echo "   (couldn't get $app@$ver)"; }
     done
     pilot -b "$name" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" --apps frappe $apps_list \
       || pilot -b "$name" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" \
       || { echo "!! couldn't create $site via pilot" >&2; exit 3; }
-  else
-    # Resolve the CLASSIC bench CLI. `command -v bench` can point at a shadowing
-    # binary (e.g. frappe/pilot's `bench` at ~/pilot/bench, whose `new-site` only
-    # takes --admin-password) — so pick the first candidate whose new-site help
-    # actually has a db-root-password flag, and remember which flag name it uses.
-    BENCHBIN=""; pwflag=""
-    for cand in /opt/homebrew/bin/bench /usr/local/bin/bench "$(command -v bench 2>/dev/null)"; do
-      [ -n "$cand" ] && [ -x "$cand" ] || continue
-      h="$("$cand" new-site --help 2>/dev/null)"
-      if printf '%s' "$h" | grep -q -- "--db-root-password"; then BENCHBIN="$cand"; pwflag="--db-root-password"; break
-      elif printf '%s' "$h" | grep -q -- "--mariadb-root-password"; then BENCHBIN="$cand"; pwflag="--mariadb-root-password"; break; fi
-    done
-    if [ -z "$BENCHBIN" ]; then
-      echo "!! no classic 'bench' CLI with a db-root-password flag found (is ~/pilot/bench shadowing it on PATH?). Create $site manually." >&2
-      exit 3
-    fi
+  elif [ -n "$CLBENCH" ]; then
     if [ -z "${MYSQL_ROOT_PASSWORD:-}" ]; then
-      echo "!! $site missing and MYSQL_ROOT_PASSWORD not set ($BENCHBIN new-site would prompt and hang)." >&2
+      echo "!! $site missing and MYSQL_ROOT_PASSWORD not set ($CLBENCH new-site would prompt and hang)." >&2
       echo "   Set MYSQL_ROOT_PASSWORD (Alter → Settings → MariaDB root password) so this can auto-create it." >&2
       exit 3
     fi
-    ( cd "$bench" && "$BENCHBIN" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" "$pwflag" "$MYSQL_ROOT_PASSWORD" ) \
+    ( cd "$bench" && "$CLBENCH" new-site "$site" --admin-password "${REPRO_ADMIN_PW:-admin}" "$PWFLAG" "$MYSQL_ROOT_PASSWORD" ) \
       || { echo "!! new-site $site failed" >&2; exit 3; }
-    # clone (get-app) any missing apps at this version, then install them on the site
     for app in $apps_list; do
       if [ ! -d "$bench/apps/$app" ]; then
         echo "   get-app $app@$ver (one-time clone + deps)"
-        ( cd "$bench" && "$BENCHBIN" get-app --branch "$ver" "$app" ) || { echo "   (couldn't get $app@$ver — skipping)"; continue; }
+        ( cd "$bench" && "$CLBENCH" get-app --branch "$ver" "$app" ) || { echo "   (couldn't get $app@$ver — skipping)"; continue; }
       fi
-      ( cd "$bench" && "$BENCHBIN" --site "$site" install-app "$app" ) || true
+      ( cd "$bench" && "$CLBENCH" --site "$site" install-app "$app" ) || true
     done
+  else
+    echo "!! no classic 'bench' CLI with a db-root-password flag found (is ~/pilot/bench shadowing it on PATH?), and not a pilot bench. Create $site manually." >&2
+    exit 3
   fi
 fi
 
 echo "== reproduce on $ver :: $bench (site $site) =="
 cd "$bench"
-# Run the frappe console via the bench's own venv python + bench_helper. This
-# works for BOTH a classic frappe-bench AND a pilot bench (pilot doesn't install
-# the `bench` CLI; it drives frappe as `env/bin/python -m frappe.utils.bench_helper`).
-# The console auto-inits + connects the site, so the script can use `frappe.*`
-# directly — just assert the bug and frappe.db.rollback() at the end.
-py="$bench/env/bin/python"
-if [ -x "$py" ]; then
-  "$py" -m frappe.utils.bench_helper frappe --site "$site" console < "$script"
-elif command -v bench >/dev/null 2>&1; then
-  bench --site "$site" console < "$script"
+# Prefer the classic `bench --site X console` — it inits + connects the site so
+# the script can use `frappe.*` directly. Fall back to bench_helper only on a real
+# pilot bench (no bench CLI); note that path can fail app enumeration on some
+# frappe versions, which is exactly why the classic CLI is preferred.
+if [ -n "$CLBENCH" ]; then
+  "$CLBENCH" --site "$site" console < "$script"
+elif [ -x "$bench/env/bin/python" ]; then
+  "$bench/env/bin/python" -m frappe.utils.bench_helper frappe --site "$site" console < "$script"
 else
-  echo "no venv python at $py and no 'bench' CLI — can't open a console" >&2; exit 2
+  echo "no classic 'bench' CLI and no venv python — can't open a console" >&2; exit 2
 fi
