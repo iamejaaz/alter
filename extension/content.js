@@ -230,6 +230,8 @@ function pollRun(el, runId, opts) {
     const t0 = Date.now();
     el.innerHTML =
       '<div class="alter-steps"></div><div class="alter-working"><span class="alter-spin"></span><span class="alter-elapsed">Thinking… 0s</span></div>';
+    const panelBody = document.getElementById("alter-panel-body");
+    if (panelBody) panelBody.scrollTop = panelBody.scrollHeight;
     const stepsEl = el.querySelector(".alter-steps");
     const workEl = el.querySelector(".alter-working");
     const elapsedEl = el.querySelector(".alter-elapsed");
@@ -303,7 +305,14 @@ function pollRun(el, runId, opts) {
         const clean = displayText(p.text || "") ?? (p.text || "");
         ans.innerHTML = mini(clean);
         el.appendChild(ans);
-        ans.scrollIntoView({ block: "start", behavior: "smooth" });
+        // Long answer (full review): jump to its start. Short answer (follow-up):
+        // keep scrolled to the bottom so it's in view.
+        const body = document.getElementById("alter-panel-body");
+        if (body && ans.getBoundingClientRect().height > body.clientHeight) {
+          ans.scrollIntoView({ block: "start", behavior: "smooth" });
+        } else if (body) {
+          body.scrollTop = body.scrollHeight;
+        }
         resolve(clean);
       }
     };

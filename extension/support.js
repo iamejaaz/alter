@@ -234,6 +234,8 @@ function pollRun(el, runId, opts) {
     const t0 = Date.now();
     el.innerHTML =
       '<div class="sup-steps"></div><div class="sup-working"><span class="sup-spin"></span><span class="sup-elapsed">Working… 0s</span></div>';
+    const supBody = document.getElementById("sup-body");
+    if (supBody) supBody.scrollTop = supBody.scrollHeight;
     const stepsEl = el.querySelector(".sup-steps");
     const workEl = el.querySelector(".sup-working");
     const elapsedEl = el.querySelector(".sup-elapsed");
@@ -306,7 +308,14 @@ function pollRun(el, runId, opts) {
         ans.className = "sup-answer";
         renderAnswer(ans, p.text || "");
         el.appendChild(ans);
-        ans.scrollIntoView({ block: "start", behavior: "smooth" });
+        // Long answer (a full diagnosis): jump to its start so it reads top-down.
+        // Short answer (a follow-up/reply): keep scrolled to the bottom so it's in view.
+        const body = document.getElementById("sup-body");
+        if (body && ans.getBoundingClientRect().height > body.clientHeight) {
+          ans.scrollIntoView({ block: "start", behavior: "smooth" });
+        } else if (body) {
+          body.scrollTop = body.scrollHeight;
+        }
         resolve(p.text || "");
       }
     };
