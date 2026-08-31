@@ -23,6 +23,30 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [bridge, setBridge] = useState<{ port: number; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const importCreds = async () => {
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const c = await invoke<{ site: string; api_key: string; api_secret: string }>(
+        "import_frappe_credentials",
+        {}
+      );
+      setDraft((d) => ({
+        ...d,
+        frappeSite: c.site || d.frappeSite,
+        frappeApiKey: c.api_key,
+        frappeApiSecret: c.api_secret,
+      }));
+      setImportMsg({ ok: true, text: "Imported from frappectl — Save to keep." });
+    } catch (e) {
+      setImportMsg({ ok: false, text: typeof e === "string" ? e : "Import failed." });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   useEffect(() => {
     void invoke<{ port: number; token: string }>("bridge_info").then(setBridge).catch(() => {});
@@ -377,10 +401,22 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
             </div>
 
             <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-              <p className="text-sm text-[var(--txt)]">Frappe credentials</p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-[var(--txt)]">Frappe credentials</p>
+                <button
+                  onClick={importCreds}
+                  disabled={importing}
+                  className="rounded-md border border-[var(--bd)] px-2 py-0.5 text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)] disabled:opacity-50"
+                >
+                  {importing ? "Importing…" : "Import from fr"}
+                </button>
+              </div>
               <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
-                Set these so the support agent's <code>fr</code> reads credentials from the environment instead of the macOS keychain (which prompts for a password every run). Stored locally.
+                Set these so the support agent's <code>fr</code> reads credentials from the environment instead of the macOS keychain (which prompts for a password every run). Stored locally. <b>Import from fr</b> pulls the token <code>fr</code> already stored — no rotation, reuses your existing key.
               </p>
+              {importMsg && (
+                <p className={`mb-2 text-[11px] ${importMsg.ok ? "text-emerald-500" : "text-red-400"}`}>{importMsg.text}</p>
+              )}
               <input
                 value={draft.frappeSite ?? ""}
                 onChange={(e) => setDraft({ ...draft, frappeSite: e.target.value })}

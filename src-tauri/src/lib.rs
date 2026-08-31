@@ -390,6 +390,74 @@ fn claude_version() -> Result<String, String> {
     }
 }
 
+#[derive(serde::Serialize)]
+struct FrappeCreds {
+    site: String,
+    api_key: String,
+    api_secret: String,
+}
+
+#[tauri::command]
+fn import_frappe_credentials(profile: Option<String>) -> Result<FrappeCreds, String> {
+    use std::process::Command;
+
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config")
+        });
+    let raw = std::fs::read_to_string(base.join("frappe").join("config.json"))
+        .map_err(|_| "No frappectl config found — run `fr auth login <url>` first.".to_string())?;
+    let cfg: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("Couldn't parse frappectl config: {e}"))?;
+
+    let name = match profile {
+        Some(p) if !p.is_empty() => p,
+        _ => cfg
+            .get("default")
+            .and_then(|v| v.as_str())
+            .ok_or("No default frappectl profile set.")?
+            .to_string(),
+    };
+    let entry = cfg
+        .get("profiles")
+        .and_then(|p| p.get(&name))
+        .ok_or_else(|| format!("Profile '{name}' not found in frappectl config."))?;
+    if entry.get("auth").and_then(|v| v.as_str()) == Some("oauth") {
+        return Err(format!(
+            "Profile '{name}' uses OAuth, not an API key — paste the key/secret manually."
+        ));
+    }
+    let site = entry
+        .get("site")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+
+    let read_secret = |service: &str| -> Option<String> {
+        let out = Command::new("security")
+            .args(["find-generic-password", "-w", "-s", service, "-a", &name])
+            .output()
+            .ok()?;
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (out.status.success() && !s.is_empty()).then_some(s)
+    };
+    let secret = read_secret("frappectl")
+        .or_else(|| read_secret("frappe-cli"))
+        .ok_or("Couldn't read the credential from the macOS keychain (prompt cancelled?).")?;
+
+    let (api_key, api_secret) = secret
+        .split_once(':')
+        .ok_or("Stored credential isn't in key:secret form.")?;
+    Ok(FrappeCreds {
+        site,
+        api_key: api_key.to_string(),
+        api_secret: api_secret.to_string(),
+    })
+}
+
 #[tauri::command]
 async fn claude_code(
     cancel: tauri::State<'_, ChatCancel>,
@@ -1076,6 +1144,7 @@ pub fn run() {
             test_connection,
             claude_code,
             claude_version,
+            import_frappe_credentials,
             read_user_memory,
             append_user_memory,
             open_external,
