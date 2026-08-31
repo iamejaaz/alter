@@ -27,7 +27,7 @@ const VERBS = {
   summarize: (id) =>
     `Summarize HD Ticket ${id}: the issue in one line, customer + product/version, urgency, and what they've already tried. Terse.`,
   diagnose: (id) =>
-    `Use the frappe-support-diagnosis skill in FAST MODE — be quick (aim for a handful of tool calls, ~30s). Do ONLY: read the ticket (bare fr), establish the facts, take a quick peek at the relevant code if you need it, then CLASSIFY — bug / customisation / functional-query / config / user-error — and give the answer. DEFAULT to "not a bug"; most tickets are. If it's not a framework bug, give the real answer (the setting, the script, why it's intended) — you're DONE. If it IS likely a bug, state the root cause you can see, and set Reproduced to "not run — press Confirm on bench". Do NOT do version triage, do NOT reproduce, do NOT search gh in fast mode — those are the "Confirm on bench" step the user triggers if they want them. Follow the Output format + PROPORTIONALITY (SHORT, no <details> for a simple verdict). Diagnose HD Ticket ${id}.`,
+    `Use the frappe-support-diagnosis skill in FAST MODE — quick (a handful of tool calls, ~30s). Do ONLY: read the ticket (bare fr), establish facts, quick code peek if needed, then CLASSIFY and answer. The BAR for calling it a 🔴 Bug is HIGH: the framework must MALFUNCTION — crash, lose/corrupt data, return a WRONG result, or violate its own documented/obvious contract. If you can't name which of those it is, it is NOT a bug. Critically: "the framework doesn't do X automatically" (e.g. doesn't sync a second field, doesn't auto-register something) is a CUSTOMISATION or enhancement, NOT a bug — if your fix would ADD behavior, it's not a defect; the answer is the hook/Server Script/setting that does X (note "could be a framework enhancement" at most). A deliberate skip in code is design, not oversight. DEFAULT to not-a-bug. If it's not a bug, give the real answer and you're DONE. Only if it truly clears the bar, state the root cause and set Reproduced to "not run — press Confirm on bench". Do NOT version-triage / reproduce / search gh in fast mode. Follow Output + PROPORTIONALITY (SHORT). Diagnose HD Ticket ${id}.`,
   draft: (id) =>
     `Draft a reply to the customer for HD Ticket ${id}. Read it via fr and verify any facts against the code/gh — but the reply must be simple and human. ${REPLY_VOICE}`,
 };
@@ -185,8 +185,12 @@ function toast(text, isErr) {
   body.scrollTop = body.scrollHeight;
 }
 
+// Mirrors the panel's fast→deep→review flow: first decide is-it-even-a-bug (high
+// bar — malfunction only, not "doesn't auto-do X"); confirm on a bench only if
+// it's a real bug; and if a fix is warranted, PREPARE it on a local branch and
+// STOP for review — do NOT push or open a PR autonomously.
 const HANDOFF_TASK = (id) =>
-  `Use the frappe-support-diagnosis skill and follow its method. Work on HD Ticket ${id} on support.frappe.io: read it with fr (bare fr — env creds), find the code across ALL installed apps, triage versions (develop → v16 → v15) with git show at the customer's ref, and reproduce on a bench. If there is a fix, implement it and open a PR against frappe/frappe from my fork iamejaaz/frappe. Follow my standing preferences (~/.claude/CLAUDE.md).`;
+  `Use the frappe-support-diagnosis skill. HD Ticket ${id} on support.frappe.io. FIRST decide if it's even a bug — the bar is HIGH (a real malfunction: crash / data loss / wrong result / broken contract), NOT "the framework doesn't do X automatically" (that's a customisation). If it's not a bug, give the real answer and stop. Only for a real bug: read it (bare fr), find the code across all apps, triage versions, reproduce on a bench. If a fix is warranted, implement it on a fresh local branch off develop and COMMIT — then STOP and show the diff for review. Do NOT push and do NOT open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md).`;
 
 // Carry the diagnosis already done in the panel into the handoff, so the target
 // app CONTINUES from it instead of re-running the whole triage cold.
@@ -195,7 +199,7 @@ function handoffTask(id) {
     ? supSession.transcript.map((x) => `\n\n### ${x.q}\n${x.a}`).join("")
     : "";
   if (!t) return HANDOFF_TASK(id);
-  return `HD Ticket ${id} on support.frappe.io — I already triaged this in the support panel. Full diagnosis so far:${t}\n\n---\nContinue from this — do NOT re-run the triage from scratch. Use the frappe-support-diagnosis skill for any remaining steps. If the root cause is still unconfirmed, do the smallest thing that confirms it next. If a fix is warranted and not already done: verify it against the customer's version with git show, reproduce on a bench if one is reachable, implement it, and open a PR against frappe/frappe from my fork iamejaaz/frappe. Follow my standing preferences (~/.claude/CLAUDE.md).`;
+  return `HD Ticket ${id} on support.frappe.io — I already triaged this in the support panel. Diagnosis so far:${t}\n\n---\nContinue from this — do NOT re-triage from scratch. First sanity-check the verdict: is it really a bug (high bar — a real malfunction, NOT "doesn't auto-do X" which is a customisation)? If it's not a bug, say so and give the real answer. If it IS a bug and still unconfirmed, do the smallest confirmation next (git show at the customer's ref, reproduce on a bench if reachable). If a fix is warranted: implement it on a fresh local branch off develop and COMMIT, then STOP and show the diff — do NOT push or open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md).`;
 }
 
 // Full, interactive `fr assistant` in a Terminal — all sites, read+write, but it

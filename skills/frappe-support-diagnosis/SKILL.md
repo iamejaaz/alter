@@ -11,19 +11,31 @@ bug needs a repro; not every answer needs a wall of evidence. Judge, don't grind
 
 ## Ground rules (judgment)
 
-- **Decide "is it even a bug?" first — default to NOT a bug.** Most tickets are
-  expected behavior, a misunderstanding, a config/permission issue, or a
-  customisation the customer must script themselves. It's a framework bug only if
-  the code does something it clearly *shouldn't*. If the real answer is "change
-  this setting / write this script / these two things are separate by design /
-  it's documented behavior", that guidance **is** the answer — deliver it plainly,
-  don't inflate it into a defect. A correct "works as designed" beats a wrong bug
-  report every time.
+- **The bar for 🔴 Bug is HIGH — clear it before you use the word.** A bug is the
+  framework **malfunctioning**: it crashes, loses or corrupts data, returns a
+  *wrong* result, or violates its own **documented/obvious contract**. That is a
+  narrow set. Default to NOT a bug; most tickets are expected behavior, config, a
+  misunderstanding, or a customisation the customer must script. If you can't name
+  which of {crash / data loss / wrong result / broken contract} it is, it is **not
+  a bug** — say what it actually is and give the real answer.
+- **"The framework doesn't do X automatically" is NOT a bug — it's a customisation
+  or at most an enhancement.** This is the trap that produces false bug reports.
+  Ask yourself: *does my proposed fix ADD behavior* ("also sync Y on cancel", "make
+  it auto-register Z", "have it update W too")? Then you're describing an
+  enhancement the customer wants, not a defect — the framework isn't *wrong*, it
+  just doesn't do the extra thing. Classify it **customisation**: the support
+  answer is the hook / Server Script / setting that does X, and you may add a
+  one-line "could be a framework enhancement" note — but do NOT stamp it 🔴 Bug.
+  A deliberate `if` that skips something (e.g. "skip validation on cancel") is a
+  design decision, not an accidental gap — don't read intent as oversight.
+  (Contrast a *real* bug: cancelling a file deletes the bytes but leaves the DB
+  row → a dead link — that's data loss + a broken invariant, so it clears the bar.)
 - **Reproducing shows what the code *does*, not that it's *wrong*.** A green repro
   never upgrades expected behavior into a bug — the bug call is a separate judgment
-  about intent. So reproduce (step 5) only when it actually settles bug-vs-not or
-  which-version. Skip it for config/expected-behavior verdicts, and don't verify
-  every side-claim the customer made just to be thorough. Answer what was asked.
+  about intent and the bar above. So reproduce (step 5) only when it settles
+  bug-vs-not or which-version. Skip it for config/expected-behavior/enhancement
+  verdicts, and don't verify every side-claim the customer made just to be
+  thorough. Answer what was asked.
 - **Match the effort and the output to the finding.** A one-line answer for a
   one-line ticket. Depth is earned by a real, contested bug — not spent by default.
 - **Never assume — check.** Before saying "that's a custom app / that commit isn't
