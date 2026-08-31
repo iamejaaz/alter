@@ -11,6 +11,23 @@ bug needs a repro; not every answer needs a wall of evidence. Judge, don't grind
 
 ## Ground rules (judgment)
 
+- **BE DECISIVE — you resolve it, you don't punt it back.** You have the source and
+  a bench; when the verdict hinges on "does X actually happen", DETERMINE it —
+  trace to the decisive line or reproduce it — then commit to a flat verdict. Do
+  NOT hedge into "🟡 can't confirm, ask the customer whether direct-cancel also
+  breaks" when a 30-second repro or one more line of trace would settle it. Only
+  ask the customer for facts **only they have** (their exact config, their script,
+  their version if no field carries it) — never for an experiment you can run.
+  Land on ONE of these, said plainly:
+  - **The functionality doesn't exist** → say it directly: "Frappe does not do X.
+    It's not a bug; to get X, do <the customisation>." (customisation / by design)
+  - **The feature exists and is broken** → confirm it: **🔴 Bug**, with the malfunction named.
+  - **It's their configuration** → name the exact setting/state that's wrong and the fix.
+- **Trace to the DECISIVE line — don't stop at a plausible mid-point.** "It calls
+  the same `.cancel()`, so the hooks are identical" is *not* an answer — follow the
+  path to where behavior actually diverges (e.g. `_save` runs `if self._action !=
+  "cancel": self._validate()` — so on cancel the whole validate/workflow-sync path
+  is SKIPPED). A verdict built on an unchecked assumption is worse than "unknown".
 - **The bar for 🔴 Bug is HIGH — clear it before you use the word.** A bug is the
   framework **malfunctioning**: it crashes, loses or corrupts data, returns a
   *wrong* result, or violates its own **documented/obvious contract**. That is a
@@ -198,6 +215,11 @@ than re-triaging.
 
 - ❌ Diagnosing from the ticket `description` alone. The real ask is in the
   replies — read the whole Communication thread and answer their *latest* ask.
+- ❌ Hedging ("🟡 can't confirm — ask the customer whether a direct cancel also
+  breaks") when you could trace one more line or run a 30-second repro and KNOW.
+  Ask the customer only for facts you can't see; resolve everything else yourself.
+- ❌ Stopping a trace at "it's the same code path" — follow it to where behavior
+  actually diverges before you commit to a verdict.
 - ❌ Calling expected/by-design behavior a "bug" because you reproduced the
   mechanism. Reproducing ≠ proving a defect.
 - ❌ Reproducing, or verifying every customer side-claim, when the verdict is
