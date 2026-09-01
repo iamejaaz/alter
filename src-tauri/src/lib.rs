@@ -312,18 +312,18 @@ async fn quick_complete(url: String, api_key: String, model: String, prompt: Str
 
 // Generate a short chat title via a cheap Claude Code (haiku) call.
 #[tauri::command]
-fn claude_title(text: String) -> Result<String, String> {
-    use std::process::Command;
+async fn claude_title(text: String) -> Result<String, String> {
     let snippet: String = text.chars().take(500).collect();
     let prompt = format!(
         "Generate a 3-6 word title in Title Case (no quotes, no trailing punctuation) for a chat that starts with this message. Reply with ONLY the title.\n\nMessage: {snippet}"
     );
-    let out = Command::new("claude")
+    let out = tokio::process::Command::new("claude")
         .arg("-p")
         .arg(&prompt)
         .arg("--model")
         .arg("haiku")
         .output()
+        .await
         .map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
