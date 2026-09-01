@@ -24,8 +24,11 @@ function prParts() {
 }
 
 function prAuthor() {
-  const el = document.querySelector(".gh-header-meta a.author, .gh-header-meta .author, .gh-header-show a.author");
-  const login = el && el.textContent ? el.textContent.trim() : "";
+  const el = document.querySelector("a.author");
+  if (!el) return "";
+  const href = el.getAttribute("href") || "";
+  const m = href.match(/^\/([^/?#]+)$/);
+  const login = m ? m[1] : el.textContent.trim();
   return /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i.test(login) ? login : "";
 }
 
