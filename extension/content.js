@@ -8,18 +8,25 @@ const REVIEW_SYSTEM = [
   "If CI status is provided, factor it in and say whether a failing check is caused by this diff or unrelated/pre-existing.",
   "Then **Mechanism:** — one or two lines: what the PR changes and the root cause it addresses (judge the cleanest mechanism, not just 'it works').",
   "Then **Assessment:** — terse bullets: is the root cause actually fixed, any leftover state/residue, is the fix minimally scoped, test coverage (call out untested new paths), and scan fixtures/test data for real domains, emails, names, or keys — flag any PII (expect example.com).",
-  "If the verdict is 🔴 Needs changes, add **Draft comment:** — a ready-to-paste review comment: @author-addressed, terse plain English, cite file:line, explain as a plain before/after user example where it helps, and include a ```suggestion block when a concrete fix fits.",
+  "If the verdict is 🔴 Needs changes, add **Draft comment:** — a ready-to-paste review comment. Open by addressing the PR author with the GitHub @handle given in the prompt (e.g. `@octocat`); if none is given, address them directly with no placeholder — NEVER write the literal word `@author`.",
+  "Write the Draft comment in the reviewer's OWN comment voice from memory: terse, plain, direct, their exact phrasing and register — not a cleaned-up polished version. No politeness padding ('would help to see…', 'happy to…'), no hedging, no essay. Cite file:line, explain as a plain before/after user example where it helps, and include a ```suggestion block when a concrete fix fits.",
   "Terse throughout. No preamble, no meta, no praise-fluff. No premature victory — progress is distance-to-parity with the real thing.",
 ].join(" ");
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REPLY_VOICE, followupParams, nearBottom, stickBottom, pinToBottom } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
 
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
   return m ? { owner: m[1], repo: m[2], num: m[3] } : null;
+}
+
+function prAuthor() {
+  const el = document.querySelector(".gh-header-meta a.author, .gh-header-meta .author, .gh-header-show a.author");
+  const login = el && el.textContent ? el.textContent.trim() : "";
+  return /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i.test(login) ? login : "";
 }
 
 async function getDiff(parts) {
@@ -61,10 +68,12 @@ async function run() {
     note = "\n\n[diff truncated to first 60k chars]";
   }
 
+  const author = prAuthor();
+  const authorBlock = author ? `PR author GitHub handle: @${author}\n\n` : "";
   const ciBlock = checks.trim() ? `CI checks:\n${checks.slice(0, 4000)}\n\n` : "";
-  const prompt = `Review this pull request (${parts.owner}/${parts.repo}#${parts.num}).\n\n${ciBlock}Diff:\n${diff}${note}`;
+  const prompt = `Review this pull request (${parts.owner}/${parts.repo}#${parts.num}).\n\n${authorBlock}${ciBlock}Diff:\n${diff}${note}`;
 
-  session = { parts, connectionId, model: claudeModel || undefined, diff, note, review: "", draft: "", transcript: [] };
+  session = { parts, author, connectionId, model: claudeModel || undefined, diff, note, review: "", draft: "", transcript: [] };
   clearBody();
   const block = appendBlock("assistant");
   const raw = await streamAgent(block, {
@@ -83,10 +92,15 @@ async function followUp(q) {
   if (!session || !q.trim()) return;
   appendBlock("user").textContent = q;
   const t = session.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
-  // Normal CHAT about the PR you already reviewed — not a fresh review each time
-  // (shared voice logic in window.ALTER). file:line is fine when they actually
-  // ask about the code; a message to post uses the plain reply voice.
-  const { system, label } = followupParams(q, "The work here is your review of a GitHub PR; cite file:line only when the question is actually about the code.");
+  // Normal CHAT about the PR you already reviewed — not a fresh review each time.
+  // A request for a comment to POST is a PR review comment (code refs welcome, in
+  // your own review voice), NOT a customer reply — so bypass the customer voice.
+  const domain = "The work here is your review of a GitHub PR; cite file:line when the question is about the code.";
+  const wantsReply = REPLY_INTENT.test(q);
+  const system = wantsReply
+    ? `${domain} ${FOLLOWUP_SYSTEM} You are drafting a PR REVIEW COMMENT to post on GitHub, in your OWN terse review voice from memory (not a customer reply): plain, direct, your exact phrasing; file:line refs are fine and a \`\`\`suggestion block when a concrete fix fits. Address the PR author ${session.author ? `as @${session.author}` : "directly"} — NEVER write the literal '@author'. No preamble, no politeness padding, no hedging. Output ONLY the comment body.`
+    : followupParams(q, domain).system;
+  const label = wantsReply ? "Draft comment" : "Follow-up";
   const prompt =
     `PR diff (may be truncated):\n${session.diff}${session.note}\n\n` +
     `Your review:\n${session.review}${t}\n\nUser: ${q}\nYou:`;
@@ -103,7 +117,7 @@ async function followUp(q) {
 }
 
 const DRAFT_SYSTEM =
-  "You are Ejaaz writing the review comment to post on this PR. Terse, plain English, @author-addressed where useful, cite file:line, and include a ```suggestion block when a concrete fix fits. No preamble, no praise-fluff, no meta. Output ONLY the comment body, ready to paste.";
+  "You are the reviewer writing the comment to post on this PR, in your OWN standing voice from memory: terse, plain, direct, your exact phrasing — not a cleaned-up polished version. No preamble, no praise-fluff, no meta, no politeness padding ('would help to see…'), no hedging. Open by addressing the PR author with the GitHub @handle given in the prompt (e.g. `@octocat`); if none is given, address them directly with no placeholder — NEVER write the literal word `@author`. Cite file:line, include a ```suggestion block when a concrete fix fits. Output ONLY the comment body, ready to paste.";
 
 // Verify a PR by actually running it on a throwaway repro bench (SWE-agent-style
 // reproducer). Uses the per-version repro benches; never touches the user's own
@@ -141,7 +155,7 @@ async function draftComment() {
     includeMemory: true,
     model: session.model,
     system: DRAFT_SYSTEM,
-    prompt: `PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}. Your review:\n${session.review}\n\nWrite the comment to post.`,
+    prompt: `PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}.${session.author ? ` PR author GitHub handle: @${session.author}.` : ""}\n\nYour review:\n${session.review}\n\nWrite the comment to post.`,
     label: "draft",
   });
   if (draft) {
