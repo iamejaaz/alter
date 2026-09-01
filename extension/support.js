@@ -74,8 +74,8 @@ async function runVerb(verb) {
 
   // Triage (summarize/diagnose/draft/follow-ups) runs on the FAST model — it's a
   // read task and a heavy model there is pure latency (7-8 min vs ~1-2). The
-  // user's chosen model (claudeModel, e.g. opus) is reserved for writing the fix
-  // in Create-PR, where reasoning actually matters.
+  // user's chosen model (claudeModel, e.g. opus) is used where reasoning changes
+  // the output: the deep confirm-on-bench pass and writing the fix in Create-PR.
   supSession = {
     id,
     connectionId,
@@ -125,7 +125,7 @@ async function runDeepDiagnose() {
     connectionId: supSession.connectionId,
     agent: true,
     includeMemory: true,
-    model: supSession.model,
+    model: supSession.fixModel,
     system: SUPPORT_SYSTEM,
     prompt: `HD Ticket ${supSession.id}.${t}\n\nNow VERIFY this in code + on a bench — this is where the deep work goes. TRACE the mechanism to the decisive line (don't stop at "same code path" — follow it to where behavior actually diverges, e.g. a guard that skips a path), then version-triage (across-versions.sh) and reproduce (repro.sh, develop first) if it's a bug, and check gh once. Update the verdict with what the code/repro actually shows — correct the fast read if it was wrong. Continue from above; don't re-triage from scratch. Keep the visible answer plain (code detail in the Evidence drawer). Proportionate.\nYou:`,
     label: "Confirm on bench",
