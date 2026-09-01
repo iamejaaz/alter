@@ -533,6 +533,7 @@ async fn claude_code(
         })?;
         let stdin = child.stdin.take().ok_or("no stdin")?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
+        let stderr = child.stderr.take().ok_or("no stderr")?;
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
@@ -540,6 +541,12 @@ async fn claude_code(
                 if tx.send(l).is_err() {
                     break;
                 }
+            }
+        });
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(l)) = lines.next_line().await {
+                eprintln!("[claude stderr] {l}");
             }
         });
         *guard = Some(ClaudeProc {
