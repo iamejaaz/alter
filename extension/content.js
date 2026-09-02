@@ -443,6 +443,7 @@ function openPanel() {
     <div id="alter-panel-head">
       <span id="alter-panel-title">Alter — PR review</span>
       <div>
+        <button id="alter-copy" title="Copy the review (or draft comment)">Copy</button>
         <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
         <button id="alter-min" title="Minimize">–</button>
         <button id="alter-close" title="Close">×</button>
@@ -451,6 +452,14 @@ function openPanel() {
     <div id="alter-panel-body"></div>
     <div id="alter-panel-foot"></div>`;
   document.body.appendChild(el);
+  el.querySelector("#alter-copy").addEventListener("click", () => {
+    const b = el.querySelector("#alter-copy");
+    const text = session ? session.draft || session.review || "" : "";
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    b.textContent = "Copied";
+    setTimeout(() => (b.textContent = "Copy"), 1500);
+  });
   el.querySelector("#alter-min").addEventListener("click", () => {
     const min = el.classList.toggle("alter-collapsed");
     el.querySelector("#alter-min").textContent = min ? "▢" : "–";
