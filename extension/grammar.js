@@ -16,6 +16,7 @@ const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res))
 
 let pill = null;
 let target = null; // { kind, el, start?, end?, text, rect }
+let warnedReasoning = false;
 
 function isEditableInput(el) {
   if (!el) return false;
@@ -115,7 +116,8 @@ async function fix(t) {
   p.textContent = "Fixing…";
   p.disabled = true;
   const r = await send({ type: "run", connectionId, system: GRAMMAR_SYSTEM, prompt: t.text });
-  const corrected = cleanGrammar(r && r.data && r.data.content);
+  const raw = r && r.data && r.data.content;
+  const corrected = cleanGrammar(raw);
   if (!r || !r.ok || !corrected) {
     p.textContent = r && r.error ? "Error" : "No change";
     p.disabled = false;
@@ -123,10 +125,17 @@ async function fix(t) {
     return;
   }
   const changed = replace(t, corrected);
-  // Confirm visibly so it's obvious the fix landed (the editor may have shifted).
-  p.textContent = changed ? "✓ Fixed" : "✓ Copied";
   p.disabled = true;
-  setTimeout(removePill, 1000);
+  // A <think> block means this is a reasoning model — slow for a trivial fix.
+  // Warn once so the user can pick a faster grammar model in Alter.
+  if (/<think[\s>]/i.test(String(raw)) && !warnedReasoning) {
+    warnedReasoning = true;
+    p.textContent = "✓ Fixed — slow reasoning model; set a faster grammar model in Alter";
+    setTimeout(removePill, 4500);
+  } else {
+    p.textContent = changed ? "✓ Fixed" : "✓ Copied";
+    setTimeout(removePill, 1000);
+  }
 }
 
 // Returns true if the text was replaced in place; false if it fell back to the
