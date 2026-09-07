@@ -90,6 +90,17 @@ function showPill(t) {
   document.body.appendChild(pill);
 }
 
+function cleanGrammar(raw) {
+  if (!raw) return "";
+  let s = String(raw)
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<\/?think>/gi, "")
+    .trim();
+  const wrapped = s.match(/^"([\s\S]+)"$/) || s.match(/^'([\s\S]+)'$/);
+  if (wrapped) s = wrapped[1].trim();
+  return s;
+}
+
 async function fix(t) {
   // Hold a local ref — a scroll during the await calls removePill() and nulls
   // the global `pill`, which would make the post-await mutations throw.
@@ -104,13 +115,14 @@ async function fix(t) {
   p.textContent = "Fixing…";
   p.disabled = true;
   const r = await send({ type: "run", connectionId, system: GRAMMAR_SYSTEM, prompt: t.text });
-  if (!r || !r.ok || !r.data || !r.data.content) {
+  const corrected = cleanGrammar(r && r.data && r.data.content);
+  if (!r || !r.ok || !corrected) {
     p.textContent = r && r.error ? "Error" : "No change";
     p.disabled = false;
     setTimeout(removePill, 1500);
     return;
   }
-  const changed = replace(t, r.data.content);
+  const changed = replace(t, corrected);
   // Confirm visibly so it's obvious the fix landed (the editor may have shifted).
   p.textContent = changed ? "✓ Fixed" : "✓ Copied";
   p.disabled = true;
