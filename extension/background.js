@@ -203,7 +203,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 function hint(r) {
-  if (r.status === 401) return "Wrong or missing token — set it in the Alter extension popup.";
+  if (r.status === 401) return "Wrong or missing token — set it in the Alter extension settings.";
   return "Bridge error " + r.status;
 }
 
