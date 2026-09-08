@@ -10,8 +10,10 @@ function setStatus(text, cls) {
 }
 
 async function loadConnections() {
-  const stored = await chrome.storage.local.get(["token", "models", "claudeModel"]);
+  const stored = await chrome.storage.local.get(["token", "models", "claudeModel", "helpdeskSite", "grammarEverywhere"]);
   $("token").value = stored.token || "";
+  $("helpdesk-site").value = stored.helpdeskSite || "";
+  $("grammar-everywhere").checked = stored.grammarEverywhere !== false;
   $("claude-model").value = stored.claudeModel != null ? stored.claudeModel : "sonnet";
 
   const r = await send({ type: "connections" });
@@ -32,7 +34,8 @@ async function loadConnections() {
     none.value = "";
     none.textContent = "Not set";
     sel.appendChild(none);
-    conns.forEach((c) => {
+    const eligible = a === "prReview" || a === "support" ? conns.filter((c) => c.isClaudeCode) : conns;
+    eligible.forEach((c) => {
       const o = document.createElement("option");
       o.value = c.id;
       o.textContent = c.name;
@@ -60,3 +63,30 @@ ACTIONS.forEach((a) => $("m-" + a).addEventListener("change", saveModels));
 $("claude-model").addEventListener("change", saveModels);
 
 loadConnections();
+
+$("grammar-everywhere").addEventListener("change", async () => {
+  await chrome.storage.local.set({ grammarEverywhere: $("grammar-everywhere").checked });
+});
+
+$("helpdesk-save").addEventListener("click", async () => {
+  const raw = $("helpdesk-site").value.trim();
+  if (!raw) {
+    await chrome.storage.local.set({ helpdeskSite: "" });
+    setStatus("Helpdesk reset to support.frappe.io", "ok");
+    return;
+  }
+  let origin;
+  try {
+    origin = new URL(raw.includes("://") ? raw : "https://" + raw).origin;
+  } catch {
+    setStatus("That doesn't look like a URL.", "err");
+    return;
+  }
+  const ok = await chrome.permissions.request({ origins: [origin + "/*"] });
+  if (!ok) {
+    setStatus("Permission for " + origin + " was declined.", "err");
+    return;
+  }
+  await chrome.storage.local.set({ helpdeskSite: origin });
+  setStatus("Support panel enabled on " + origin + " — reload that tab.", "ok");
+});

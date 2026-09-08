@@ -1,5 +1,5 @@
 // Injected on GitHub PR pages. Adds a "Review with Alter" button that pulls the
-// PR diff and runs it through the model you picked for PR review in the popup.
+// PR diff and runs it through the model you picked for PR review in the extension settings.
 // IIFE-wrapped so its top-level names don't collide with sibling content scripts.
 (() => {
 const REVIEW_SYSTEM = [
@@ -71,7 +71,7 @@ async function runInner() {
   const { models, claudeModel } = await chrome.storage.local.get(["models", "claudeModel"]);
   const connectionId = models && models.prReview;
   openPanel();
-  if (!connectionId) return setStatus("Pick a model for PR review in the Alter popup first.", true);
+  if (!connectionId) return setStatus("Pick a model for PR review in the Alter extension settings first.", true);
 
   setStatus("Fetching the diff + CI…");
   let diff = "";
@@ -329,16 +329,27 @@ function pollRun(el, runId, opts) {
       resolve("");
     };
 
+    let misses = 0;
     const doPoll = async () => {
       if (done) return;
       const r = await send({ type: "agent-poll", runId });
-      if (!r || !r.ok || !r.data) return; // transient — keep polling
+      if (!r || !r.ok || !r.data) {
+        // Transient — keep polling, but give up after ~20s of silence so the
+        // spinner can't run forever once Alter has quit.
+        if (++misses >= 15) {
+          done = true;
+          cleanup();
+          fail("Lost contact with Alter — is the app still running?");
+        }
+        return;
+      }
+      misses = 0;
       const p = r.data;
       renderSteps(p.steps || []);
       if (p.done) {
         done = true;
         cleanup();
-        if (p.error) return fail(p.error);
+        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run — run it again." : p.error);
         if (!(p.text || "").trim()) return fail("The model returned an empty reply — try again.");
         workEl.remove();
         const ans = document.createElement("div");

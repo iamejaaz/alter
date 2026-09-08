@@ -180,7 +180,18 @@ function replace(t, corrected) {
 // firing, so it survives shadow DOM, custom editors, and stopped-propagation —
 // whatever GitHub or a site does, reading selectionStart/End still works.
 let lastKey = "";
+// The pill can be limited to GitHub + the helpdesk (options page); the right-click
+// menu still works everywhere.
+let pillEnabled = true;
+const pillSites = /(^|\.)github\.com$|(^|\.)frappe\.io$/;
+chrome.storage.local.get("grammarEverywhere").then((v) => {
+  pillEnabled = v.grammarEverywhere !== false || pillSites.test(location.hostname);
+});
+chrome.storage.onChanged.addListener((c) => {
+  if (c.grammarEverywhere) pillEnabled = c.grammarEverywhere.newValue !== false || pillSites.test(location.hostname);
+});
 setInterval(() => {
+  if (!pillEnabled) return;
   if (pill && pill.matches(":hover")) return; // don't yank it while aiming at it
   const t = currentTarget();
   if (t) {

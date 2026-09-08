@@ -76,7 +76,7 @@ async function runVerbInner(verb) {
   const connectionId = models && models.support;
   openPanel(verb);
   if (!connectionId)
-    return setBody('<span class="sup-err">Pick a model for support in the Alter popup (use Claude Code — it needs tools).</span>');
+    return setBody('<span class="sup-err">Pick a model for support in the Alter extension settings (use Claude Code — it needs tools).</span>');
 
   // Triage (summarize/diagnose/draft/follow-ups) runs on the FAST model — it's a
   // read task and a heavy model there is pure latency (7-8 min vs ~1-2). The
@@ -379,16 +379,27 @@ function pollRun(el, runId, opts) {
       resolve("");
     };
 
+    let misses = 0;
     const doPoll = async () => {
       if (done) return;
       const r = await send({ type: "agent-poll", runId });
-      if (!r || !r.ok || !r.data) return; // transient — keep polling
+      if (!r || !r.ok || !r.data) {
+        // Transient — keep polling, but give up after ~20s of silence so the
+        // spinner can't run forever once Alter has quit.
+        if (++misses >= 15) {
+          done = true;
+          cleanup();
+          fail("Lost contact with Alter — is the app still running?");
+        }
+        return;
+      }
+      misses = 0;
       const p = r.data;
       renderSteps(p.steps || []);
       if (p.done) {
         done = true;
         cleanup();
-        if (p.error) return fail(p.error);
+        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run — run it again." : p.error);
         if (!(p.text || "").trim()) return fail("The model returned an empty reply — try again.");
         workEl.remove();
         const body = document.getElementById("sup-body");

@@ -64,7 +64,7 @@
 
       <div class="card">
         <h2>Model per action</h2>
-        <label>PR review</label>
+        <label>PR review <span class="hint">(Claude Code only — needs tools)</span></label>
         <select id="m-prReview"></select>
         <label>Grammar</label>
         <select id="m-grammar"></select>
@@ -72,6 +72,19 @@
         <select id="m-support"></select>
         <label>Page summary</label>
         <select id="m-summarize"></select>
+      </div>
+
+      <div class="card">
+        <h2>Sites</h2>
+        <label>Helpdesk site <span class="hint">(Frappe Helpdesk URL; default support.frappe.io)</span></label>
+        <div class="row">
+          <input id="helpdesk-site" placeholder="https://support.example.com" />
+          <button id="helpdesk-save" class="ghost">Enable</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
+          <input id="grammar-everywhere" type="checkbox" checked />
+          Show the grammar pill on every site <span class="hint">(off = GitHub + helpdesk only; right-click works everywhere)</span>
+        </label>
       </div>
 
       <div class="status" id="status"></div>

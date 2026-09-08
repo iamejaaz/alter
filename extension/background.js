@@ -10,6 +10,7 @@ async function bridge(path, opts = {}) {
   const { token } = await chrome.storage.local.get("token");
   const res = await fetch(BRIDGE + path, {
     ...opts,
+    signal: opts.signal || AbortSignal.timeout(180_000),
     headers: { ...(opts.headers || {}), Authorization: "Bearer " + (token || "") },
   });
   const body = await res.json().catch(() => ({}));
@@ -61,10 +62,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "alter-fix-grammar") return;
   const text = (info.selectionText || "").trim();
   if (!text || !tab) return;
+  // Keep the worker alive through a slow model — MV3 idles it out after ~30s.
+  const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
+  setTimeout(() => clearInterval(keepAlive), 190_000);
   const { models } = await chrome.storage.local.get("models");
   const connectionId = models && models.grammar;
   if (!connectionId) {
-    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => alert("Pick a grammar model in the Alter extension popup first.") });
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => alert("Pick a grammar model in the Alter extension settings first.") });
     return;
   }
   const tell = (m) =>
@@ -202,3 +206,29 @@ function hint(r) {
   if (r.status === 401) return "Wrong or missing token — set it in the Alter extension popup.";
   return "Bridge error " + r.status;
 }
+
+
+// A custom helpdesk site (options page) gets the support panel via a dynamically
+// registered content script; support.frappe.io stays in the manifest as default.
+async function registerHelpdesk() {
+  const { helpdeskSite } = await chrome.storage.local.get("helpdeskSite");
+  const id = "alter-helpdesk";
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: [id] });
+  } catch {}
+  let origin = "";
+  try {
+    origin = helpdeskSite ? new URL(helpdeskSite.includes("://") ? helpdeskSite : "https://" + helpdeskSite).origin : "";
+  } catch {}
+  if (!origin || /support\.frappe\.io$/.test(origin)) return;
+  const granted = await chrome.permissions.contains({ origins: [origin + "/*"] });
+  if (!granted) return;
+  await chrome.scripting.registerContentScripts([
+    { id, matches: [origin + "/*"], js: ["shared.js", "support.js"], css: ["support.css"], runAt: "document_idle" },
+  ]);
+}
+chrome.runtime.onInstalled.addListener(() => void registerHelpdesk());
+chrome.runtime.onStartup.addListener(() => void registerHelpdesk());
+chrome.storage.onChanged.addListener((c) => {
+  if (c.helpdeskSite) void registerHelpdesk();
+});
