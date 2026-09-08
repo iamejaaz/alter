@@ -63,7 +63,24 @@ function cleanText(full) {
 
 let supSession = null;
 
+let supRunning = false;
+
+// Ignore re-clicks while a run is in flight: a second runVerb() would clear the
+// panel body, detach the live block, and leave the first run un-stoppable.
 async function runVerb(verb) {
+  if (supRunning) return;
+  supRunning = true;
+  const btns = document.querySelectorAll("#sup-actions .sup-btn");
+  btns.forEach((b) => (b.disabled = true));
+  try {
+    await runVerbInner(verb);
+  } finally {
+    supRunning = false;
+    btns.forEach((b) => b.isConnected && (b.disabled = false));
+  }
+}
+
+async function runVerbInner(verb) {
   const id = ticketId();
   if (!id) return;
   const { models, claudeModel } = await chrome.storage.local.get(["models", "claudeModel"]);

@@ -48,8 +48,24 @@ async function getChecks(parts) {
 }
 
 let session = null;
+let running = false;
 
+// Ignore re-clicks while a review is in flight: a second run() would clear the
+// panel, detach the live block, and overwrite activeRun so Stop can't reach it.
 async function run() {
+  if (running) return;
+  running = true;
+  const btn = document.querySelector("#alter-actions button");
+  if (btn) btn.disabled = true;
+  try {
+    await runInner();
+  } finally {
+    running = false;
+    if (btn && btn.isConnected) btn.disabled = false;
+  }
+}
+
+async function runInner() {
   const parts = prParts();
   if (!parts) return;
   const { models, claudeModel } = await chrome.storage.local.get(["models", "claudeModel"]);
