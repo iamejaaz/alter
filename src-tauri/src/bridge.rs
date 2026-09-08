@@ -216,7 +216,7 @@ fn build_system(include_memory: bool, system: Option<&str>) -> String {
 }
 
 fn push_step(progress: &Mutex<std::collections::HashMap<String, AgentProgress>>, rid: &str, s: String) {
-    if let Some(p) = progress.lock().unwrap().get_mut(rid) {
+    if let Some(p) = progress.lock().unwrap_or_else(|e| e.into_inner()).get_mut(rid) {
         if !p.done {
             p.steps.push(s);
         }
@@ -229,7 +229,7 @@ fn finish_progress(
     text: Option<String>,
     err: Option<String>,
 ) {
-    let mut map = progress.lock().unwrap();
+    let mut map = progress.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(p) = map.get_mut(rid) {
         if p.done {
             return;
@@ -264,7 +264,7 @@ fn spawn_agent_run(
     let is_pr = mode.as_deref() == Some("pr");
     let is_pr_push = mode.as_deref() == Some("pr-push");
     let is_verify = mode.as_deref() == Some("verify");
-    progress.lock().unwrap().insert(run_id.clone(), AgentProgress::default());
+    progress.lock().unwrap_or_else(|e| e.into_inner()).insert(run_id.clone(), AgentProgress::default());
     let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
     let mut cmd = std::process::Command::new("claude");
     cmd.arg("-p")
@@ -307,7 +307,7 @@ fn spawn_agent_run(
                 return;
             }
         };
-        running.lock().unwrap().insert(run_id.clone(), child.id());
+        running.lock().unwrap_or_else(|e| e.into_inner()).insert(run_id.clone(), child.id());
         // Drain stderr on its own thread so a full pipe can't deadlock stdout.
         let stderr_buf = Arc::new(Mutex::new(String::new()));
         if let Some(mut err) = child.stderr.take() {
@@ -315,7 +315,7 @@ fn spawn_agent_run(
             std::thread::spawn(move || {
                 let mut s = String::new();
                 let _ = err.read_to_string(&mut s);
-                *sb.lock().unwrap() = s;
+                *sb.lock().unwrap_or_else(|e| e.into_inner()) = s;
             });
         }
         let mut final_text = String::new();
@@ -365,12 +365,12 @@ fn spawn_agent_run(
             }
         }
         let _ = child.wait();
-        running.lock().unwrap().remove(&run_id);
+        running.lock().unwrap_or_else(|e| e.into_inner()).remove(&run_id);
         // No result event (killed, crashed, limit): close out sensibly.
-        let mut map = progress.lock().unwrap();
+        let mut map = progress.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(p) = map.get_mut(&run_id) {
             if !p.done {
-                let err = stderr_buf.lock().unwrap().clone();
+                let err = stderr_buf.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 if !final_text.trim().is_empty() {
                     if p.steps.last().map(|s| s.as_str()) == Some(final_text.trim()) {
                         p.steps.pop();
@@ -389,12 +389,12 @@ fn spawn_agent_run(
 
 #[tauri::command]
 pub fn bridge_info(state: State<BridgeState>) -> serde_json::Value {
-    serde_json::json!({ "port": BRIDGE_PORT, "token": *state.token.lock().unwrap() })
+    serde_json::json!({ "port": BRIDGE_PORT, "token": *state.token.lock().unwrap_or_else(|e| e.into_inner()) })
 }
 
 #[tauri::command]
 pub fn bridge_sync(state: State<BridgeState>, connections: Vec<BridgeConn>) {
-    *state.conns.lock().unwrap() = connections;
+    *state.conns.lock().unwrap_or_else(|e| e.into_inner()) = connections;
 }
 
 #[tauri::command]
@@ -427,8 +427,8 @@ pub fn bridge_set_repro_root(
     set("FRAPPE_SITE", &frappeSite);
     set("FRAPPE_API_KEY", &frappeApiKey);
     set("FRAPPE_API_SECRET", &frappeApiSecret);
-    *state.repro_root.lock().unwrap() = root;
-    *state.repro_env.lock().unwrap() = exports;
+    *state.repro_root.lock().unwrap_or_else(|e| e.into_inner()) = root;
+    *state.repro_env.lock().unwrap_or_else(|e| e.into_inner()) = exports;
 }
 
 // Reasoning models (e.g. laguna) wrap their thinking in <think>…</think>; the
@@ -489,11 +489,11 @@ async fn run_completion(
         }
         let child = cmd.spawn().map_err(|e| e.to_string())?;
         if let Some((map, id)) = reg {
-            map.lock().unwrap().insert(id.to_string(), child.id());
+            map.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), child.id());
         }
         let waited = child.wait_with_output();
         if let Some((map, id)) = reg {
-            map.lock().unwrap().remove(id);
+            map.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
         }
         let out = waited.map_err(|e| e.to_string())?;
         if out.status.success() {
@@ -571,7 +571,7 @@ pub fn start(app: AppHandle) {
     .unwrap_or_else(gen_token);
 
     if let Some(state) = app.try_state::<BridgeState>() {
-        *state.token.lock().unwrap() = token.clone();
+        *state.token.lock().unwrap_or_else(|e| e.into_inner()) = token.clone();
     }
 
     std::thread::spawn(move || {
@@ -609,7 +609,7 @@ fn serve(mut req: tiny_http::Request, app: AppHandle) {
         .unwrap_or_default();
     let expected = app
         .try_state::<BridgeState>()
-        .map(|s| s.token.lock().unwrap().clone())
+        .map(|s| s.token.lock().unwrap_or_else(|e| e.into_inner()).clone())
         .unwrap_or_default();
     if expected.is_empty() || auth != format!("Bearer {expected}") {
         let _ = req.respond(json_response(401, "{\"error\":\"unauthorized\"}".into()));
@@ -668,7 +668,7 @@ fn stream_run(req: tiny_http::Request, app: &AppHandle, body: &str) {
     };
     let conn = app
         .try_state::<BridgeState>()
-        .and_then(|s| s.conns.lock().unwrap().iter().find(|c| c.id == parsed.connection_id).cloned());
+        .and_then(|s| s.conns.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|c| c.id == parsed.connection_id).cloned());
     let mut conn = match conn {
         Some(c) => c,
         None => {
@@ -925,7 +925,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Ok(r) => r,
                 Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
             };
-            let conn = state.conns.lock().unwrap().iter().find(|c| c.id == req.connection_id).cloned();
+            let conn = state.conns.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|c| c.id == req.connection_id).cloned();
             let mut conn = match conn {
                 Some(c) => c,
                 None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
@@ -1003,7 +1003,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Ok(r) => r,
                 Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
             };
-            let conn = state.conns.lock().unwrap().iter().find(|c| c.id == req.connection_id).cloned();
+            let conn = state.conns.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|c| c.id == req.connection_id).cloned();
             let mut conn = match conn {
                 Some(c) => c,
                 None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
@@ -1018,8 +1018,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             }
             let system = build_system(req.include_memory, req.system.as_deref());
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
-            state.progress.lock().unwrap().retain(|_, p| !p.done);
-            let repro_root = state.repro_root.lock().unwrap().clone();
+            state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
+            let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
             spawn_agent_run(conn, system, req.prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone());
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
@@ -1033,7 +1033,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Ok(r) => r,
                 Err(_) => return (400, "{\"error\":\"bad request\"}".into()),
             };
-            let snap = state.progress.lock().unwrap().get(&req.run_id).cloned();
+            let snap = state.progress.lock().unwrap_or_else(|e| e.into_inner()).get(&req.run_id).cloned();
             match snap {
                 Some(p) => (200, serde_json::to_string(&p).unwrap_or_else(|_| "{}".into())),
                 None => (200, serde_json::json!({ "steps": [], "text": "", "done": true, "error": "run not found" }).to_string()),
@@ -1049,7 +1049,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Ok(r) => r,
                 Err(_) => return (400, "{\"error\":\"bad request\"}".into()),
             };
-            let pid = state.running.lock().unwrap().get(&req.run_id).copied();
+            let pid = state.running.lock().unwrap_or_else(|e| e.into_inner()).get(&req.run_id).copied();
             match pid {
                 Some(pid) => {
                     kill_group(pid);
@@ -1160,7 +1160,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             if task.is_empty() {
                 return (400, "{\"error\":\"empty task\"}".into());
             }
-            let repro_env = state.repro_env.lock().unwrap().clone();
+            let repro_env = state.repro_env.lock().unwrap_or_else(|e| e.into_inner()).clone();
             match launch_fr_assistant(task, &repro_env) {
                 Ok(_) => (200, "{\"ok\":true}".into()),
                 Err(e) => (500, serde_json::json!({ "error": e }).to_string()),
