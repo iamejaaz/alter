@@ -18,7 +18,7 @@
       .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #a1a1aa; margin: 0 0 12px; }
       label { display: block; font-size: 11px; color: #a1a1aa; margin: 12px 0 4px; }
       label:first-of-type { margin-top: 0; }
-      input, select {
+      input:not([type="checkbox"]), select {
         width: 100%;
         box-sizing: border-box;
         background: #232329;
@@ -30,6 +30,8 @@
       }
       .row { display: flex; gap: 8px; align-items: center; }
       .row input { flex: 1; }
+      .check { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: #e4e4e7; margin-top: 12px; }
+      .check input { flex: none; width: 13px; height: 13px; margin: 0; accent-color: #71717a; }
       button {
         background: #4f46e5; color: #fff; border: 0; border-radius: 8px;
         padding: 8px 14px; font: inherit; cursor: pointer;
@@ -81,9 +83,9 @@
           <input id="helpdesk-site" placeholder="https://support.example.com" />
           <button id="helpdesk-save" class="ghost">Enable</button>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <label class="check">
           <input id="grammar-everywhere" type="checkbox" checked />
-          Show the grammar pill on every site <span class="hint">(off = GitHub + helpdesk only; right-click works everywhere)</span>
+          <span>Show the grammar pill on every site <span class="hint">(off = GitHub + helpdesk only; right-click works everywhere)</span></span>
         </label>
       </div>
 
