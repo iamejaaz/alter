@@ -79,6 +79,13 @@ import {
   extractMemories,
   streamChat,
 } from "./lib/api";
+
+const slugify = (s: string) =>
+  s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -531,14 +538,35 @@ export default function App() {
 
   const send = async (opts?: {
     text?: string;
+    display?: string; // what the bubble shows when `text` carries extra context (e.g. a skill)
     forceNew?: boolean;
     title?: string;
     historyOverride?: Message[];
     targetConvId?: string; // internal: drain a queued message into this conversation
   }) => {
     const text = (opts?.text ?? input).trim();
+    const shown = opts?.display ?? text;
     const atts = opts?.text ? [] : attachments;
     if (!text && atts.length === 0) return;
+
+    // "/skill args" runs one of Alter's saved skills: its instructions ride along,
+    // the bubble shows what was typed. Claude Code's own skills pass through as-is.
+    if (!opts?.text) {
+      const m = text.match(/^\/([\w-]+)\s*([\s\S]*)$/);
+      const skill = m && skills.find((s) => slugify(s.name) === m[1].toLowerCase());
+      if (skill) {
+        setInput("");
+        setAttachments([]);
+        const request = m[2].trim();
+        return send({
+          text:
+            `Use the "${skill.name}" skill. Follow these instructions exactly:\n\n${skill.instructions}` +
+            `\n\nRequest: ${request || "(no details given — ask if you need them)"}`,
+          display: text,
+          forceNew: opts?.forceNew,
+        });
+      }
+    }
 
     // Create a routine from natural language: an explicit "/routine …", or a
     // schedule-shaped message (confirmed before it turns into a routine).
@@ -609,7 +637,7 @@ export default function App() {
       freshConv = true;
       const conv: Conversation = {
         id: convId,
-        title: opts?.title ?? text.slice(0, 40),
+        title: opts?.title ?? shown.slice(0, 40),
         messages: [],
         createdAt: Date.now(),
         connectionId: settings.activeConnectionId,
@@ -621,18 +649,18 @@ export default function App() {
       setActiveId(convId);
     }
 
-    const userMsg: Message = { role: "user", content: text, attachments: atts.length ? atts : undefined };
+    const userMsg: Message = { role: "user", content: shown, attachments: atts.length ? atts : undefined };
     const priorMessages = opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? [];
     updateConversation(convId, (c) => ({
       ...c,
-      title: c.messages.length === 0 ? opts?.title ?? text.slice(0, 40) : c.title,
+      title: c.messages.length === 0 ? opts?.title ?? shown.slice(0, 40) : c.title,
       messages: [...c.messages, userMsg, { role: "assistant", content: "" }],
     }));
 
     setConvError(convId, null);
     setConvInfo(convId, null);
     interruptsRef.current[convId] = false;
-    if (freshConv && !opts?.title) void generateTitle(convId, text, settings.activeConnectionId);
+    if (freshConv && !opts?.title) void generateTitle(convId, shown, settings.activeConnectionId);
 
     const mode = settings.mode ?? "auto";
     // Gemini reasoning models require a proprietary "thought_signature" round-trip that
@@ -1270,6 +1298,13 @@ export default function App() {
     { id: "haiku", label: "Haiku" },
   ];
   const claudeCodeActive = isClaudeCodeUrl(settings.baseUrl);
+  const [claudeSkills, setClaudeSkills] = useState<{ name: string; description: string }[]>([]);
+  useEffect(() => {
+    if (!claudeCodeActive) return;
+    invoke<{ name: string; description: string }[]>("list_claude_skills", { cwd: folder })
+      .then(setClaudeSkills)
+      .catch(() => setClaudeSkills([]));
+  }, [claudeCodeActive, folder]);
   const setEffort = (effort: string) => {
     const e = effort ? (effort as NonNullable<Settings["effort"]>) : undefined;
     const s = { ...settings, effort: e };
@@ -1357,6 +1392,20 @@ export default function App() {
     { cmd: "/routine", desc: "Create a routine from a description", run: () => setView("routines") },
     { cmd: "/routines", desc: "Open routines", run: () => setView("routines") },
     { cmd: "/settings", desc: "Open settings", run: () => setShowSettings(true) },
+    ...skills.map((s) => ({
+      cmd: "/" + slugify(s.name),
+      desc: (s.description || "Skill").slice(0, 90),
+      run: () => setInput("/" + slugify(s.name) + " "),
+    })),
+    ...(claudeCodeActive
+      ? claudeSkills
+          .filter((cs) => !skills.some((s) => slugify(s.name) === cs.name))
+          .map((cs) => ({
+            cmd: "/" + cs.name,
+            desc: (cs.description || "Claude Code skill").slice(0, 90),
+            run: () => setInput("/" + cs.name + " "),
+          }))
+      : []),
   ];
   // Ghost-text autocomplete: complete from a recent message that starts with the current input.
   const ghost = (() => {

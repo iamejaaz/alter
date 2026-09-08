@@ -921,6 +921,75 @@ fn now_millis() -> u64 {
         .unwrap_or(0)
 }
 
+// Claude Code's own skills and commands (global + attached folder), so the app's
+// slash menu can offer them; the CLI resolves them itself when the text is sent.
+#[derive(serde::Serialize)]
+struct SkillEntry {
+    name: String,
+    description: String,
+}
+
+fn read_frontmatter(path: &std::path::Path) -> (Option<String>, String) {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let mut name = None;
+    let mut desc = String::new();
+    if text.starts_with("---") {
+        for line in text.lines().skip(1) {
+            if line.trim() == "---" {
+                break;
+            }
+            if let Some(v) = line.strip_prefix("name:") {
+                name = Some(v.trim().to_string());
+            } else if let Some(v) = line.strip_prefix("description:") {
+                desc = v.trim().trim_matches('"').to_string();
+            }
+        }
+    }
+    (name, desc)
+}
+
+#[tauri::command]
+fn list_claude_skills(cwd: Option<String>) -> Vec<SkillEntry> {
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(h) = std::env::var("HOME") {
+        roots.push(std::path::PathBuf::from(h).join(".claude"));
+    }
+    if let Some(c) = cwd.filter(|c| !c.is_empty()) {
+        roots.push(std::path::PathBuf::from(c).join(".claude"));
+    }
+    let mut out: Vec<SkillEntry> = Vec::new();
+    for root in roots {
+        if let Ok(rd) = std::fs::read_dir(root.join("skills")) {
+            for e in rd.flatten() {
+                let p = e.path().join("SKILL.md");
+                if !p.is_file() {
+                    continue;
+                }
+                let (name, description) = read_frontmatter(&p);
+                let name = name.unwrap_or_else(|| e.file_name().to_string_lossy().to_string());
+                if !out.iter().any(|s| s.name == name) {
+                    out.push(SkillEntry { name, description });
+                }
+            }
+        }
+        if let Ok(rd) = std::fs::read_dir(root.join("commands")) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().map_or(true, |x| x != "md") {
+                    continue;
+                }
+                let (_, description) = read_frontmatter(&p);
+                let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                if !name.is_empty() && !out.iter().any(|s| s.name == name) {
+                    out.push(SkillEntry { name, description });
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
 // Attached images live on disk (localStorage can't hold them), keyed by attachment id.
 fn attachment_path(app: &tauri::AppHandle, id: &str) -> Result<std::path::PathBuf, String> {
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
@@ -1309,6 +1378,7 @@ pub fn run() {
             write_file,
             save_attachment,
             load_attachment,
+            list_claude_skills,
             delete_attachments,
             list_dir,
             list_tree,
