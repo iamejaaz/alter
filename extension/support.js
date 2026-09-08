@@ -680,7 +680,21 @@ document.addEventListener("click", (e) => {
   if (menu && !menu.hidden && !e.target.closest(".sup-menu-wrap")) menu.hidden = true;
 });
 
+// Helpdesk is an SPA: the URL changes without reloading. If the ticket under
+// an open panel changes, drop the stale panel so it can't show the wrong ticket,
+// then let reconnectIfActive pick up any run for the new one.
+let lastTicketId = ticketId();
 setInterval(() => {
+  const id = ticketId();
+  if (id !== lastTicketId) {
+    lastTicketId = id;
+    const panel = document.getElementById("sup-panel");
+    if (panel) {
+      if (activeRun) activeRun.stop();
+      panel.remove();
+      supSession = null;
+    }
+  }
   ensureButtons();
   reconnectIfActive();
 }, 1500);

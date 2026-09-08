@@ -576,7 +576,22 @@ function renderPostPreview(text) {
   );
 }
 
+// GitHub is an SPA: the URL changes without reloading. If the PR under an open
+// panel changes, drop the stale panel so it can't show the wrong PR's review,
+// then let reconnectIfActive pick up any run for the new one.
+let lastPrKey = prParts() ? prKey(prParts()) : null;
 setInterval(() => {
+  const parts = prParts();
+  const key = parts ? prKey(parts) : null;
+  if (key !== lastPrKey) {
+    lastPrKey = key;
+    const panel = document.getElementById("alter-panel");
+    if (panel) {
+      if (activeRun) activeRun.stop();
+      panel.remove();
+      session = null;
+    }
+  }
   ensureButton();
   reconnectIfActive();
 }, 1500);
