@@ -26,7 +26,12 @@ async function loadConnections() {
   ACTIONS.forEach((a) => {
     const sel = $("m-" + a);
     sel.innerHTML = "";
-    const preferred = models[a] || (a === "support" && claude ? claude.id : null);
+    const preferred =
+      models[a] || (a === "support" && claude ? claude.id : null) || (conns.length === 1 ? conns[0].id : null);
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "Not set";
+    sel.appendChild(none);
     conns.forEach((c) => {
       const o = document.createElement("option");
       o.value = c.id;

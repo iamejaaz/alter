@@ -339,6 +339,7 @@ function pollRun(el, runId, opts) {
         done = true;
         cleanup();
         if (p.error) return fail(p.error);
+        if (!(p.text || "").trim()) return fail("The model returned an empty reply — try again.");
         workEl.remove();
         const ans = document.createElement("div");
         ans.className = "alter-answer";

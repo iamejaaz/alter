@@ -110,7 +110,7 @@ async function fix(t) {
   const { models } = await chrome.storage.local.get("models");
   const connectionId = models && models.grammar;
   if (!connectionId) {
-    p.textContent = "Pick a grammar model in Alter";
+    p.textContent = "Pick a grammar model in the extension's settings";
     return;
   }
   p.textContent = "Fixing…";
@@ -195,7 +195,14 @@ setInterval(() => {
     removePill();
   }
 }, 400);
-document.addEventListener("scroll", removePill, true);
+document.addEventListener(
+  "scroll",
+  () => {
+    removePill();
+    lastKey = "";
+  },
+  true
+);
 
 // Intercept pointer/click on the pill at the DOCUMENT CAPTURE phase — earlier
 // than a site's own click-away handler — so editors like Frappe Helpdesk's
