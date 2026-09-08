@@ -120,6 +120,24 @@ export default function App() {
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
   const [error, setError] = useState<string | null>(null);
+  // Per-conversation failure/notice from a streaming turn, so a background chat's
+  // error never shows under the chat you're viewing and survives switching chats.
+  const [convErrors, setConvErrors] = useState<Record<string, string>>({});
+  const [convInfos, setConvInfos] = useState<Record<string, string>>({});
+  const setConvError = (id: string, msg: string | null) =>
+    setConvErrors((e) => {
+      const next = { ...e };
+      if (msg) next[id] = msg;
+      else delete next[id];
+      return next;
+    });
+  const setConvInfo = (id: string, msg: string | null) =>
+    setConvInfos((e) => {
+      const next = { ...e };
+      if (msg) next[id] = msg;
+      else delete next[id];
+      return next;
+    });
   const [info, setInfo] = useState<string | null>(null);
   const [sharedMemory, setSharedMemory] = useState(""); // ~/.claude/CLAUDE.md — shared with Claude Code
   const [pr, setPr] = useState<{ number: number; title: string; url: string } | null>(null);
@@ -262,6 +280,16 @@ export default function App() {
       setError("Couldn't save your chats — local storage is full. Delete some old chats to free space.");
   }, [conversations]);
   useEffect(() => setError(null), [activeId, settings.activeConnectionId, settings.model]);
+  // Changing model/connection is how a user fixes a chat's error (e.g. a text-only
+  // model refusing an image), so drop the ACTIVE chat's own error then — but never
+  // on a mere chat switch, which would erase a real error you haven't seen yet.
+  useEffect(() => {
+    if (activeId) {
+      setConvError(activeId, null);
+      setConvInfo(activeId, null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.activeConnectionId, settings.model]);
   useEffect(() => {
     storage.saveMemories(memories);
   }, [memories]);
@@ -569,6 +597,8 @@ export default function App() {
       messages: [...c.messages, userMsg, { role: "assistant", content: "" }],
     }));
 
+    setConvError(convId, null);
+    setConvInfo(convId, null);
     if (freshConv && !opts?.title) void generateTitle(convId, text);
 
     const mode = settings.mode ?? "auto";
@@ -696,7 +726,7 @@ export default function App() {
       } catch (e: unknown) {
         const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
         if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
-          setError(humanizeError(msg));
+          setConvError(convId, humanizeError(msg));
           updateConversation(convId, (c) => ({
             ...c,
             messages: c.messages.filter(
@@ -758,7 +788,7 @@ export default function App() {
               );
               activeSettings = cand;
               if (fi > 0) {
-                setInfo(`${connLabel(fallbacks[0])} was unavailable — switched to ${connLabel(cand)}.`);
+                setConvInfo(convId, `${connLabel(fallbacks[0])} was unavailable — switched to ${connLabel(cand)}.`);
                 setSettings(cand);
                 storage.saveSettings(cand);
               }
@@ -1542,15 +1572,15 @@ export default function App() {
 
         <div className="px-4 pb-4 pt-1">
           <div className="max-w-3xl mx-auto">
-            {error && (
+            {((activeId && convErrors[activeId]) || error) && (
               <p className="mb-2 rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-xs text-red-300">
-                {error}
+                {(activeId && convErrors[activeId]) || error}
               </p>
             )}
-            {info && (
+            {((activeId && convInfos[activeId]) || info) && (
               <p className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-2 text-xs text-[var(--txt-dim)]">
                 <span className="text-indigo-400">↻</span>
-                {info}
+                {(activeId && convInfos[activeId]) || info}
               </p>
             )}
             {pr && (
