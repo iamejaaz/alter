@@ -355,6 +355,18 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
               </div>
             )}
             <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+              <p className="text-sm text-[var(--txt)]">Agent working folder</p>
+              <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
+                Where browser-triggered agents run (PR review, support, prepare fix) — usually your bench folder. Defaults to your home folder.
+              </p>
+              <input
+                value={draft.agentWorkdir ?? ""}
+                onChange={(e) => setDraft({ ...draft, agentWorkdir: e.target.value })}
+                placeholder="/path/to/frappe-bench"
+                className="w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
               <p className="text-sm text-[var(--txt)]">Repro benches</p>
               <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
                 Point each version at an existing bench folder. The support agent reproduces bugs there — develop first, then the customer's version.

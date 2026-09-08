@@ -76,6 +76,7 @@ export interface Settings {
   frappeSite?: string;
   frappeApiKey?: string;
   frappeApiSecret?: string;
+  agentWorkdir?: string; // where browser-triggered agents run (e.g. your bench folder)
 }
 
 export interface MemoryItem {
@@ -141,10 +142,6 @@ export const PROVIDER_PRESETS: Record<string, { baseUrl: string; models: string[
       "google/gemma-4-31b-it:free",
       "z-ai/glm-5.2:free",
     ],
-  },
-  "Frappe Gateway": {
-    baseUrl: "https://grove.local.frappe.dev/v1",
-    models: ["frappe/laguna-s-2.1-int4", "frappe/qwen3.5-4b"],
   },
   "Claude Code (local)": {
     baseUrl: CLAUDE_CODE_URL,

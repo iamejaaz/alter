@@ -336,6 +336,7 @@ export default function App() {
       benches: settings.reproBenches ?? {},
       mariadbPassword: settings.mariadbRootPassword ?? "",
       frappeSite: settings.frappeSite ?? "",
+      agentWorkdir: settings.agentWorkdir ?? "",
       frappeApiKey: settings.frappeApiKey ?? "",
       frappeApiSecret: settings.frappeApiSecret ?? "",
     }).catch(() => {});
@@ -344,6 +345,7 @@ export default function App() {
     settings.reproBenches,
     settings.mariadbRootPassword,
     settings.frappeSite,
+    settings.agentWorkdir,
     settings.frappeApiKey,
     settings.frappeApiSecret,
   ]);

@@ -99,16 +99,23 @@ const FR_WRITE_VERBS: &[&str] = &[
     "method call", "api", "file upload", "update", "assistant", "auth login", "auth logout",
     "auth default", "auth configure",
 ];
-const AGENT_SITE: &str = "support.frappe.io";
+// The helpdesk site the support agent works against: Alter → Settings → Frappe
+// credentials (exported as FRAPPE_SITE), falling back to support.frappe.io.
+fn agent_site() -> String {
+    let raw = std::env::var("FRAPPE_SITE").unwrap_or_default();
+    let host = raw.trim().trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/');
+    if host.is_empty() { "support.frappe.io".to_string() } else { host.to_string() }
+}
 
 fn fr_rules(verbs: &[&str]) -> Vec<String> {
+    let site = agent_site();
     verbs
         .iter()
         .flat_map(|v| {
             [
                 format!("Bash(fr {v}:*)"),
-                format!("Bash(fr -s {AGENT_SITE} {v}:*)"),
-                format!("Bash(fr --site {AGENT_SITE} {v}:*)"),
+                format!("Bash(fr -s {site} {v}:*)"),
+                format!("Bash(fr --site {site} {v}:*)"),
             ]
         })
         .collect()
@@ -139,8 +146,25 @@ fn agent_allowed_tools() -> String {
     t.join(" ")
 }
 
+// `git:*` is allowed broadly (see above), so deny every subcommand that writes,
+// pushes, or can execute code (`git -c alias…`, `git config`). Deny rules win.
+fn git_write_denies() -> Vec<String> {
+    [
+        "git push", "git config", "git -c", "git reset", "git checkout", "git switch", "git clean",
+        "git rebase", "git commit", "git merge", "git stash", "git branch -D", "git branch -d",
+        "git branch -m", "git tag -d", "git remote", "git filter-branch", "git gc", "git worktree",
+        "git am", "git apply", "git cherry-pick", "git revert", "git restore", "git rm", "git mv",
+        "git add", "git submodule", "git update-ref", "git reflog expire", "git prune",
+    ]
+    .iter()
+    .map(|g| format!("Bash({g}:*)"))
+    .collect()
+}
+
 fn agent_disallowed_tools() -> String {
-    fr_rules(FR_WRITE_VERBS).join(" ")
+    let mut t = fr_rules(FR_WRITE_VERBS);
+    t.extend(git_write_denies());
+    t.join(" ")
 }
 
 // Allowlist for VERIFYING a PR on a throwaway repro bench: fetch + checkout the
@@ -184,12 +208,14 @@ fn pr_push_allowed_tools() -> String {
     t.join(" ")
 }
 
+// Where browser-triggered agents run: Alter → Settings → Agent working folder
+// (exported as ALTER_AGENT_WORKDIR), else the home directory.
 fn agent_workdir() -> String {
-    std::env::var("ALTER_AGENT_WORKDIR").unwrap_or_else(|_| {
-        std::env::var("HOME")
-            .map(|h| format!("{h}/projects/frappe/frappe-bench"))
-            .unwrap_or_default()
-    })
+    std::env::var("ALTER_AGENT_WORKDIR")
+        .ok()
+        .filter(|d| !d.is_empty())
+        .or_else(|| std::env::var("HOME").ok())
+        .unwrap_or_default()
 }
 
 fn shared_memory() -> String {
@@ -406,6 +432,7 @@ pub fn bridge_set_repro_root(
     #[allow(non_snake_case)] frappeSite: String,
     #[allow(non_snake_case)] frappeApiKey: String,
     #[allow(non_snake_case)] frappeApiSecret: String,
+    #[allow(non_snake_case)] agentWorkdir: String,
 ) {
     // Set every repro var on the whole process env so in-process spawns (Alter
     // chat's claude_code, the bridge's agents) inherit them for free. The
@@ -427,6 +454,11 @@ pub fn bridge_set_repro_root(
     set("FRAPPE_SITE", &frappeSite);
     set("FRAPPE_API_KEY", &frappeApiKey);
     set("FRAPPE_API_SECRET", &frappeApiSecret);
+    if agentWorkdir.trim().is_empty() {
+        std::env::remove_var("ALTER_AGENT_WORKDIR");
+    } else {
+        set("ALTER_AGENT_WORKDIR", agentWorkdir.trim());
+    }
     *state.repro_root.lock().unwrap_or_else(|e| e.into_inner()) = root;
     *state.repro_env.lock().unwrap_or_else(|e| e.into_inner()) = exports;
 }
@@ -443,8 +475,24 @@ fn strip_think(s: &str) -> String {
 
 fn gen_token() -> String {
     let mut buf = [0u8; 16];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        let _ = f.read_exact(&mut buf);
+    let ok = std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut buf))
+        .is_ok();
+    if !ok || buf.iter().all(|b| *b == 0) {
+        // Fallback entropy: std's RandomState is seeded from the OS per instance.
+        use std::hash::{BuildHasher, Hasher};
+        for chunk in buf.chunks_mut(8) {
+            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+            h.write_u128(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0),
+            );
+            h.write_u32(std::process::id());
+            let bytes = h.finish().to_le_bytes();
+            chunk.copy_from_slice(&bytes[..chunk.len()]);
+        }
     }
     buf.iter().map(|b| format!("{:02x}", b)).collect()
 }
@@ -541,9 +589,6 @@ fn json_response(status: u16, body: String) -> tiny_http::Response<std::io::Curs
     let mut r = tiny_http::Response::from_string(body).with_status_code(status);
     for (k, v) in [
         ("Content-Type", "application/json"),
-        ("Access-Control-Allow-Origin", "*"),
-        ("Access-Control-Allow-Headers", "authorization, content-type"),
-        ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
     ] {
         if let Ok(h) = tiny_http::Header::from_bytes(k.as_bytes(), v.as_bytes()) {
             r.add_header(h);
@@ -624,101 +669,8 @@ fn serve(mut req: tiny_http::Request, app: AppHandle) {
         b
     };
 
-    if method == tiny_http::Method::Post && path == "/run-stream" {
-        stream_run(req, &app, &body);
-        return;
-    }
-
     let response = handle(&app, &method, &path, &body);
     let _ = req.respond(json_response(response.0, response.1));
-}
-
-// A Read that pulls bytes from a channel — lets tiny_http write the response
-// incrementally as the model produces tokens (chunked transfer, i.e. streaming).
-struct ChannelReader {
-    rx: std::sync::mpsc::Receiver<Vec<u8>>,
-    buf: Vec<u8>,
-    pos: usize,
-}
-impl std::io::Read for ChannelReader {
-    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
-        if self.pos >= self.buf.len() {
-            match self.rx.recv() {
-                Ok(b) if !b.is_empty() => {
-                    self.buf = b;
-                    self.pos = 0;
-                }
-                _ => return Ok(0), // sender closed → EOF
-            }
-        }
-        let n = std::cmp::min(out.len(), self.buf.len() - self.pos);
-        out[..n].copy_from_slice(&self.buf[self.pos..self.pos + n]);
-        self.pos += n;
-        Ok(n)
-    }
-}
-
-fn stream_run(req: tiny_http::Request, app: &AppHandle, body: &str) {
-    let parsed: RunReq = match serde_json::from_str(body) {
-        Ok(r) => r,
-        Err(_) => {
-            let _ = req.respond(json_response(400, "{\"error\":\"bad request\"}".into()));
-            return;
-        }
-    };
-    let conn = app
-        .try_state::<BridgeState>()
-        .and_then(|s| s.conns.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|c| c.id == parsed.connection_id).cloned());
-    let mut conn = match conn {
-        Some(c) => c,
-        None => {
-            let _ = req.respond(json_response(404, "{\"error\":\"unknown connectionId\"}".into()));
-            return;
-        }
-    };
-    if conn.is_claude_code() {
-        if let Some(m) = parsed.model.as_deref() {
-            if !m.is_empty() {
-                conn.model = m.to_string();
-            }
-        }
-    }
-    let mut system = parsed.system.unwrap_or_default();
-    if parsed.include_memory {
-        let mem = shared_memory();
-        if !mem.is_empty() {
-            system = format!(
-                "User's standing preferences (from ~/.claude/CLAUDE.md — authoritative):\n{mem}\n\n{system}"
-            );
-        }
-    }
-    let prompt = parsed.prompt;
-    let agent = parsed.agent;
-
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    std::thread::spawn(move || {
-        if conn.is_claude_code() {
-            produce_claude(&conn, &system, &prompt, agent, &tx);
-        } else {
-            tauri::async_runtime::block_on(produce_http(&conn, &system, &prompt, &tx));
-        }
-        // tx drops here → ChannelReader hits EOF and tiny_http closes the response.
-    });
-
-    let reader = ChannelReader { rx, buf: Vec::new(), pos: 0 };
-    let mut headers = Vec::new();
-    for (k, v) in [
-        ("Content-Type", "text/plain; charset=utf-8"),
-        ("Access-Control-Allow-Origin", "*"),
-        ("Cache-Control", "no-cache"),
-        ("X-Accel-Buffering", "no"),
-    ] {
-        if let Ok(h) = tiny_http::Header::from_bytes(k.as_bytes(), v.as_bytes()) {
-            headers.push(h);
-        }
-    }
-    let resp = tiny_http::Response::new(tiny_http::StatusCode(200), headers, reader, None, None);
-    let _ = req.respond(resp);
 }
 
 fn tool_label(name: &str, input: &serde_json::Value) -> String {
@@ -737,152 +689,8 @@ fn tool_label(name: &str, input: &serde_json::Value) -> String {
     }
 }
 
-fn produce_claude(conn: &BridgeConn, system: &str, prompt: &str, agent: bool, tx: &std::sync::mpsc::Sender<Vec<u8>>) {
-    let full = if system.is_empty() { prompt.to_string() } else { format!("{system}\n\n{prompt}") };
-    let mut cmd = std::process::Command::new("claude");
-    cmd.arg("-p")
-        .arg(&full)
-        .arg("--output-format")
-        .arg("stream-json")
-        .arg("--include-partial-messages")
-        .arg("--verbose");
-    if !conn.model.is_empty() && conn.model != "claude-code" {
-        cmd.arg("--model").arg(&conn.model);
-    }
-    if agent {
-        // Read-only allowlist + fixed server-side workdir. No write tools, no
-        // arbitrary shell, no permission bypass — a browser-triggered call
-        // cannot mutate anything or escape the allowed commands.
-        let dir = agent_workdir();
-        if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
-            cmd.current_dir(&dir);
-        }
-        cmd.arg("--allowedTools").arg(agent_allowed_tools());
-        cmd.arg("--disallowedTools").arg(agent_disallowed_tools());
-        cmd.arg("--permission-mode").arg("default");
-    }
-    cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = tx.send(format!("[Alter: can't run claude — {e}]").into_bytes());
-            return;
-        }
-    };
-    if let Some(out) = child.stdout.take() {
-        use std::io::BufRead;
-        let reader = std::io::BufReader::new(out);
-        let mut streamed = false;
-        let mut tool: Option<(String, String)> = None; // (name, accumulated input json)
-        for line in reader.lines().map_while(Result::ok) {
-            let v: serde_json::Value = match serde_json::from_str(&line) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            if v["type"] == "stream_event" {
-                let ev = &v["event"];
-                let et = ev["type"].as_str().unwrap_or("");
-                match et {
-                    "content_block_start" if ev["content_block"]["type"] == "tool_use" => {
-                        let name = ev["content_block"]["name"].as_str().unwrap_or("tool").to_string();
-                        tool = Some((name, String::new()));
-                    }
-                    "content_block_delta" if ev["delta"]["type"] == "text_delta" => {
-                        if let Some(t) = ev["delta"]["text"].as_str() {
-                            streamed = true;
-                            if tx.send(t.as_bytes().to_vec()).is_err() {
-                                break;
-                            }
-                        }
-                    }
-                    "content_block_delta" if ev["delta"]["type"] == "input_json_delta" => {
-                        if let (Some((_, acc)), Some(p)) = (tool.as_mut(), ev["delta"]["partial_json"].as_str()) {
-                            acc.push_str(p);
-                        }
-                    }
-                    "content_block_stop" => {
-                        if let Some((name, acc)) = tool.take() {
-                            let input: serde_json::Value = serde_json::from_str(&acc).unwrap_or(serde_json::Value::Null);
-                            let label = tool_label(&name, &input);
-                            // Emit a visible step marker the extension renders as an activity line.
-                            let _ = tx.send(format!("\u{0001}▸ {label}\u{0001}").into_bytes());
-                        }
-                    }
-                    _ => {}
-                }
-            } else if v["type"] == "result" && !streamed {
-                if let Some(t) = v["result"].as_str() {
-                    let _ = tx.send(t.as_bytes().to_vec());
-                }
-            }
-        }
-    }
-    let _ = child.wait();
-}
-
-async fn produce_http(conn: &BridgeConn, system: &str, prompt: &str, tx: &std::sync::mpsc::Sender<Vec<u8>>) {
-    use futures_util::StreamExt;
-    let client = match reqwest::Client::builder().timeout(std::time::Duration::from_secs(300)).build() {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = tx.send(format!("[Alter: {e}]").into_bytes());
-            return;
-        }
-    };
-    let base = conn.base_url.trim_end_matches('/');
-    let mut messages = Vec::new();
-    if !system.is_empty() {
-        messages.push(serde_json::json!({ "role": "system", "content": system }));
-    }
-    messages.push(serde_json::json!({ "role": "user", "content": prompt }));
-    let body = serde_json::json!({ "model": conn.model, "messages": messages, "max_tokens": 4000, "stream": true });
-    let resp = match client.post(format!("{base}/chat/completions")).bearer_auth(&conn.api_key).json(&body).send().await {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = tx.send(format!("[Alter: {e}]").into_bytes());
-            return;
-        }
-    };
-    let mut stream = resp.bytes_stream();
-    let mut buf = String::new();
-    while let Some(chunk) = stream.next().await {
-        let bytes = match chunk {
-            Ok(b) => b,
-            Err(_) => break,
-        };
-        buf.push_str(&String::from_utf8_lossy(&bytes));
-        while let Some(idx) = buf.find('\n') {
-            let line = buf[..idx].trim().to_string();
-            buf.drain(..=idx);
-            if let Some(data) = line.strip_prefix("data:") {
-                let data = data.trim();
-                if data == "[DONE]" {
-                    return;
-                }
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
-                    if let Some(t) = v["choices"][0]["delta"]["content"].as_str() {
-                        if !t.is_empty() && tx.send(t.as_bytes().to_vec()).is_err() {
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn cors_empty(status: u16) -> tiny_http::Response<std::io::Empty> {
-    let mut r = tiny_http::Response::empty(status);
-    for (k, v) in [
-        ("Access-Control-Allow-Origin", "*"),
-        ("Access-Control-Allow-Headers", "authorization, content-type"),
-        ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
-    ] {
-        if let Ok(h) = tiny_http::Header::from_bytes(k.as_bytes(), v.as_bytes()) {
-            r.add_header(h);
-        }
-    }
-    r
+    tiny_http::Response::empty(status)
 }
 
 fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -> (u16, String) {
@@ -896,7 +704,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let list: Vec<ConnInfo> = state
                 .conns
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .iter()
                 .map(|c| ConnInfo {
                     id: c.id.clone(),
@@ -1084,10 +892,10 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     if req.sets.is_empty() {
                         return (400, "{\"error\":\"update needs at least one field\"}".into());
                     }
-                    vec!["-s".into(), AGENT_SITE.into(), "doc".into(), "update".into(), req.doctype, req.name]
+                    vec!["-s".into(), agent_site(), "doc".into(), "update".into(), req.doctype, req.name]
                 }
                 "submit" | "cancel" | "delete" => {
-                    vec!["-s".into(), AGENT_SITE.into(), "doc".into(), req.verb.clone(), req.doctype, req.name]
+                    vec!["-s".into(), agent_site(), "doc".into(), req.verb.clone(), req.doctype, req.name]
                 }
                 _ => return (400, "{\"error\":\"unsupported verb\"}".into()),
             };

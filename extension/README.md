@@ -37,7 +37,7 @@ freely but can't mutate the site; any data change it proposes appears as an
 
 - **Alter chat** — a full agentic Alter session (seeded, you hit Enter to run).
 - **fr assistant** — a supervised `fr assistant` in a Terminal.
-- **Create PR** — a scoped agent that branches, applies the fix, pushes to your
+- **Prepare fix** — a scoped agent that branches, applies the fix and commits, then stops for your review; **Push & open PR** is a separate button that pushes to your
   fork, and opens a PR (it stops at the link; it never merges).
 
 Reload the tab mid-run and the panel re-attaches to the job.
@@ -45,7 +45,7 @@ Reload the tab mid-run and the panel re-attaches to the job.
 ## Elsewhere
 
 - **Fix grammar** — right-click any editable text → *Fix grammar with Alter*.
-- **Describe this page** — from the popup, summarize the active tab.
+- **Describe this page** — from the settings page, summarize the active tab.
 
 ## Notes
 
@@ -55,3 +55,10 @@ Reload the tab mid-run and the panel re-attaches to the job.
 - Data an agent reads is sent to your model provider (e.g. Anthropic), same as
   any chat. The support agent is network-gated (can't write the site); the
   handoffs are more powerful — Alter chat is autonomous, fr assistant prompts.
+
+## Prerequisites
+
+- The Alter desktop app running, with a **Claude Code** connection (PR review and the support agent need tools).
+- `claude` (Claude Code CLI), `gh` (logged in), and `fr` (frappectl) on your PATH for the agent actions.
+- In Alter → Settings: set **Agent working folder** to your bench (the agents run there), and the Frappe site + credentials for the support agent.
+- Extension settings page: paste the pairing token, pick a model per action, and optionally set your own helpdesk URL (default support.frappe.io) or limit the grammar pill to GitHub + helpdesk.

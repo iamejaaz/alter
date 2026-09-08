@@ -5,6 +5,9 @@
 // Wrapped in an IIFE so its top-level declarations don't collide with the other
 // content scripts sharing this page's isolated world.
 (() => {
+// The helpdesk this panel is on — the script only runs on helpdesk pages.
+const SITE = location.host;
+
 const SUPPORT_SYSTEM = [
   "You are Ejaaz's Frappe support engineer, triaging a ticket on support.frappe.io.",
   "You have READ tools that run WITHOUT asking: `fr` read subcommands (query, doc get/list, doctype, report, method search/list/show, file download, auth whoami) to read tickets/docs/SQL, Read/Grep/Glob over the local frappe checkout, git to inspect any version, and gh + WebFetch for frappe/frappe issues/PRs. You may ALSO run the skill's repro.sh helper to reproduce a bug on the local disposable benches — it's allowed here and does NOT touch live data (it runs on a throwaway repro site and rolls back).",
@@ -14,7 +17,9 @@ const SUPPORT_SYSTEM = [
   "Try to trace what the customer reports IN THE CODE at the customer's version (e.g. `git show <ref>:path`) — is the reported behavior actually reproducible from the code path? State which ref you checked. Never trust the working branch as the customer's reality, and never invent behavior.",
   "If the ticket is ambiguous, missing key facts (version, exact steps, error text, doctype), or you cannot trace it to a concrete code path, DO NOT guess a diagnosis. Instead say plainly: what you understood, what you verified, and exactly what extra info you need from the customer to go further (as specific questions).",
   "Follow the user's standing preferences for voice. Be terse. If a command is denied, fall back to Read/Grep/WebFetch.",
-].join(" ");
+]
+  .join(" ")
+  .replaceAll("support.frappe.io", SITE);
 
 // Triage runs on Sonnet by default — plenty for reading a ticket + checking
 // code, and a fraction of Opus's usage against your 5-hour session limit.
@@ -39,26 +44,10 @@ VISIBLE answer = SIMPLE English for a non-technical teammate — actually EXPLAI
 };
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
-const SEP = String.fromCharCode(1); // wraps ▸ step markers in the agent stream
 
 function ticketId() {
   const m = location.pathname.match(/\/helpdesk\/tickets\/(\d+)/);
   return m ? m[1] : null;
-}
-
-// Odd segments are step markers, even segments are answer text.
-function renderStream(full) {
-  return full
-    .split(SEP)
-    .map((p, i) => (i % 2 ? `<div class="sup-step">${escapeHtml(p)}</div>` : p ? mini(p) : ""))
-    .join("");
-}
-function cleanText(full) {
-  return full
-    .split(SEP)
-    .filter((_, i) => i % 2 === 0)
-    .join("")
-    .trim();
 }
 
 let supSession = null;
@@ -166,7 +155,7 @@ const PR_SYSTEM = [
 
 const PR_PUSH_SYSTEM = [
   "You are Ejaaz pushing an ALREADY-PREPARED fix branch (it's checked out with a commit on it) and opening the PR. You have git push + `gh pr create` only.",
-  "Steps: 1) confirm the current branch + `git log -1` is the intended fix (NOT develop/main — if it is, STOP); 2) push it to Ejaaz's fork: `git push https://github.com/iamejaaz/frappe.git HEAD:<branch>`; 3) open the PR against frappe/frappe: `gh pr create --repo frappe/frappe --head iamejaaz:<branch> --base <base> --title \"<type: …>\" --body \"<short body>\"`.",
+  "Steps: 1) confirm the current branch + `git log -1` is the intended fix (NOT develop/main — if it is, STOP); 2) find the upstream repo from the checkout (`git remote -v`: the `upstream` remote, else `origin`, as owner/repo) and the user's GitHub login with `gh api user -q .login` — if gh is not logged in, STOP and ask where to push instead of guessing; 3) push to the USER'S OWN fork: `git push https://github.com/<login>/<repo>.git HEAD:<branch>` (if the fork doesn't exist yet, run `gh repo fork <owner>/<repo> --clone=false` first); 4) open the PR against upstream: `gh pr create --repo <owner>/<repo> --head <login>:<branch> --base <base> --title \"<type: …>\" --body \"<short body>\"`.",
   "PR style: short type-prefixed title, terse body, no fluff, no security details, no AI attribution. Reference the ticket by number, never customer PII. Note any needed backport (v15/v16) in the body.",
   "End your final message with the PR URL on its own line.",
 ].join(" ");
@@ -225,7 +214,7 @@ function toast(text, isErr) {
 // it's a real bug; and if a fix is warranted, PREPARE it on a local branch and
 // STOP for review — do NOT push or open a PR autonomously.
 const HANDOFF_TASK = (id) =>
-  `Use the frappe-support-diagnosis skill. HD Ticket ${id} on support.frappe.io. FIRST decide if it's even a bug — the bar is HIGH (a real malfunction: crash / data loss / wrong result / broken contract), NOT "the framework doesn't do X automatically" (that's a customisation). If it's not a bug, give the real answer and stop. Only for a real bug: read it (bare fr), find the code across all apps, triage versions, reproduce on a bench. If a fix is warranted, implement it on a fresh local branch off develop and COMMIT — then STOP and show the diff for review. Do NOT push and do NOT open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md).`;
+  `Use the frappe-support-diagnosis skill. HD Ticket ${id} on ${SITE}. FIRST decide if it's even a bug — the bar is HIGH (a real malfunction: crash / data loss / wrong result / broken contract), NOT "the framework doesn't do X automatically" (that's a customisation). If it's not a bug, give the real answer and stop. Only for a real bug: read it (bare fr), find the code across all apps, triage versions, reproduce on a bench. If a fix is warranted, implement it on a fresh local branch off develop and COMMIT — then STOP and show the diff for review. Do NOT push and do NOT open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md).`;
 
 // Carry the diagnosis already done in the panel into the handoff, so the target
 // app CONTINUES from it instead of re-running the whole triage cold.
@@ -234,7 +223,7 @@ function handoffTask(id) {
     ? supSession.transcript.map((x) => `\n\n### ${x.q}\n${x.a}`).join("")
     : "";
   if (!t) return HANDOFF_TASK(id);
-  return `HD Ticket ${id} on support.frappe.io — I already triaged this in the support panel. Diagnosis so far:${t}\n\n---\nContinue from this — do NOT re-triage from scratch. First sanity-check the verdict: is it really a bug (high bar — a real malfunction, NOT "doesn't auto-do X" which is a customisation)? If it's not a bug, say so and give the real answer. If it IS a bug and still unconfirmed, do the smallest confirmation next (git show at the customer's ref, reproduce on a bench if reachable). If a fix is warranted: implement it on a fresh local branch off develop and COMMIT, then STOP and show the diff — do NOT push or open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md).`;
+  return `HD Ticket ${id} on ${SITE} — I already triaged this in the support panel. Diagnosis so far:${t}\n\n---\nContinue from this — do NOT re-triage from scratch. First sanity-check the verdict: is it really a bug (high bar — a real malfunction, NOT "doesn't auto-do X" which is a customisation)? If it's not a bug, say so and give the real answer. If it IS a bug and still unconfirmed, do the smallest confirmation next (git show at the customer's ref, reproduce on a bench if reachable). If a fix is warranted: implement it on a fresh local branch off develop and COMMIT, then STOP and show the diff — do NOT push or open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md).`;
 }
 
 // Full, interactive `fr assistant` in a Terminal — all sites, read+write, but it
@@ -480,7 +469,8 @@ async function reconnectIfActive() {
   }
   const verb = /diagn/i.test(rec.label) ? "diagnose" : /draft/i.test(rec.label) ? "draft" : "summarize";
   openPanel(verb);
-  supSession = { id, connectionId: rec.connectionId, model: rec.model, fixModel: rec.model, transcript: [] };
+  const { claudeModel } = await chrome.storage.local.get("claudeModel");
+  supSession = { id, connectionId: rec.connectionId, model: rec.model, fixModel: claudeModel || rec.model, transcript: [] };
   const note = document.createElement("div");
   note.className = "sup-step sup-step-say";
   note.textContent = "Reconnected to a run in progress…";
