@@ -236,6 +236,13 @@ export async function claudeCodeChat(
       const ev = JSON.parse(line);
       if (ev.session_id) sid = ev.session_id;
 
+      // Backend watchdog: a long silence is surfaced as a step, never as a kill —
+      // a slow tool call (a big test run) can legitimately go quiet for minutes.
+      if (ev.type === "alter_stalled") {
+        onActivity(`Still working — no output for ${Math.round(Number(ev.idle_secs) || 0)}s (Stop if it's stuck)`);
+        return;
+      }
+
       if (ev.type === "stream_event" && ev.event?.type === "content_block_start") {
         const cb = ev.event.content_block;
         if (cb?.type === "tool_use" && cb.name) {

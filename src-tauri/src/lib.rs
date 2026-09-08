@@ -592,6 +592,9 @@ async fn claude_code(
     }
 
     // Forward events as they arrive, until this turn's `result` event.
+    const STALL_SECS: u64 = 120;
+    let mut last_output = std::time::Instant::now();
+    let mut warned_at: u64 = 0;
     loop {
         if cancel.is_cancelled(&conv_id) {
             if let Some(mut old) = guard.take() {
@@ -602,6 +605,8 @@ async fn claude_code(
         let p = guard.as_mut().unwrap();
         match tokio::time::timeout(std::time::Duration::from_millis(100), p.rx.recv()).await {
             Ok(Some(line)) => {
+                last_output = std::time::Instant::now();
+                warned_at = 0;
                 let done = line.contains("\"type\":\"result\"");
                 if !line.trim().is_empty() {
                     let _ = on_chunk.send(line);
@@ -617,7 +622,16 @@ async fn claude_code(
                         .to_string(),
                 );
             }
-            Err(_) => continue, // 100ms tick — re-check cancel
+            Err(_) => {
+                // 100ms tick — re-check cancel, and surface (never kill) a long silence.
+                let idle = last_output.elapsed().as_secs();
+                let window = idle / STALL_SECS;
+                if idle >= STALL_SECS && window > warned_at {
+                    warned_at = window;
+                    let _ = on_chunk.send(format!("{{\"type\":\"alter_stalled\",\"idle_secs\":{idle}}}"));
+                }
+                continue;
+            }
         }
     }
     Ok(())
