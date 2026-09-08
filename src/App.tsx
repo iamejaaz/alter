@@ -174,11 +174,16 @@ export default function App() {
     rec.continuous = false;
     rec.interimResults = true;
     rec.lang = "en-US";
-    const base = input;
+    // Replace only the previous interim transcript, so anything typed mid-dictation survives.
+    let prev = "";
     rec.onresult = (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => {
       let t = "";
       for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
-      setInput((base ? base + " " : "") + t);
+      setInput((cur) => {
+        const head = prev && cur.endsWith(prev) ? cur.slice(0, -prev.length) : cur ? cur + " " : "";
+        prev = t;
+        return head + t;
+      });
     };
     rec.onend = () => setListening(false);
     rec.onerror = (e: { error?: string }) => {
@@ -368,7 +373,11 @@ export default function App() {
         e.preventDefault();
         setShowPalette((v) => !v);
       }
-      if (e.key === "Escape") setPreview(null);
+      if (e.key === "Escape") {
+        setPreview(null);
+        setShowPalette(false);
+        setView("chat");
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -384,12 +393,13 @@ export default function App() {
 
   // Generate a concise chat title from the first message (like Claude Code does),
   // instead of using the raw first 40 characters.
-  const generateTitle = async (cid: string, firstMessage: string) => {
+  const generateTitle = async (cid: string, firstMessage: string, connectionId?: string) => {
     try {
       // Resolve the chat's OWN connection (per-chat model), not the global default.
+      // A just-created chat isn't in `conversations` yet, so the caller passes its id.
       const conv = conversations.find((c) => c.id === cid);
       const conn = (settings.connections ?? []).find(
-        (c) => c.id === (conv?.connectionId ?? settings.activeConnectionId)
+        (c) => c.id === (connectionId ?? conv?.connectionId ?? settings.activeConnectionId)
       );
       const baseUrl = conn?.baseUrl ?? settings.baseUrl;
       const apiKey = conn?.apiKey ?? settings.apiKey;
@@ -557,6 +567,12 @@ export default function App() {
       return;
     }
     if (!settings.apiKey && !isClaudeCodeUrl(settings.baseUrl)) {
+      setError("Add a connection in Settings to start chatting.");
+      setShowSettings(true);
+      return;
+    }
+    if (!settings.model && !isClaudeCodeUrl(settings.baseUrl)) {
+      setError("Pick a model for this connection in Settings.");
       setShowSettings(true);
       return;
     }
@@ -599,7 +615,7 @@ export default function App() {
 
     setConvError(convId, null);
     setConvInfo(convId, null);
-    if (freshConv && !opts?.title) void generateTitle(convId, text);
+    if (freshConv && !opts?.title) void generateTitle(convId, text, settings.activeConnectionId);
 
     const mode = settings.mode ?? "auto";
     // Gemini reasoning models require a proprietary "thought_signature" round-trip that
@@ -978,15 +994,22 @@ export default function App() {
   const exportConversation = async () => {
     if (!active) return;
     const md = conversationMarkdown(active);
+    let path: string | null;
     try {
-      const path = await save({
+      path = await save({
         defaultPath: `${active.title}.md`,
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
-      if (path) await invoke("write_file", { path, content: md });
     } catch {
       await navigator.clipboard.writeText(md);
       setError("Saved to clipboard (file dialog unavailable).");
+      return;
+    }
+    if (!path) return;
+    try {
+      await invoke("write_file", { path, content: md });
+    } catch (e) {
+      setError(`Couldn't write ${path}: ${humanizeError(String(e))}`);
     }
   };
 
@@ -1064,6 +1087,8 @@ export default function App() {
     }).catch(() => {});
   }, [settings, memories, routines]);
 
+  const routinesRef = useRef(routines);
+  routinesRef.current = routines;
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
@@ -1071,15 +1096,20 @@ export default function App() {
         const results: { name: string; prompt: string; content: string; at: number }[] = JSON.parse(raw);
         if (!results.length) return;
         setConversations((prev) => [
-          ...results.map((r) => ({
-            id: newId(),
-            title: `⏱ ${r.name}`,
-            createdAt: r.at,
-            messages: [
-              { role: "user", content: r.prompt } as Message,
-              { role: "assistant", content: r.content } as Message,
-            ],
-          })),
+          ...results.map((r) => {
+            const rt = routinesRef.current.find((x) => x.name === r.name);
+            return {
+              id: newId(),
+              title: `⏱ ${r.name}`,
+              createdAt: r.at,
+              connectionId: rt?.connectionId,
+              model: rt?.model,
+              messages: [
+                { role: "user", content: r.prompt } as Message,
+                { role: "assistant", content: r.content } as Message,
+              ],
+            };
+          }),
           ...prev,
         ]);
       } catch {
@@ -1108,6 +1138,13 @@ export default function App() {
     ? Math.round(active.messages.reduce((n, m) => n + (m.content?.length ?? 0), 0) / 4)
     : 0;
   const connections = settings.connections ?? [];
+  const setupNeeded = isClaudeCodeUrl(settings.baseUrl)
+    ? null
+    : !settings.apiKey
+      ? "Connect a model"
+      : !settings.model
+        ? "Pick a model"
+        : null;
   const switchConnection = (id: string) => {
     const conn = connections.find((c) => c.id === id);
     if (!conn) return;
@@ -1430,7 +1467,7 @@ export default function App() {
               <p className="mt-2 text-[15px] text-[var(--txt-faint)] max-w-md leading-relaxed">
                 Your second self. It remembers what matters, reads your files, browses the web, and keeps working while you're away.
               </p>
-              {settings.apiKey || isClaudeCodeUrl(settings.baseUrl) ? (
+              {!setupNeeded ? (
                 <div className="mt-7 flex flex-wrap justify-center gap-2 max-w-lg">
                   {suggestions.map((s) => (
                     <button
@@ -1447,7 +1484,7 @@ export default function App() {
                   onClick={() => setShowSettings(true)}
                   className="mt-7 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-5 py-2.5 text-sm font-medium shadow-lg shadow-indigo-950/40 transition-colors"
                 >
-                  Connect a model
+                  {setupNeeded}
                 </button>
               )}
             </div>
@@ -1734,6 +1771,7 @@ export default function App() {
                   onClick={() => fileInputRef.current?.click()}
                   className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-[var(--panel-2)] text-[var(--txt-faint)] hover:text-[var(--txt)] transition-colors"
                   title="Attach images or files"
+                  aria-label="Attach images or files"
                 >
                   <IconPaperclip />
                 </button>
@@ -1744,6 +1782,8 @@ export default function App() {
                       listening ? "bg-red-500/15 text-red-400" : "hover:bg-[var(--panel-2)] text-[var(--txt-faint)] hover:text-[var(--txt)]"
                     }`}
                     title={listening ? "Stop dictation" : "Dictate"}
+                    aria-label={listening ? "Stop dictation" : "Dictate"}
+                    aria-pressed={listening}
                   >
                     <IconMic />
                   </button>
@@ -1830,6 +1870,7 @@ export default function App() {
                     onClick={stop}
                     className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--bd)] hover:bg-[var(--panel-2)] text-[var(--txt)] transition-colors ml-0.5"
                     title="Stop"
+                    aria-label="Stop generating"
                   >
                     <span className="h-2.5 w-2.5 rounded-[2px] bg-current" />
                   </button>
@@ -1839,6 +1880,7 @@ export default function App() {
                     disabled={!input.trim() && attachments.length === 0}
                     className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 text-white transition-colors ml-0.5"
                     title="Send"
+                    aria-label="Send message"
                   >
                     <IconArrowUp />
                   </button>
