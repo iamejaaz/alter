@@ -211,6 +211,7 @@ function toolLabel(name: string, input: Record<string, unknown>): string {
 // answer plus the session id, so follow-up turns can --resume the same session.
 export async function claudeCodeChat(
   prompt: string,
+  images: { mediaType: string; data: string }[],
   cwd: string | null,
   convId: string,
   sessionId: string | null,
@@ -316,7 +317,7 @@ export async function claudeCodeChat(
   const onAbort = () => void invoke("cancel_chat", { id: convId }).catch(() => {});
   signal.addEventListener("abort", onAbort);
   try {
-    await invoke("claude_code", { prompt, cwd, convId, sessionId, model, effort, permissionMode, onChunk: channel });
+    await invoke("claude_code", { prompt, images, cwd, convId, sessionId, model, effort, permissionMode, onChunk: channel });
   } finally {
     signal.removeEventListener("abort", onAbort);
   }

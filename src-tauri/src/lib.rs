@@ -117,6 +117,13 @@ impl ChatCancel {
 
 // A warm, long-lived Claude Code process bound to one conversation/model/cwd.
 // Kept alive between messages so follow-up turns skip the cold start + cache rebuild.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageAttachment {
+    media_type: String,
+    data: String,
+}
+
 struct ClaudeProc {
     conv_id: String,
     model: String,
@@ -469,6 +476,7 @@ async fn claude_code(
     model: Option<String>,
     effort: Option<String>,
     permission_mode: Option<String>,
+    images: Option<Vec<ImageAttachment>>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -564,9 +572,16 @@ async fn claude_code(
     // Send this turn's user message on the (possibly warm) process's stdin.
     {
         let p = guard.as_mut().unwrap();
+        let mut content = vec![serde_json::json!({ "type": "text", "text": prompt })];
+        for img in images.unwrap_or_default() {
+            content.push(serde_json::json!({
+                "type": "image",
+                "source": { "type": "base64", "media_type": img.media_type, "data": img.data }
+            }));
+        }
         let mut msg = serde_json::json!({
             "type": "user",
-            "message": { "role": "user", "content": [{ "type": "text", "text": prompt }] }
+            "message": { "role": "user", "content": content }
         })
         .to_string();
         msg.push('\n');

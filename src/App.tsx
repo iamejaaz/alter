@@ -626,8 +626,16 @@ export default function App() {
               "\n\n"
             )}\n</context>\n\n${apiText}`;
         }
+        const ccImages = images
+          .map((a) => {
+            const m = a.dataUrl!.match(/^data:([^;]+);base64,(.*)$/);
+            return { mediaType: m ? m[1] : "image/png", data: m ? m[2] : "" };
+          })
+          .filter((i) => i.data);
+        if (!ccPrompt.trim() && ccImages.length) ccPrompt = "(see attached image)";
         const { content, sessionId, costUsd, tokens } = await claudeCodeChat(
           ccPrompt,
+          ccImages,
           folder,
           convId,
           prior,
