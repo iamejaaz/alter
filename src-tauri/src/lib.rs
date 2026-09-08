@@ -115,8 +115,10 @@ impl ChatCancel {
     }
 }
 
-// A warm, long-lived Claude Code process bound to one conversation/model/cwd.
+// One warm, long-lived Claude Code process per conversation, keyed by conv id.
 // Kept alive between messages so follow-up turns skip the cold start + cache rebuild.
+// Each conversation has its own slot lock, so two chats can stream at the same time
+// without killing each other's process.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ImageAttachment {
@@ -125,17 +127,83 @@ struct ImageAttachment {
 }
 
 struct ClaudeProc {
-    conv_id: String,
     model: String,
     cwd: String,
     effort: String,
     perm: String,
+    last_used: std::time::Instant,
     child: tokio::process::Child,
     stdin: tokio::process::ChildStdin,
     rx: tokio::sync::mpsc::UnboundedReceiver<String>,
 }
+type ClaudeSlot = std::sync::Arc<tokio::sync::Mutex<Option<ClaudeProc>>>;
 #[derive(Default)]
-pub struct ClaudeState(tokio::sync::Mutex<Option<ClaudeProc>>);
+pub struct ClaudeState(tokio::sync::Mutex<std::collections::HashMap<String, ClaudeSlot>>);
+
+// Upper bound on idle warm processes; the least recently used idle one is killed
+// when a new conversation needs a slot beyond this.
+const MAX_WARM_PROCS: usize = 4;
+
+impl ClaudeState {
+    async fn slot(&self, conv_id: &str) -> ClaudeSlot {
+        let mut map = self.0.lock().await;
+        map.entry(conv_id.to_string()).or_default().clone()
+    }
+
+    // Kill the oldest idle process(es) so at most MAX_WARM_PROCS stay warm.
+    // A slot mid-turn holds its own lock and is never touched here.
+    async fn evict_idle(&self, keep: &str) {
+        let map = self.0.lock().await;
+        let mut idle: Vec<(std::time::Instant, ClaudeSlot)> = Vec::new();
+        let mut live = 0usize;
+        for (id, slot) in map.iter() {
+            if id == keep {
+                live += 1;
+                continue;
+            }
+            match slot.try_lock() {
+                Ok(g) => {
+                    if let Some(p) = g.as_ref() {
+                        live += 1;
+                        idle.push((p.last_used, slot.clone()));
+                    }
+                }
+                Err(_) => live += 1,
+            }
+        }
+        if live <= MAX_WARM_PROCS {
+            return;
+        }
+        idle.sort_by_key(|(t, _)| *t);
+        for (_, slot) in idle.into_iter().take(live - MAX_WARM_PROCS) {
+            if let Ok(mut g) = slot.try_lock() {
+                if let Some(mut p) = g.take() {
+                    let _ = p.child.kill().await;
+                }
+            }
+        }
+    }
+
+    async fn close(&self, conv_id: &str) {
+        let slot = { self.0.lock().await.remove(conv_id) };
+        if let Some(slot) = slot {
+            if let Some(mut p) = slot.lock().await.take() {
+                let _ = p.child.kill().await;
+            }
+        }
+    }
+}
+
+#[tauri::command]
+async fn claude_close(
+    cancel: tauri::State<'_, ChatCancel>,
+    procs: tauri::State<'_, ClaudeState>,
+    conv_id: String,
+) -> Result<(), String> {
+    cancel.request(&conv_id);
+    procs.close(&conv_id).await;
+    Ok(())
+}
 
 #[tauri::command]
 fn cancel_chat(state: tauri::State<ChatCancel>, id: String) {
@@ -490,19 +558,15 @@ async fn claude_code(
         Some(m @ ("default" | "acceptEdits" | "bypassPermissions" | "plan")) => m.to_string(),
         _ => "bypassPermissions".to_string(), // default: act freely on the user's own machine
     };
-    let mut guard = procs.0.lock().await;
+    let slot = procs.slot(&conv_id).await;
+    let mut guard = slot.lock().await;
 
-    // Reuse the warm process only if conversation, model, folder, effort and permission
+    // Reuse this conversation's warm process only if model, folder, effort and permission
     // mode all match and it hasn't died — otherwise spawn a fresh one.
     let reuse = match guard.as_mut() {
         Some(p) => {
             let alive = matches!(p.child.try_wait(), Ok(None));
-            alive
-                && p.conv_id == conv_id
-                && p.model == model
-                && p.cwd == cwd
-                && p.effort == effort
-                && p.perm == perm
+            alive && p.model == model && p.cwd == cwd && p.effort == effort && p.perm == perm
         }
         None => false,
     };
@@ -511,6 +575,7 @@ async fn claude_code(
         if let Some(mut old) = guard.take() {
             let _ = old.child.kill().await;
         }
+        procs.evict_idle(&conv_id).await;
         let mut cmd = Command::new("claude");
         cmd.arg("-p")
             .arg("--input-format").arg("stream-json")
@@ -558,11 +623,11 @@ async fn claude_code(
             }
         });
         *guard = Some(ClaudeProc {
-            conv_id: conv_id.clone(),
             model: model.clone(),
             cwd: cwd.clone(),
             effort: effort.clone(),
             perm: perm.clone(),
+            last_used: std::time::Instant::now(),
             child,
             stdin,
             rx,
@@ -612,6 +677,7 @@ async fn claude_code(
                     let _ = on_chunk.send(line);
                 }
                 if done {
+                    p.last_used = std::time::Instant::now();
                     break;
                 }
             }
@@ -1179,6 +1245,7 @@ pub fn run() {
             cancel_chat,
             test_connection,
             claude_code,
+            claude_close,
             claude_version,
             import_frappe_credentials,
             read_user_memory,

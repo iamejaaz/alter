@@ -67,7 +67,7 @@ function groupMessages(messages: Message[]): RenderItem[] {
   });
   return items;
 }
-import { buildSystemPrompt, ChatResult, claudeCodeChat, extractMemories, streamChat } from "./lib/api";
+import { buildSystemPrompt, ChatResult, claudeClose, claudeCodeChat, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -1093,6 +1093,7 @@ export default function App() {
     // If it's mid-generation, stop that stream so it doesn't orphan.
     abortsRef.current[id]?.abort();
     delete abortsRef.current[id];
+    claudeClose(id);
     setStreamingIds((ids) => ids.filter((x) => x !== id));
     setQueued((q) => {
       const next = { ...q };

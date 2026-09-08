@@ -209,6 +209,10 @@ function toolLabel(name: string, input: Record<string, unknown>): string {
 
 // Claude Code (local): drive the `claude` CLI headlessly. Returns the final
 // answer plus the session id, so follow-up turns can --resume the same session.
+export function claudeClose(convId: string): void {
+  void invoke("claude_close", { convId }).catch(() => {});
+}
+
 export async function claudeCodeChat(
   prompt: string,
   images: { mediaType: string; data: string }[],
