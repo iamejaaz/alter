@@ -257,11 +257,20 @@ export default function App() {
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
   }, []);
-  useEffect(() => storage.saveConversations(conversations), [conversations]);
+  useEffect(() => {
+    if (!storage.saveConversations(conversations))
+      setError("Couldn't save your chats — local storage is full. Delete some old chats to free space.");
+  }, [conversations]);
   useEffect(() => setError(null), [activeId, settings.activeConnectionId, settings.model]);
-  useEffect(() => storage.saveMemories(memories), [memories]);
-  useEffect(() => storage.saveRoutines(routines), [routines]);
-  useEffect(() => storage.saveProjects(projects), [projects]);
+  useEffect(() => {
+    storage.saveMemories(memories);
+  }, [memories]);
+  useEffect(() => {
+    storage.saveRoutines(routines);
+  }, [routines]);
+  useEffect(() => {
+    storage.saveProjects(projects);
+  }, [projects]);
   // Keep the local bridge's copy of connections in sync (extension reads them, no keys leave the app).
   useEffect(() => {
     void invoke("bridge_sync", { connections: settings.connections ?? [] }).catch(() => {});
@@ -283,7 +292,9 @@ export default function App() {
     settings.frappeApiKey,
     settings.frappeApiSecret,
   ]);
-  useEffect(() => storage.saveSkills(skills), [skills]);
+  useEffect(() => {
+    storage.saveSkills(skills);
+  }, [skills]);
   // Extension "Open in Alter" handoff: the bridge emits this event; open a new
   // chat on a Claude Code connection pre-filled with the ticket prompt (NOT sent
   // — the user hits Enter to start the autonomous session).
@@ -1414,7 +1425,7 @@ export default function App() {
                       {m.attachments && m.attachments.length > 0 && (
                         <div className="flex flex-wrap justify-end gap-2 mb-2">
                           {m.attachments.map((a) =>
-                            a.kind === "image" ? (
+                            a.kind === "image" && a.dataUrl ? (
                               <img
                                 key={a.id}
                                 src={a.dataUrl}

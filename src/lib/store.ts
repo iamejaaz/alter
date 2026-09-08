@@ -166,8 +166,13 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
-function save(key: string, value: unknown) {
-  localStorage.setItem(key, JSON.stringify(value));
+function save(key: string, value: unknown): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export const storage = {
@@ -196,7 +201,18 @@ export const storage = {
   },
   saveSettings: (s: Settings) => save("alter.settings", s),
   loadConversations: () => load<Conversation[]>("alter.conversations", []),
-  saveConversations: (c: Conversation[]) => save("alter.conversations", c),
+  saveConversations: (c: Conversation[]) =>
+    save(
+      "alter.conversations",
+      c.map((conv) => ({
+        ...conv,
+        messages: conv.messages.map((m) =>
+          m.attachments
+            ? { ...m, attachments: m.attachments.map((a) => (a.kind === "image" ? { ...a, dataUrl: undefined } : a)) }
+            : m
+        ),
+      }))
+    ),
   loadMemories: () => load<MemoryItem[]>("alter.memories", []),
   saveMemories: (m: MemoryItem[]) => save("alter.memories", m),
   loadRoutines: () => load<Routine[]>("alter.routines", []),
