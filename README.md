@@ -1,65 +1,84 @@
 # Alter
 
-Your second self — a lightweight desktop AI companion with memory. Bring your own model.
+A small, fast desktop AI companion that remembers you. Bring your own model, or use your Claude Code subscription.
 
 ![Alter](docs/screenshot.png)
 
-Alter is a small, fast desktop chat app. It talks to any OpenAI-compatible model — or your **Claude Code** subscription — remembers what matters about you across conversations, can read and edit files in a folder you attach, and runs saved prompts on a schedule. It uses your OS's native webview (via Tauri), so the app is a few MB and light on memory — no bundled browser.
+Alter is a native desktop chat app built on Tauri, so it is a few MB and light on memory. It talks to any OpenAI-compatible endpoint or drives the local `claude` CLI, keeps long-term memory across conversations, works inside a folder you attach, runs saved prompts on a schedule, and ships with a browser extension that reuses your Alter connections on GitHub and Frappe Helpdesk without putting a single API key in the browser.
 
-## Features
+## Highlights
 
-- **Bring your own model** — point the base URL at any OpenAI-compatible endpoint (presets for DeepSeek and Moonshot/Kimi are just quick-fills). Requests are proxied through the Rust backend, so any host works with no allowlist. A **Test connection** button checks the endpoint and lists its models. Your API key is stored only on your device.
-- **Claude Code backend** — add a Claude Code connection to use your local `claude` subscription with no API key. These sessions are agentic (they can run tools) and pick Opus / Sonnet / Haiku per connection.
-- **Per-chat model** — each conversation remembers its own connection, model, and effort; switch mid-thread without touching the others.
-- **Streaming chat** with markdown, syntax-highlighted code, LaTeX math (KaTeX), copy buttons, and editable messages.
-- **Artifacts** — HTML/SVG the assistant produces opens in a live, sandboxed side-panel preview.
-- **Light & dark themes** — toggle in Settings, remembered across launches.
-- **Voice dictation** where the platform supports it.
-- **Memory** — Alter automatically remembers lasting facts and preferences you share, and carries them into every future conversation. Review or forget any of them in Settings.
-- **File tools** — attach a working folder, then ask Alter to show a file tree, search across files (like grep), read files, or write files (writes ask for confirmation first).
-- **Attachments** — drop in images (for vision-capable models), PDFs (text is extracted), or text/code files; click an image to view it full-size.
-- **Chat search** — filter conversations by title or message content from the sidebar.
-- **Modes** — choose how Alter uses tools: **Auto** (acts freely, writes ask first), **Ask first** (confirm every action), **Plan** (describes what it would do without acting), or **Chat only** (no tools).
-- **Shows its work** — every file read, search, web fetch, or write appears as a step in the conversation as Alter takes it.
-- **Web access** — Alter can search the web and read pages to answer with current information.
-- **Browser mode** — for JavaScript-heavy pages or tasks that need clicking and typing, Alter drives a real browser (uses your installed Chrome, or downloads a browser engine on first use).
-- **Projects** — group conversations under a project with its own working folder and instructions.
-- **Command palette** (⌘K) and a **global hotkey** (⌘⇧Space) to summon Alter from anywhere; **branch a chat** to explore an alternate direction without losing the original.
-- **Token & cost meter** — see tokens and estimated cost per conversation; `/usage` and `/compact` slash commands (Claude Code) report usage and compact context without spending tokens.
-- **Routines** — save a prompt and an interval; Alter runs it automatically and drops each result into a new conversation. Scheduled runs execute in the Rust backend, so they fire even with the window closed.
-- **Browser bridge + extension** — a token-gated local bridge (`127.0.0.1:8765`) lets the companion browser extension reuse your Alter connections with no keys in the browser: maintainer-lens GitHub PR review, a Frappe Helpdesk support agent, grammar fix, and page summaries. See [`extension/`](extension/).
-- **Runs in the background** — a menu-bar tray keeps Alter alive when you close the window, plus an optional launch-at-login.
+**Models**
+- Any OpenAI-compatible endpoint. Presets for DeepSeek, Moonshot/Kimi, Gemini and OpenRouter are quick-fills, not an allowlist. Requests go through the Rust backend, so any host works.
+- **Claude Code** as a backend: add one connection and use your `claude` subscription with no key. Each chat keeps a warm `claude` process, so follow-ups are instant and chats never interrupt each other. Pick Opus, Sonnet or Haiku and an effort level per chat.
+- Per-chat connection, model and effort. Automatic fallback to another saved connection when the active one is down.
+- Context meter in the composer: tokens used against the model's window, plus session cost.
 
-## Stack
+**Chat**
+- Streaming markdown with syntax-highlighted code, KaTeX math, tables and collapsible details, in light and dark themes.
+- **Esc interrupts** the current turn at its next step and keeps everything done so far in the chat. Typing while a turn runs queues the message and delivers it at the next step, the same way Claude Code does.
+- Attach images (persisted to disk), PDFs and text files. Drag and drop or paste.
+- Branch a chat, regenerate, edit messages, export to Markdown, search across chats, pin favourites.
+- Artifacts: HTML and SVG the assistant produces open in a sandboxed side panel.
 
-Tauri 2 · React 18 · TypeScript · Tailwind CSS 3 · Vite
+**Agent**
+- Modes: **Auto** (acts freely, writes confirm), **Ask first**, **Plan** (no actions) and **Chat only**.
+- File tools on an attached folder: tree, grep, read, write. Web search and page reading. Every step shows in the conversation as it happens.
+- Tool outputs are carried into later turns, so "now use that to…" works on every provider.
+- **Skills**: save reusable instructions in the app, or use your Claude Code skills from `~/.claude/skills` and `~/.claude/commands`. Both appear in the slash menu, so `/fix-issue 123` works inside Alter.
 
-## Prerequisites
+![Slash menu](docs/slash.png)
 
-- [Rust](https://rustup.rs) (stable)
-- [Node](https://nodejs.org) 18+
-- macOS: Xcode Command Line Tools (`xcode-select --install`)
+**Memory**
+- Alter asks the model to tag durable facts as it replies, extracts them, and carries them into every future conversation. Review or forget any of them in Settings.
+- The same facts are appended to `~/.claude/CLAUDE.md`, so Claude Code learns them too, and a new Claude Code chat is seeded with what you told Alter.
 
-## Develop
+**Automation**
+- **Routines**: a prompt plus a schedule (interval, daily, weekly). Each run lands in its own chat. Runs execute in the Rust backend, so they fire with the window closed, and optionally as a login service.
+- **Projects** group chats under a folder and standing instructions.
+- ⌘K command palette, ⌘⇧Space global hotkey, menu-bar tray, launch at login.
+
+**Browser extension**
+- A token-gated bridge on `127.0.0.1` lets the companion extension use your Alter connections. No keys in the browser.
+- GitHub: a maintainer-lens PR review with a plain-English verdict, verify-on-bench, and a draft comment in your own voice.
+- Frappe Helpdesk: summarize, diagnose and draft replies on a ticket, then hand off to a full Alter chat or prepare a fix on a local branch for your review.
+- Grammar fix on any editable field, page summaries from the popup.
+- Details and setup in [`extension/`](extension/README.md).
+
+![Light theme](docs/screenshot-light.png)
+
+## Quick start
+
+Prerequisites: [Rust](https://rustup.rs) (stable), [Node](https://nodejs.org) 18+, and on macOS the Xcode Command Line Tools (`xcode-select --install`).
 
 ```sh
 npm install
 npm run dev
 ```
 
-On first launch, open **Settings**, choose a provider preset, paste your API key, and save.
+On first launch open **Settings**, pick a provider preset and paste a key, or add a **Claude Code** connection (needs the `claude` CLI on your PATH, logged in). **Test connection** checks the endpoint and lists its models.
 
-## Build a macOS bundle
+Build a bundle with `npm run tauri build`. The `.app` and `.dmg` land in `src-tauri/target/release/bundle/`.
 
-```sh
-npm run tauri build
-```
+## Settings worth knowing
 
-The `.app` and `.dmg` land in `src-tauri/target/release/bundle/`.
+| Setting | What it does |
+| --- | --- |
+| Connections | One entry per provider or Claude Code. Keys stay on your device. |
+| Agent working folder | Where browser-triggered agents run (PR review, support, prepare fix). Usually your bench or repo. |
+| Frappe credentials | Site URL and API key/secret so the support agent's `fr` reads from the environment instead of the keychain. |
+| Repro benches | Per-version bench folders the support agent can reproduce bugs on. |
+| Memory | Everything Alter remembers, with delete. |
+| Browser bridge | The pairing token for the extension. |
+| Theme, launch at login | Under Settings. |
 
-## Always-on routines (optional)
+## Slash commands
 
-By default, routines run whenever Alter is open (including minimized to the menu-bar tray). To keep them running even after you quit the app, install the background service after building:
+`/new`, `/clear`, `/usage`, `/compact`, `/auto`, `/ask`, `/plan`, `/chat`, `/folder`, `/attach`, `/routine <description>`, `/routines`, `/settings`, plus every saved skill and every Claude Code skill as `/<name> <args>`.
+
+## Always-on routines
+
+Routines run whenever Alter is open, including in the tray. To keep them running after you quit, install the background service after building:
 
 ```sh
 npm run tauri build
@@ -67,27 +86,18 @@ cp -R src-tauri/target/release/bundle/macos/Alter.app /Applications/
 ./scripts/install-service.sh
 ```
 
-Remove it anytime with `./scripts/uninstall-service.sh`.
+Remove it with `./scripts/uninstall-service.sh`.
 
-## How memory works
+## Security notes
 
-Alter's system prompt asks the model to tag durable facts as it replies. Those are extracted, stored locally, and prepended to future conversations as context. This is retrieval, not fine-tuning — nothing about the model's weights changes, and everything stays on your machine.
+- OpenAI-compatible connections get file tools only: read, search and write inside the attached folder, no shell.
+- Claude Code connections are full agentic sessions and **can run commands**. Auto mode runs them without prompts. Use Ask or Plan mode when you want to approve each step.
+- Browser-triggered agents run under an allowlist: read-only `fr` and `gh`, read-only git (push, config, reset, commit and the like are denied), plus a scoped bench reproduction helper. This is a gate, not a sandbox.
+- Everything (chats, memory, settings, attachments) is stored locally. Nothing leaves your machine except requests to the providers you configured.
 
-## Configuration
+## Stack
 
-Everything is stored in the app's local storage on your device:
-
-| Setting | Where |
-| --- | --- |
-| API key, base URL, model | Settings → Connection |
-| Remembered facts | Settings → Memory |
-| Routines | Routines |
-| Launch at login | Settings → Connection |
-
-## Notes
-
-- OpenAI-compatible connections are file-tool only — read, search, and write files, no arbitrary commands.
-- Claude Code connections are full agentic sessions and **can** run commands (they act freely on your machine). Use them only with a subscription you trust on this device.
+Tauri 2 · Rust · React 18 · TypeScript · Tailwind CSS · Vite
 
 ## License
 
