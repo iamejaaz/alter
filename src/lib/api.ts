@@ -52,6 +52,28 @@ export function extractMemories(text: string): { clean: string; found: string[] 
   return { clean, found };
 }
 
+// Turn stored chat messages into API history. Step messages that carry real tool
+// calls and outputs are expanded into the assistant(tool_calls) → tool(result)
+// pairs providers expect, so later turns know what the tools actually returned.
+export function buildHistory(messages: Message[], withTools: boolean): Message[] {
+  const out: Message[] = [];
+  for (const m of messages) {
+    if (m.role === "user" || m.role === "assistant") {
+      if (m.content) out.push({ role: m.role, content: m.content });
+      continue;
+    }
+    if (m.role !== "tool" || !withTools || !m.tool_calls?.length || !m.toolResults?.length) continue;
+    const prev = out[out.length - 1];
+    if (prev && prev.role === "assistant" && !prev.tool_calls) {
+      prev.tool_calls = m.tool_calls;
+    } else {
+      out.push({ role: "assistant", content: "", tool_calls: m.tool_calls });
+    }
+    for (const r of m.toolResults) out.push({ role: "tool", content: r.output, tool_call_id: r.id });
+  }
+  return out;
+}
+
 export interface ChatResult {
   content: string;
   toolCalls: ToolCall[];

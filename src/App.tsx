@@ -69,7 +69,16 @@ function groupMessages(messages: Message[]): RenderItem[] {
   });
   return items;
 }
-import { buildSystemPrompt, ChatResult, claudeClose, claudeCodeChat, claudeInterrupt, extractMemories, streamChat } from "./lib/api";
+import {
+  buildHistory,
+  buildSystemPrompt,
+  ChatResult,
+  claudeClose,
+  claudeCodeChat,
+  claudeInterrupt,
+  extractMemories,
+  streamChat,
+} from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -613,9 +622,7 @@ export default function App() {
     }
 
     const userMsg: Message = { role: "user", content: text, attachments: atts.length ? atts : undefined };
-    const history = (opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? []).filter(
-      (m) => (m.role === "user" || m.role === "assistant") && m.content
-    );
+    const priorMessages = opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? [];
     updateConversation(convId, (c) => ({
       ...c,
       title: c.messages.length === 0 ? opts?.title ?? text.slice(0, 40) : c.title,
@@ -665,6 +672,7 @@ export default function App() {
         }
       : { role: "user", content: apiText };
 
+    const history = buildHistory(priorMessages, useTools);
     const payload = [
       { role: "system", content: systemContent },
       ...history,
@@ -881,6 +889,7 @@ export default function App() {
           ],
         }));
 
+        const toolResults: NonNullable<Message["toolResults"]> = [];
         for (const tc of result.toolCalls) {
           let args: Record<string, unknown> = {};
           try {
@@ -904,6 +913,22 @@ export default function App() {
             output = await executeTool(tc.function.name, args, mode);
           }
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
+          toolResults.push({ id: tc.id, name: tc.function.name, output: output.slice(0, 6000) });
+        }
+        // Keep the real calls + outputs on the step message so later turns (and a
+        // turn after an interrupt) know what the tools returned, not just their labels.
+        if (toolResults.length) {
+          const calls = result.toolCalls.filter((tc) => toolResults.some((r) => r.id === tc.id));
+          updateConversation(convId, (c) => {
+            const msgs = [...c.messages];
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              if (msgs[i].role === "tool" && !msgs[i].tool_calls) {
+                msgs[i] = { ...msgs[i], tool_calls: calls, toolResults };
+                break;
+              }
+            }
+            return { ...c, messages: msgs };
+          });
         }
         if (cappedOut) break;
         if (interruptsRef.current[convId]) {

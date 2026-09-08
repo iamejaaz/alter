@@ -18,6 +18,7 @@ export interface Message {
   content: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  toolResults?: { id: string; name: string; output: string }[];
   attachments?: Attachment[];
 }
 
