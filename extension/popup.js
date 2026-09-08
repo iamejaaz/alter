@@ -50,7 +50,7 @@ $("describe-page").addEventListener("click", async () => {
     out.textContent = r.data.content;
   } else {
     out.style.color = "#f87171";
-    out.textContent = (r && r.error) || "No response — is the Alter app running?";
+    out.textContent = window.ALTER.humanizeErr(r && r.error);
   }
 });
 

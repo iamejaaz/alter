@@ -119,9 +119,10 @@ async function fix(t) {
   const raw = r && r.data && r.data.content;
   const corrected = cleanGrammar(raw);
   if (!r || !r.ok || !corrected) {
-    p.textContent = r && r.error ? "Error" : "No change";
+    const failed = !r || !r.ok;
+    p.textContent = failed ? window.ALTER.humanizeErr(r && r.error) : "No change";
     p.disabled = false;
-    setTimeout(removePill, 1500);
+    setTimeout(removePill, failed ? 4500 : 1500);
     return;
   }
   const changed = replace(t, corrected);

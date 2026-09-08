@@ -58,6 +58,7 @@
         "https://*/*"
       ],
       "js": [
+        "shared.js",
         "grammar.js"
       ],
       "css": [

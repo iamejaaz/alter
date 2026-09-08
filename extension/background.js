@@ -2,6 +2,8 @@
 // page origin (https) and can't reach http://localhost (mixed content), so all
 // bridge calls funnel through this service worker, which holds the token.
 
+importScripts("shared.js");
+
 const BRIDGE = "http://127.0.0.1:8765";
 
 async function bridge(path, opts = {}) {
@@ -79,7 +81,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
   if (!r.ok || !r.body.content) {
-    tell(r.body.error || hint(r));
+    tell(r.body.error ? ALTER.humanizeErr(r.body.error) : hint(r));
     return;
   }
   chrome.scripting.executeScript({ target: { tabId: tab.id }, func: replaceSelectionInPage, args: [r.body.content] });
