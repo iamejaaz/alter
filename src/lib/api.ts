@@ -213,6 +213,10 @@ export function claudeClose(convId: string): void {
   void invoke("claude_close", { convId }).catch(() => {});
 }
 
+export function claudeInterrupt(convId: string): void {
+  void invoke("claude_interrupt", { convId }).catch(() => {});
+}
+
 export async function claudeCodeChat(
   prompt: string,
   images: { mediaType: string; data: string }[],
@@ -232,6 +236,7 @@ export async function claudeCodeChat(
   let costUsd: number | null = null;
   let tokens: number | null = null;
   let pending: { name: string; input: string } | null = null; // tool call being built
+  let interrupted = false;
   const smoother = makeSmoother(onDelta);
 
   const channel = new Channel<string>();
@@ -244,6 +249,17 @@ export async function claudeCodeChat(
       // a slow tool call (a big test run) can legitimately go quiet for minutes.
       if (ev.type === "alter_stalled") {
         onActivity(`Still working — no output for ${Math.round(Number(ev.idle_secs) || 0)}s (Stop if it's stuck)`);
+        return;
+      }
+
+      // Soft interrupt: freeze what streamed so far as a step boundary; the
+      // session keeps it, so the next message continues from here.
+      if (ev.type === "alter_interrupted") {
+        interrupted = true;
+        if (streamed) onDelta(streamed);
+        onActivity("Interrupted");
+        streamed = "";
+        smoother.reset();
         return;
       }
 
@@ -315,7 +331,7 @@ export async function claudeCodeChat(
             `🔒 Claude needs permission to run: ${what}\n\n` +
             `Switch the mode to **Auto** (bottom-left) to let it act freely, then resend.`;
         }
-        if (!streamed || denials.length) {
+        if ((!streamed || denials.length) && !interrupted) {
           streamed = result;
           smoother.push(streamed);
         }

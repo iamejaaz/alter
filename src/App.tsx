@@ -67,7 +67,7 @@ function groupMessages(messages: Message[]): RenderItem[] {
   });
   return items;
 }
-import { buildSystemPrompt, ChatResult, claudeClose, claudeCodeChat, extractMemories, streamChat } from "./lib/api";
+import { buildSystemPrompt, ChatResult, claudeClose, claudeCodeChat, claudeInterrupt, extractMemories, streamChat } from "./lib/api";
 import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -119,6 +119,10 @@ export default function App() {
   const [input, setInput] = useState("");
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
+  // Soft-interrupt flags per conversation, and the abort controller of the HTTP
+  // request currently streaming (so an interrupt can cut the text without ending the turn's bookkeeping).
+  const interruptsRef = useRef<Record<string, boolean>>({});
+  const streamCtlsRef = useRef<Record<string, AbortController>>({});
   const [error, setError] = useState<string | null>(null);
   // Per-conversation failure/notice from a streaming turn, so a background chat's
   // error never shows under the chat you're viewing and survives switching chats.
@@ -564,6 +568,9 @@ export default function App() {
         setInput("");
         setAttachments([]);
       }
+      // Steer: end the running turn at its next step so this message is read now,
+      // with everything done so far kept in the chat.
+      interrupt(targetId, false);
       return;
     }
     if (!settings.apiKey && !isClaudeCodeUrl(settings.baseUrl)) {
@@ -615,6 +622,7 @@ export default function App() {
 
     setConvError(convId, null);
     setConvInfo(convId, null);
+    interruptsRef.current[convId] = false;
     if (freshConv && !opts?.title) void generateTitle(convId, text, settings.activeConnectionId);
 
     const mode = settings.mode ?? "auto";
@@ -668,6 +676,7 @@ export default function App() {
     const endStream = () => {
       setStreamingIds((ids) => ids.filter((x) => x !== convId));
       delete abortsRef.current[convId!];
+      delete streamCtlsRef.current[convId!];
     };
 
     // Claude Code (local): drive the `claude` CLI instead of an HTTP provider.
@@ -767,62 +776,88 @@ export default function App() {
         .map((c) => ({ ...settings, baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, activeConnectionId: c.id })),
     ];
     let activeSettings = settings;
-    const writePartial = (partial: string) =>
+    let roundPartial = "";
+    const writePartial = (partial: string) => {
+      roundPartial = partial;
       updateConversation(convId!, (c) => ({
         ...c,
         messages: [...c.messages.slice(0, -1), { role: "assistant", content: partial }],
       }));
+    };
+    // Each HTTP request gets its own controller chained to the turn's, so an
+    // interrupt can cut just the current stream while the turn wraps up cleanly.
+    const streamSignal = () => {
+      const c = new AbortController();
+      streamCtlsRef.current[convId!] = c;
+      controller.signal.addEventListener("abort", () => c.abort(), { once: true });
+      return c.signal;
+    };
     const deadline = Date.now() + 90_000; // hard cap: stop tool-looping after 90s
     try {
       let full = "";
       let finished = false;
       let cappedOut = false;
+      let interrupted = false;
       for (let round = 0; round < MAX_ROUNDS; round++) {
         if (controller.signal.aborted) break;
         if (Date.now() > deadline) {
           cappedOut = true;
           break;
         }
+        roundPartial = "";
         let result: ChatResult;
-        if (round === 0 && fallbacks.length > 1) {
-          // First reply: walk connections until one actually starts responding.
-          let chosen: ChatResult | null = null;
-          for (let fi = 0; fi < fallbacks.length; fi++) {
-            const cand = fallbacks[fi];
-            let gotContent = false;
-            try {
-              chosen = await streamChat(
-                cand,
-                payload,
-                (partial) => {
-                  gotContent = true;
-                  writePartial(partial);
-                },
-                controller.signal,
-                useTools,
-                convId
-              );
-              activeSettings = cand;
-              if (fi > 0) {
-                setConvInfo(convId, `${connLabel(fallbacks[0])} was unavailable — switched to ${connLabel(cand)}.`);
-                setSettings(cand);
-                storage.saveSettings(cand);
+        try {
+          if (round === 0 && fallbacks.length > 1) {
+            // First reply: walk connections until one actually starts responding.
+            let chosen: ChatResult | null = null;
+            for (let fi = 0; fi < fallbacks.length; fi++) {
+              const cand = fallbacks[fi];
+              let gotContent = false;
+              try {
+                chosen = await streamChat(
+                  cand,
+                  payload,
+                  (partial) => {
+                    gotContent = true;
+                    writePartial(partial);
+                  },
+                  streamSignal(),
+                  useTools,
+                  convId
+                );
+                activeSettings = cand;
+                if (fi > 0) {
+                  setConvInfo(convId, `${connLabel(fallbacks[0])} was unavailable — switched to ${connLabel(cand)}.`);
+                  setSettings(cand);
+                  storage.saveSettings(cand);
+                }
+                break;
+              } catch (e) {
+                const m = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
+                const aborted =
+                  controller.signal.aborted || (e as Error)?.name === "AbortError" || /abort/i.test(m);
+                // Only fall through on a retryable provider error before any text streamed.
+                if (aborted || gotContent || !isRetryable(m) || fi === fallbacks.length - 1) throw e;
               }
-              break;
-            } catch (e) {
-              const m = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
-              const aborted =
-                controller.signal.aborted || (e as Error)?.name === "AbortError" || /abort/i.test(m);
-              // Only fall through on a retryable provider error before any text streamed.
-              if (aborted || gotContent || !isRetryable(m) || fi === fallbacks.length - 1) throw e;
             }
+            result = chosen!;
+          } else {
+            result = await streamChat(activeSettings, payload, writePartial, streamSignal(), useTools, convId);
           }
-          result = chosen!;
-        } else {
-          result = await streamChat(activeSettings, payload, writePartial, controller.signal, useTools, convId);
+        } catch (e) {
+          if (interruptsRef.current[convId] && !controller.signal.aborted) {
+            interrupted = true;
+            full = roundPartial;
+            break;
+          }
+          throw e;
         }
 
         if (result.content) full = result.content;
+        if (interruptsRef.current[convId]) {
+          interrupted = true;
+          break;
+        }
 
         if (result.toolCalls.length === 0 || controller.signal.aborted) {
           full = result.content;
@@ -869,6 +904,20 @@ export default function App() {
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
         }
         if (cappedOut) break;
+        if (interruptsRef.current[convId]) {
+          interrupted = true;
+          full = "";
+          break;
+        }
+      }
+      if (interrupted) {
+        updateConversation(convId, (c) => {
+          const msgs = c.messages.slice(0, -1);
+          if (full) msgs.push({ role: "assistant", content: full });
+          msgs.push({ role: "tool", content: "▸ Interrupted" } as Message);
+          return { ...c, messages: msgs };
+        });
+        return;
       }
       if (!full && !controller.signal.aborted) {
         if (cappedOut) {
@@ -919,6 +968,16 @@ export default function App() {
     if (!activeId) return;
     abortsRef.current[activeId]?.abort();
     setQueued((q) => ({ ...q, [activeId]: [] }));
+  };
+
+  // Soft interrupt (Esc / a message typed mid-turn): the turn ends at its next
+  // step but everything done so far stays in the chat, so the next message
+  // continues from there. `immediate` also cuts text that is mid-stream.
+  const interrupt = (cid: string, immediate: boolean) => {
+    if (!abortsRef.current[cid]) return;
+    interruptsRef.current[cid] = true;
+    if (isClaudeCodeUrl(settings.baseUrl)) claudeInterrupt(cid);
+    else if (immediate) streamCtlsRef.current[cid]?.abort();
   };
 
   // Auto-send queued messages once their conversation finishes generating.
@@ -1556,6 +1615,7 @@ export default function App() {
                           <span className="animate-bounce">●</span>
                           <span className="animate-bounce [animation-delay:150ms]">●</span>
                           <span className="animate-bounce [animation-delay:300ms]">●</span>
+                          {activeStreaming && <span className="ml-2 self-center text-[11px]">esc to interrupt</span>}
                         </span>
                       )}
                       {m.content && (
@@ -1586,7 +1646,7 @@ export default function App() {
                   <div key={`q${k}`} className="flex justify-end animate-fade-up">
                     <div className="max-w-[80%] rounded-2xl rounded-br-md border border-dashed border-[var(--bd)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--txt-dim)]">
                       <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
-                        Queued
+                        Sending at the next step
                         <button
                           type="button"
                           aria-label="Remove queued message"
@@ -1736,6 +1796,11 @@ export default function App() {
                       setInput("");
                       return;
                     }
+                  }
+                  if (e.key === "Escape" && activeStreaming && activeId) {
+                    e.preventDefault();
+                    interrupt(activeId, true);
+                    return;
                   }
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();

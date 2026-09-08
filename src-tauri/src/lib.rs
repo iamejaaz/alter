@@ -138,7 +138,10 @@ struct ClaudeProc {
 }
 type ClaudeSlot = std::sync::Arc<tokio::sync::Mutex<Option<ClaudeProc>>>;
 #[derive(Default)]
-pub struct ClaudeState(tokio::sync::Mutex<std::collections::HashMap<String, ClaudeSlot>>);
+pub struct ClaudeState {
+    slots: tokio::sync::Mutex<std::collections::HashMap<String, ClaudeSlot>>,
+    interrupts: Mutex<HashSet<String>>,
+}
 
 // Upper bound on idle warm processes; the least recently used idle one is killed
 // when a new conversation needs a slot beyond this.
@@ -146,14 +149,23 @@ const MAX_WARM_PROCS: usize = 4;
 
 impl ClaudeState {
     async fn slot(&self, conv_id: &str) -> ClaudeSlot {
-        let mut map = self.0.lock().await;
+        let mut map = self.slots.lock().await;
         map.entry(conv_id.to_string()).or_default().clone()
+    }
+
+    fn request_interrupt(&self, conv_id: &str) {
+        if let Ok(mut s) = self.interrupts.lock() {
+            s.insert(conv_id.to_string());
+        }
+    }
+    fn take_interrupt(&self, conv_id: &str) -> bool {
+        self.interrupts.lock().map(|mut s| s.remove(conv_id)).unwrap_or(false)
     }
 
     // Kill the oldest idle process(es) so at most MAX_WARM_PROCS stay warm.
     // A slot mid-turn holds its own lock and is never touched here.
     async fn evict_idle(&self, keep: &str) {
-        let map = self.0.lock().await;
+        let map = self.slots.lock().await;
         let mut idle: Vec<(std::time::Instant, ClaudeSlot)> = Vec::new();
         let mut live = 0usize;
         for (id, slot) in map.iter() {
@@ -185,13 +197,20 @@ impl ClaudeState {
     }
 
     async fn close(&self, conv_id: &str) {
-        let slot = { self.0.lock().await.remove(conv_id) };
+        let slot = { self.slots.lock().await.remove(conv_id) };
         if let Some(slot) = slot {
             if let Some(mut p) = slot.lock().await.take() {
                 let _ = p.child.kill().await;
             }
         }
     }
+}
+
+// Soft interrupt: ask the running turn to stop at the CLI's next boundary. The
+// process and its session survive, so the next message continues with full context.
+#[tauri::command]
+fn claude_interrupt(procs: tauri::State<'_, ClaudeState>, conv_id: String) {
+    procs.request_interrupt(&conv_id);
 }
 
 #[tauri::command]
@@ -550,6 +569,7 @@ async fn claude_code(
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::process::Command;
     cancel.clear(&conv_id);
+    procs.take_interrupt(&conv_id);
 
     let model = model.unwrap_or_default();
     let cwd = cwd.unwrap_or_default();
@@ -658,10 +678,34 @@ async fn claude_code(
 
     // Forward events as they arrive, until this turn's `result` event.
     const STALL_SECS: u64 = 120;
+    const INTERRUPT_GRACE_SECS: u64 = 8;
     let mut last_output = std::time::Instant::now();
     let mut warned_at: u64 = 0;
+    let mut interrupted_at: Option<std::time::Instant> = None;
     loop {
         if cancel.is_cancelled(&conv_id) {
+            if let Some(mut old) = guard.take() {
+                let _ = old.child.kill().await;
+            }
+            break;
+        }
+        if interrupted_at.is_none() && procs.take_interrupt(&conv_id) {
+            let p = guard.as_mut().unwrap();
+            let req = format!(
+                "{{\"type\":\"control_request\",\"request_id\":\"alter-{}\",\"request\":{{\"subtype\":\"interrupt\"}}}}\n",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0)
+            );
+            let _ = p.stdin.write_all(req.as_bytes()).await;
+            let _ = p.stdin.flush().await;
+            interrupted_at = Some(std::time::Instant::now());
+            let _ = on_chunk.send("{\"type\":\"alter_interrupted\"}".to_string());
+        }
+        // If the CLI doesn't honour the interrupt in time, fall back to killing it;
+        // the session is still resumable on the next turn.
+        if interrupted_at.is_some_and(|t| t.elapsed().as_secs() >= INTERRUPT_GRACE_SECS) {
             if let Some(mut old) = guard.take() {
                 let _ = old.child.kill().await;
             }
@@ -1246,6 +1290,7 @@ pub fn run() {
             test_connection,
             claude_code,
             claude_close,
+            claude_interrupt,
             claude_version,
             import_frappe_credentials,
             read_user_memory,
