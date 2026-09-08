@@ -870,7 +870,9 @@ export default function App() {
   };
 
   const stop = () => {
-    if (activeId) abortsRef.current[activeId]?.abort();
+    if (!activeId) return;
+    abortsRef.current[activeId]?.abort();
+    setQueued((q) => ({ ...q, [activeId]: [] }));
   };
 
   // Auto-send queued messages once their conversation finishes generating.
@@ -1062,6 +1064,11 @@ export default function App() {
     abortsRef.current[id]?.abort();
     delete abortsRef.current[id];
     setStreamingIds((ids) => ids.filter((x) => x !== id));
+    setQueued((q) => {
+      const next = { ...q };
+      delete next[id];
+      return next;
+    });
     setConversations((prev) => prev.filter((c) => c.id !== id));
     if (activeId === id) setActiveId(null);
   };
@@ -1510,7 +1517,20 @@ export default function App() {
                 (queued[activeId] || []).map((q, k) => (
                   <div key={`q${k}`} className="flex justify-end animate-fade-up">
                     <div className="max-w-[80%] rounded-2xl rounded-br-md border border-dashed border-[var(--bd)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--txt-dim)]">
-                      <span className="mb-0.5 block text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">Queued</span>
+                      <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
+                        Queued
+                        <button
+                          type="button"
+                          aria-label="Remove queued message"
+                          title="Remove"
+                          onClick={() =>
+                            setQueued((qs) => ({ ...qs, [activeId]: (qs[activeId] || []).filter((_, i) => i !== k) }))
+                          }
+                          className="normal-case tracking-normal hover:text-[var(--txt)] transition-colors"
+                        >
+                          ×
+                        </button>
+                      </span>
                       {q}
                     </div>
                   </div>
