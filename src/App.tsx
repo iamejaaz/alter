@@ -110,6 +110,12 @@ export default function App() {
   );
   const setShowSettings = (v: boolean) => setView(v ? "settings" : "chat");
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
+  // Selecting or starting a chat must also leave whatever page (routines/settings/
+  // skills) is open — otherwise the chat changes underneath a hidden main view.
+  const openChat = (id: string | null) => {
+    setActiveId(id);
+    setView("chat");
+  };
   const [input, setInput] = useState("");
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
@@ -1151,7 +1157,7 @@ export default function App() {
   };
 
   const slashCommands = [
-    { cmd: "/new", desc: "Start a new chat", run: () => setActiveId(null) },
+    { cmd: "/new", desc: "Start a new chat", run: () => openChat(null) },
     {
       cmd: "/clear",
       desc: "Delete this conversation",
@@ -1201,7 +1207,7 @@ export default function App() {
   ];
 
   const paletteCommands: Command[] = [
-    { id: "new", label: "New chat", hint: "⌘N", section: "Actions", run: () => setActiveId(null) },
+    { id: "new", label: "New chat", hint: "⌘N", section: "Actions", run: () => openChat(null) },
     { id: "settings", label: "Open settings", section: "Actions", run: () => setShowSettings(true) },
     { id: "routines", label: "Open routines", section: "Actions", run: () => setView("routines") },
     { id: "skills", label: "Open skills", section: "Actions", run: () => setView("skills") },
@@ -1254,7 +1260,7 @@ export default function App() {
       id: `chat-${c.id}`,
       label: c.title,
       section: "Chats",
-      run: () => setActiveId(c.id),
+      run: () => openChat(c.id),
     })),
   ];
 
@@ -1267,8 +1273,8 @@ export default function App() {
         activeProjectId={activeProjectId}
         onSelectProject={selectProject}
         onManageProjects={() => setShowProjects(true)}
-        onSelect={setActiveId}
-        onNew={() => setActiveId(null)}
+        onSelect={openChat}
+        onNew={() => openChat(null)}
         onDelete={deleteConversation}
         onRename={(id, title) => updateConversation(id, (c) => ({ ...c, title }))}
         onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}
