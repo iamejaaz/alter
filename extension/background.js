@@ -65,13 +65,21 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => alert("Pick a grammar model in the Alter extension popup first.") });
     return;
   }
-  const r = await bridge("/run", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ connectionId, system: GRAMMAR_SYSTEM, prompt: text }),
-  });
+  const tell = (m) =>
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: (x) => alert("Alter: " + x), args: [m] });
+  let r;
+  try {
+    r = await bridge("/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId, system: GRAMMAR_SYSTEM, prompt: text }),
+    });
+  } catch {
+    tell("Can't reach Alter. Is the app running?");
+    return;
+  }
   if (!r.ok || !r.body.content) {
-    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: (m) => alert("Alter: " + m), args: [r.body.error || "grammar fix failed"] });
+    tell(r.body.error || hint(r));
     return;
   }
   chrome.scripting.executeScript({ target: { tabId: tab.id }, func: replaceSelectionInPage, args: [r.body.content] });
