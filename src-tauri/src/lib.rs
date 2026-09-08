@@ -921,6 +921,36 @@ fn now_millis() -> u64 {
         .unwrap_or(0)
 }
 
+// Attached images live on disk (localStorage can't hold them), keyed by attachment id.
+fn attachment_path(app: &tauri::AppHandle, id: &str) -> Result<std::path::PathBuf, String> {
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err("bad attachment id".into());
+    }
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("attachments");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join(id))
+}
+
+#[tauri::command]
+fn save_attachment(app: tauri::AppHandle, id: String, data_url: String) -> Result<(), String> {
+    std::fs::write(attachment_path(&app, &id)?, data_url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_attachment(app: tauri::AppHandle, id: String) -> Result<String, String> {
+    std::fs::read_to_string(attachment_path(&app, &id)?).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_attachments(app: tauri::AppHandle, ids: Vec<String>) -> Result<(), String> {
+    for id in ids {
+        if let Ok(p) = attachment_path(&app, &id) {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn save_routine_state(app: tauri::AppHandle, state: String) -> Result<(), String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -1277,6 +1307,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
+            save_attachment,
+            load_attachment,
+            delete_attachments,
             list_dir,
             list_tree,
             search_files,

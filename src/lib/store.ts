@@ -10,6 +10,7 @@ export interface Attachment {
   name: string;
   dataUrl?: string;
   text?: string;
+  stored?: boolean;
 }
 
 export interface Message {

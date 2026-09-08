@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import SettingsPanel from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
+import AttachmentImage from "./components/AttachmentImage";
+import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
@@ -1104,7 +1106,11 @@ export default function App() {
           r.onerror = rej;
           r.readAsDataURL(f);
         });
-        next.push({ id: newId(), kind: "image", name: f.name, dataUrl });
+        const id = newId();
+        const stored = await invoke("save_attachment", { id, dataUrl })
+          .then(() => true)
+          .catch(() => false);
+        next.push({ id, kind: "image", name: f.name, dataUrl, stored });
       } else if (f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
         try {
           const text = await extractPdfText(f);
@@ -1183,6 +1189,11 @@ export default function App() {
     abortsRef.current[id]?.abort();
     delete abortsRef.current[id];
     claudeClose(id);
+    const imageIds = (conversations.find((c) => c.id === id)?.messages ?? [])
+      .flatMap((m) => m.attachments ?? [])
+      .filter((a) => a.kind === "image" && a.stored)
+      .map((a) => a.id);
+    if (imageIds.length) void invoke("delete_attachments", { ids: imageIds }).catch(() => {});
     setStreamingIds((ids) => ids.filter((x) => x !== id));
     setQueued((q) => {
       const next = { ...q };
@@ -1559,12 +1570,11 @@ export default function App() {
                       {m.attachments && m.attachments.length > 0 && (
                         <div className="flex flex-wrap justify-end gap-2 mb-2">
                           {m.attachments.map((a) =>
-                            a.kind === "image" && a.dataUrl ? (
-                              <img
+                            a.kind === "image" ? (
+                              <AttachmentImage
                                 key={a.id}
-                                src={a.dataUrl}
-                                alt={a.name}
-                                onClick={() => setPreview(a.dataUrl ?? null)}
+                                a={a}
+                                onPreview={setPreview}
                                 className="h-24 w-24 rounded-lg object-cover border border-[var(--bd)] cursor-zoom-in hover:opacity-90 transition-opacity"
                               />
                             ) : (
@@ -1917,16 +1927,27 @@ export default function App() {
                     title="Working…"
                   />
                 )}
-                {active && active.messages.length > 0 && (
-                  <span className="text-[11px] text-[var(--txt-faint)] tabular-nums mx-1" title="Context tokens · session cost">
-                    {active.lastTokens
-                      ? active.lastTokens >= 1000
-                        ? (active.lastTokens / 1000).toFixed(1) + "k"
-                        : active.lastTokens
-                      : `~${tokenEstimate >= 1000 ? (tokenEstimate / 1000).toFixed(1) + "k" : tokenEstimate}`}
-                    {active.costUsd != null && ` · $${active.costUsd.toFixed(active.costUsd < 1 ? 3 : 2)}`}
-                  </span>
-                )}
+                {active && active.messages.length > 0 && (() => {
+                  const used = active.lastTokens || tokenEstimate;
+                  const window = contextWindowFor(active.model ?? settings.model, claudeCodeActive);
+                  const pct = window ? Math.min(100, Math.round((used / window) * 100)) : null;
+                  const hot = pct != null && pct >= 80;
+                  const title = window
+                    ? `${used.toLocaleString()} of ${window.toLocaleString()} context tokens (${pct}%) · session cost`
+                    : "Context tokens · session cost";
+                  return (
+                    <span
+                      className={`text-[11px] tabular-nums mx-1 ${hot ? "text-amber-500" : "text-[var(--txt-faint)]"}`}
+                      title={title}
+                    >
+                      {active.lastTokens ? "" : "~"}
+                      {fmtTokens(used)}
+                      {window && ` / ${fmtTokens(window)}`}
+                      {pct != null && pct >= 50 && ` (${pct}%)`}
+                      {active.costUsd != null && ` · $${active.costUsd.toFixed(active.costUsd < 1 ? 3 : 2)}`}
+                    </span>
+                  );
+                })()}
 
                 <div className="flex-1" />
 
