@@ -87,45 +87,6 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   chrome.scripting.executeScript({ target: { tabId: tab.id }, func: replaceSelectionInPage, args: [r.body.content] });
 });
 
-// Streaming variant: a long-lived port streams model tokens to the content
-// script as they arrive, so the panel fills in live instead of hanging.
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== "run-stream") return;
-  port.onMessage.addListener(async (msg) => {
-    // MV3 kills the service worker after ~30s idle — during a long agent run
-    // (10–30s before the first token) that would abort the streaming read. Ping
-    // a chrome API every 20s to keep the worker alive until the stream ends.
-    const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
-    try {
-      const { token } = await chrome.storage.local.get("token");
-      const res = await fetch(BRIDGE + "/run-stream", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + (token || ""), "Content-Type": "application/json" },
-        body: JSON.stringify(msg),
-      });
-      if (!res.ok || !res.body) {
-        port.postMessage({ error: res.status === 401 ? "Wrong or missing token — set it in the popup." : "Bridge error " + res.status });
-        port.postMessage({ done: true });
-        return;
-      }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = dec.decode(value, { stream: true });
-        if (text) port.postMessage({ delta: text });
-      }
-      port.postMessage({ done: true });
-    } catch (e) {
-      port.postMessage({ error: "Stream dropped — " + (e && e.message ? e.message : "check the Alter app is running.") });
-      port.postMessage({ done: true });
-    } finally {
-      clearInterval(keepAlive);
-    }
-  });
-});
-
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
