@@ -380,10 +380,24 @@ export default function App() {
   };
   useEffect(() => {
     let un: (() => void) | undefined;
-    void listen<{ prompt: string; title?: string; connectionId?: string; model?: string }>("alter://open-chat", (e) =>
-      openSeededRef.current(e.payload.prompt, e.payload.title, e.payload.connectionId, e.payload.model)
-    ).then((u) => (un = u));
-    return () => un?.();
+    let gone = false;
+    let last = { key: "", at: 0 };
+    void listen<{ prompt: string; title?: string; connectionId?: string; model?: string }>("alter://open-chat", (e) => {
+      // Guard against a double-delivered event opening two chats.
+      const key = e.payload.title + "\n" + e.payload.prompt;
+      if (key === last.key && Date.now() - last.at < 3000) return;
+      last = { key, at: Date.now() };
+      openSeededRef.current(e.payload.prompt, e.payload.title, e.payload.connectionId, e.payload.model);
+    }).then((u) => {
+      // If the effect was torn down (hot reload / strict mode) before `listen`
+      // resolved, unlisten right away instead of leaking a duplicate listener.
+      if (gone) u();
+      else un = u;
+    });
+    return () => {
+      gone = true;
+      un?.();
+    };
   }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1602,7 +1616,7 @@ export default function App() {
             const el = scrollRef.current;
             if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
           }}
-          className="flex-1 overflow-y-auto"
+          className="flex-1 overflow-y-auto overflow-x-hidden"
         >
           {!active || active.messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-8">
