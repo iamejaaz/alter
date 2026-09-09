@@ -293,6 +293,7 @@ fn spawn_agent_run(
     repro_root: String,
     running: Arc<Mutex<std::collections::HashMap<String, u32>>>,
     progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
+    max_turns: Option<u32>,
 ) {
     let is_pr = mode.as_deref() == Some("pr");
     let is_pr_push = mode.as_deref() == Some("pr-push");
@@ -323,6 +324,11 @@ fn spawn_agent_run(
         cmd.arg("--disallowedTools").arg(agent_disallowed_tools());
     }
     cmd.arg("--permission-mode").arg("default");
+    // Safety net only: the prompt's tool budget is the real limit. A run that
+    // hits this ends with what it has instead of looping.
+    if let Some(n) = max_turns {
+        cmd.arg("--max-turns").arg(n.to_string());
+    }
     if !repro_root.is_empty() {
         cmd.env("ALTER_REPRO_ROOT", &repro_root);
     }
@@ -900,7 +906,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            spawn_agent_run(conn, system, prompt, run_id.clone(), mode, repro_root, state.running.clone(), state.progress.clone());
+            let max_turns = prompts["budgets"][req.verb.as_str()].as_u64().map(|n| n as u32);
+            spawn_agent_run(conn, system, prompt, run_id.clone(), mode, repro_root, state.running.clone(), state.progress.clone(), max_turns);
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/run") => {
@@ -1003,7 +1010,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            spawn_agent_run(conn, system, req.prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone());
+            spawn_agent_run(conn, system, req.prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone(), None);
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/agent-poll") => {

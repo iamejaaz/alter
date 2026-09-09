@@ -1325,31 +1325,38 @@ use tauri_plugin_autostart::MacosLauncher;
 // Ship Alter's skills with the app: install them into ~/.claude/skills on first
 // run so the headless `claude` the bridge drives (and any Claude Code session on
 // this machine) can use them. Idempotent — never clobbers a user-edited copy.
+// Install or refresh the bundled support skill in ~/.claude/skills. Each file is
+// rewritten only when the bundled copy differs, so a user's own edits to other
+// files survive and a newer app build ships newer prompts/scripts.
 fn install_bundled_skills() {
     let home = match std::env::var("HOME") {
         Ok(h) => h,
         Err(_) => return,
     };
     let dir = std::path::Path::new(&home).join(".claude/skills/frappe-support-diagnosis");
-    if dir.join("SKILL.md").exists() {
-        return;
-    }
     let scripts = dir.join("scripts");
     if std::fs::create_dir_all(&scripts).is_err() {
         return;
     }
-    let _ = std::fs::write(
-        dir.join("SKILL.md"),
-        include_str!("../../skills/frappe-support-diagnosis/SKILL.md"),
-    );
-    let files = [
-        (scripts.join("find-code.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/find-code.sh")),
-        (scripts.join("across-versions.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/across-versions.sh")),
+    let files: [(std::path::PathBuf, &str, bool); 7] = [
+        (dir.join("SKILL.md"), include_str!("../../skills/frappe-support-diagnosis/SKILL.md"), false),
+        (dir.join("prompts.json"), include_str!("../../skills/frappe-support-diagnosis/prompts.json"), false),
+        (scripts.join("context.py"), include_str!("../../skills/frappe-support-diagnosis/scripts/context.py"), true),
+        (scripts.join("find-code.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/find-code.sh"), true),
+        (scripts.join("across-versions.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/across-versions.sh"), true),
+        (scripts.join("repro.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/repro.sh"), true),
+        (scripts.join("repro-setup.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/repro-setup.sh"), true),
     ];
-    for (path, body) in &files {
-        let _ = std::fs::write(path, body);
+    for (path, body, exec) in &files {
+        let same = std::fs::read_to_string(path).map(|cur| cur == *body).unwrap_or(false);
+        if same {
+            continue;
+        }
+        if std::fs::write(path, body).is_err() {
+            continue;
+        }
         #[cfg(unix)]
-        {
+        if *exec {
             use std::os::unix::fs::PermissionsExt;
             if let Ok(meta) = std::fs::metadata(path) {
                 let mut perm = meta.permissions();
