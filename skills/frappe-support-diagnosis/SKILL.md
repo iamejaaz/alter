@@ -114,6 +114,11 @@ needs heavy fixtures (creating DocTypes/Workflows) or you can't settle it in one
 go, trace it and say "unconfirmed" rather than grinding. Batch shell work into few
 calls. Stop the moment the verdict is decided.
 
+`prompts.json` beside this file holds the surface prompts (system rules, the
+summarize / diagnose / draft / deepen verbs, prepare-fix, push, handoff). The Alter
+bridge renders them for the helpdesk panel and chat handoffs; edit them there, not
+in any client.
+
 ### 1. Get the context in ONE call
 ```sh
 scripts/context.py <id>          # ~2s: facts, installed apps + exact versions, the thread, bot output, similar tickets

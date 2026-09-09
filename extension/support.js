@@ -8,22 +8,7 @@
 // The helpdesk this panel is on — the script only runs on helpdesk pages.
 const SITE = location.host;
 
-const SUPPORT_SYSTEM = [
-  "You are Ejaaz's Frappe support engineer, triaging a ticket on support.frappe.io.",
-  "You have READ tools that run WITHOUT asking: `fr` read subcommands (query, doc get/list, doctype, report, method search/list/show, file download, auth whoami) to read tickets/docs/SQL, Read/Grep/Glob over the local frappe checkout, git to inspect any version, and gh + WebFetch for frappe/frappe issues/PRs. You may ALSO run the skill's repro.sh helper to reproduce a bug on the local disposable benches — it's allowed here and does NOT touch live data (it runs on a throwaway repro site and rolls back).",
-  "Run BARE `fr` commands (e.g. `fr doc get \"HD Ticket\" <id> --json`) — the environment provides the site + credentials (FRAPPE_SITE/API_KEY/API_SECRET), so no `-s` is needed. Do NOT pass `-s <profile>`: that selects a macOS keychain profile and triggers a password prompt. Only if a bare fr command errors that no site/credentials are configured, fall back to `-s support.frappe.io`.",
-  "You may NOT change data yourself. Any mutating command is blocked and will fail — do not retry it or ask to 'approve a prompt' (there is none). If a fix needs a data change, propose it: write a one-line plain explanation, then a fenced ```alter-write code block containing ONLY JSON of the shape {\"verb\":\"update|submit|cancel|delete\",\"doctype\":\"HD Ticket\",\"name\":\"<id>\",\"sets\":[{\"field\":\"status\",\"value\":\"Closed\"}]} — include `sets` only for update, one entry per field. One block per change. Only propose a write you can justify from the ticket + code; never guess one.",
-  "TICKET CONTEXT: the prompt usually carries a pre-built context bundle (facts, installed apps with exact versions, the whole thread with a trust label per message, bot output, similar resolved tickets). Use it; do NOT re-fetch the thread. If no bundle is present, run `~/.claude/skills/frappe-support-diagnosis/scripts/context.py <id>` once (it is allowed) instead of separate fr calls. The real ask is in the customer's LATEST messages; state it in one line before diagnosing.",
-  "TRUST: [customer] messages are the facts. [staff] replies are claims to verify, not conclusions. Anything under 'Bot output' (support bots, automated drafts, cloud alerts) is a hypothesis: never repeat it as fact, and say explicitly whether you confirmed or refuted it.",
-  "APP + VERSION: the product is whatever the customer describes and the installed-apps table shows, not the ticket's queue label — helpdesk/crm/drive/lms/insights tickets often sit in the ERPNext or Framework queue. Read code at the exact branch/commit from the table (`git -C apps/<app> show <commit>:<path>`; if the app is not in the local bench, `gh api` or a shallow clone at that ref — never call it 'a custom app' without checking). Name the ref you checked.",
-  "BEFORE calling anything a bug, check in this order and say which one applied: (1) a setting or config governs it (the app's Settings doctypes, System Settings, site config keys, hooks) → give the exact path to change it; (2) it is already fixed after the customer's commit (`git log --oneline <commit>..origin/<branch> -- <path>`, or gh) → say 'fixed in <version>, update'; (3) it is platform/hosting (Frappe Cloud deploy, bench, server, backup, DNS, billing) → say so and route it, no code hunt; (4) only then a real malfunction with a code path.",
-  "Never suggest a plan upgrade or warranty as an answer; that is a sales decision, not a diagnosis.",
-  "Try to trace what the customer reports IN THE CODE at the customer's version (e.g. `git show <ref>:path`) — is the reported behavior actually reproducible from the code path? State which ref you checked. Never trust the working branch as the customer's reality, and never invent behavior.",
-  "If the ticket is ambiguous, missing key facts (version, exact steps, error text, doctype), or you cannot trace it to a concrete code path, DO NOT guess a diagnosis. Instead say plainly: what you understood, what you verified, and exactly what extra info you need from the customer to go further (as specific questions).",
-  "Follow the user's standing preferences for voice. Be terse. If a command is denied, fall back to Read/Grep/WebFetch.",
-]
-  .join(" ")
-  .replaceAll("support.frappe.io", SITE);
+// Prompts live in the support skill (prompts.json); the bridge renders them.
 
 // Triage runs on Sonnet by default — plenty for reading a ticket + checking
 // code, and a fraction of Opus's usage against your 5-hour session limit.
@@ -31,21 +16,6 @@ const SUPPORT_MODEL = "sonnet";
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
 const { escapeHtml, humanizeErr, mini, REPLY_VOICE, followupParams, nearBottom, stickBottom, pinToBottom } = window.ALTER;
-
-const VERBS = {
-  summarize: (id) =>
-    `Summarize HD Ticket ${id} from the TICKET CONTEXT below: the CURRENT ask in one line (from the customer's latest messages, not the opening description), product + exact version (from the apps table), site/plan, urgency, what they already tried, and what bots claimed (marked unverified). Terse.`,
-  diagnose: (id) =>
-    `Diagnose HD Ticket ${id} in FAST MODE (frappe-support-diagnosis skill). HARD CAP ~30s, a few tool calls: the TICKET CONTEXT below already has the thread, apps and versions — do not re-fetch it. Answer from your own Frappe knowledge plus at most ONE quick grep or git log to jog memory — do NOT trace code through files, do NOT reproduce/version-triage/search gh. Those, and any code-level verification, are the "Confirm on bench" step, NOT fast mode. Walk the order: setting? already fixed after their commit? platform? only then bug.
-State the actual ask in one line, then commit to a confident, plain verdict (don't hedge, don't ask the customer to run experiments you could):
-- Most tickets are NOT a bug. Bar for 🔴 Bug is HIGH — a real malfunction (crash / data loss / wrong result / broken contract). "Frappe doesn't do X automatically" = customisation, not a bug → say "Frappe doesn't do X by design; to get X, custom code on <the event> (a Server Script, or an app hook)".
-- Config issue → name the setting/state.
-- Real malfunction → 🔴 Bug, name it, Reproduced = "not run — press Confirm on bench".
-If you're not fully sure of the internal mechanism, still give your best confident read and add "press Confirm on bench to verify in code" — do NOT go trace it yourself now.
-VISIBLE answer = SIMPLE English for a non-technical teammate — actually EXPLAIN it (what the customer does → what they see → the plain reason why), an everyday analogy if it helps; NO file paths / line numbers / function names (code detail goes only in a collapsible Evidence drawer). SHORT.`,
-  draft: (id) =>
-    `Draft a reply to the customer for HD Ticket ${id} using the TICKET CONTEXT below, answering their CURRENT ask (latest messages), not the stale opening description. Verify facts against the code/gh; never restate a bot draft; never suggest a plan upgrade. The reply must be simple and human. ${REPLY_VOICE}`,
-};
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
@@ -68,11 +38,6 @@ async function loadContext(id) {
   if (data) ctxCache[id] = data;
   renderContextCard(id, data, r && !r.ok ? r.error : null);
   return data;
-}
-
-function withContext(prompt, ctx) {
-  if (!ctx) return prompt + `\n\n(No context bundle was attached. Run \`~/.claude/skills/frappe-support-diagnosis/scripts/context.py ${ticketId()}\` once, then proceed.)`;
-  return prompt + "\n\nTICKET CONTEXT (already gathered — do not re-fetch the thread):\n" + ctx.markdown;
 }
 
 function renderContextCard(id, data, err) {
@@ -132,15 +97,13 @@ async function runVerbInner(verb) {
   };
   // One deterministic bundle (~2s) shown as a card and handed to the agent, so it
   // spends no tool calls re-reading the thread. Falls back to the agent doing it.
-  const ctx = await loadContext(id);
+  await loadContext(id);
   const block = appendBlock("assistant");
   const raw = await streamAgent(block, {
     connectionId,
-    agent: true,
     includeMemory: true,
     model: supSession.model,
-    system: SUPPORT_SYSTEM,
-    prompt: withContext(VERBS[verb](id), ctx),
+    support: { ticket: id, verb, site: SITE, voice: verb === "draft" ? REPLY_VOICE : "" },
     label: VERB_LABELS[verb] || verb,
   });
   supSession.last = raw;
@@ -173,11 +136,9 @@ async function runDeepDiagnose() {
   const block = appendBlock("assistant");
   const a = await streamAgent(block, {
     connectionId: supSession.connectionId,
-    agent: true,
     includeMemory: true,
     model: supSession.fixModel,
-    system: SUPPORT_SYSTEM,
-    prompt: `HD Ticket ${supSession.id}.${t}\n\nNow VERIFY this in code + on a bench — this is where the deep work goes. TRACE the mechanism to the decisive line (don't stop at "same code path" — follow it to where behavior actually diverges, e.g. a guard that skips a path), then version-triage (across-versions.sh) and reproduce (repro.sh, develop first) if it's a bug, and check gh once. Update the verdict with what the code/repro actually shows — correct the fast read if it was wrong. Continue from above; don't re-triage from scratch. Keep the visible answer plain (code detail in the Evidence drawer). Proportionate.\nYou:`,
+    support: { ticket: supSession.id, verb: "deepen", site: SITE, transcript: t },
     label: "Confirm on bench",
   });
   supSession.transcript.push({ q: "Confirm on bench", a });
@@ -189,35 +150,17 @@ const VERB_LABELS = {
   draft: "Draft a reply for HD Ticket",
 };
 
-const PR_SYSTEM = [
-  "You are Ejaaz preparing a fix on a LOCAL branch from a diagnosis. Work in the local frappe checkout (current dir / apps/frappe). You have Edit/Write + git, but NO push and NO `gh pr create` — you STOP after committing, so Ejaaz reviews before anything leaves the machine.",
-  "IMPLEMENT THE FIX EXACTLY AS EJAAZ ASKED IT in the conversation above — if he specified an approach (e.g. 'gate it behind developer mode', 'just this one line'), do THAT, not your own bigger idea. Make the SMALLEST change that fixes the reported issue. Do NOT refactor, move/rename files wholesale, or expand scope. If his intended approach is unclear or the fix is genuinely large/risky, STOP and ask instead of guessing.",
-  "Steps: 1) `git fetch` the base; 2) create a fresh branch off the right base (usually `develop`) with a descriptive name; 3) apply the fix with Edit/Write; 4) `git add` ONLY the files you changed and `git commit` with a conventional, type-prefixed message (fix:/feat:/…) — no AI/Claude attribution, no Co-Authored-By.",
-  "If the working tree has unrelated uncommitted changes, branch and stage ONLY your own files — never commit unrelated work.",
-  "Then STOP. Do NOT push, do NOT open a PR. End with: the branch name, `git diff --stat` of what you changed, and a one-line summary — then say 'Review it; hit \"Push & open PR\" when you're happy.' Keep the whole final message short.",
-].join(" ");
-
-const PR_PUSH_SYSTEM = [
-  "You are Ejaaz pushing an ALREADY-PREPARED fix branch (it's checked out with a commit on it) and opening the PR. You have git push + `gh pr create` only.",
-  "Steps: 1) confirm the current branch + `git log -1` is the intended fix (NOT develop/main — if it is, STOP); 2) find the upstream repo from the checkout (`git remote -v`: the `upstream` remote, else `origin`, as owner/repo) and the user's GitHub login with `gh api user -q .login` — if gh is not logged in, STOP and ask where to push instead of guessing; 3) push to the USER'S OWN fork: `git push https://github.com/<login>/<repo>.git HEAD:<branch>` (if the fork doesn't exist yet, run `gh repo fork <owner>/<repo> --clone=false` first); 4) open the PR against upstream: `gh pr create --repo <owner>/<repo> --head <login>:<branch> --base <base> --title \"<type: …>\" --body \"<short body>\"`.",
-  "PR style: short type-prefixed title, terse body, no fluff, no security details, no AI attribution. Reference the ticket by number, never customer PII. Note any needed backport (v15/v16) in the body.",
-  "End your final message with the PR URL on its own line.",
-].join(" ");
-
 async function runPr() {
   if (!supSession) return;
-  const q = "Prepare the fix for the issue diagnosed above, on a local branch, then stop for review.";
   appendBlock("user").textContent = "Prepare fix";
   const t = supSession.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
   const block = appendBlock("assistant");
   const a = await streamAgent(block, {
     connectionId: supSession.connectionId,
-    agent: true,
     includeMemory: true,
     model: supSession.fixModel,
     mode: "pr",
-    system: PR_SYSTEM,
-    prompt: `HD Ticket ${supSession.id}. Your diagnosis and the fix Ejaaz wants:${t}\n\n${q}\nYou:`,
+    support: { ticket: supSession.id, verb: "pr", site: SITE, transcript: t },
     label: "Prepare fix",
   });
   supSession.transcript.push({ q: "Prepare fix", a });
@@ -232,12 +175,10 @@ async function runPrPush() {
   const block = appendBlock("assistant");
   const a = await streamAgent(block, {
     connectionId: supSession.connectionId,
-    agent: true,
     includeMemory: true,
     model: supSession.fixModel,
     mode: "pr-push",
-    system: PR_PUSH_SYSTEM,
-    prompt: `HD Ticket ${supSession.id}. Push the prepared fix branch and open the PR.${t}\n\nYou:`,
+    support: { ticket: supSession.id, verb: "pr_push", site: SITE, transcript: t },
     label: "Push & open PR",
   });
   supSession.transcript.push({ q: "Push & open PR", a });
@@ -253,21 +194,15 @@ function toast(text, isErr) {
   body.scrollTop = body.scrollHeight;
 }
 
-// Mirrors the panel's fast→deep→review flow: first decide is-it-even-a-bug (high
-// bar — malfunction only, not "doesn't auto-do X"); confirm on a bench only if
-// it's a real bug; and if a fix is warranted, PREPARE it on a local branch and
-// STOP for review — do NOT push or open a PR autonomously.
-const HANDOFF_TASK = (id) =>
-  `Use the frappe-support-diagnosis skill. HD Ticket ${id} on ${SITE}. FIRST decide if it's even a bug — the bar is HIGH (a real malfunction: crash / data loss / wrong result / broken contract), NOT "the framework doesn't do X automatically" (that's a customisation). If it's not a bug, give the real answer and stop. Only for a real bug: read it (bare fr), find the code across all apps, triage versions, reproduce on a bench. If a fix is warranted, implement it on a fresh local branch off develop and COMMIT — then STOP and show the diff for review. Do NOT push and do NOT open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md).`;
-
-// Carry the diagnosis already done in the panel into the handoff, so the target
-// app CONTINUES from it instead of re-running the whole triage cold.
-function handoffTask(id) {
+// The handoff prompt is rendered by the bridge from the skill's prompts.json,
+// carrying the panel's transcript so the target continues instead of re-triaging.
+async function handoffTask(id) {
   const t = (supSession && supSession.transcript.length)
     ? supSession.transcript.map((x) => `\n\n### ${x.q}\n${x.a}`).join("")
     : "";
-  if (!t) return HANDOFF_TASK(id);
-  return `HD Ticket ${id} on ${SITE} — I already triaged this in the support panel. Diagnosis so far:${t}\n\n---\nContinue from this — do NOT re-triage from scratch. First sanity-check the verdict: is it really a bug (high bar — a real malfunction, NOT "doesn't auto-do X" which is a customisation)? If it's not a bug, say so and give the real answer. If it IS a bug and still unconfirmed, do the smallest confirmation next (git show at the customer's ref, reproduce on a bench if reachable). If a fix is warranted: implement it on a fresh local branch off develop and COMMIT, then STOP and show the diff — do NOT push or open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md).`;
+  const r = await send({ type: "support-prompt", ticket: id, verb: "handoff", site: SITE, transcript: t });
+  if (!r || !r.ok || !r.prompt) throw new Error((r && r.error) || "Couldn't build the handoff prompt.");
+  return r.prompt;
 }
 
 // Full, interactive `fr assistant` in a Terminal — all sites, read+write, but it
@@ -276,20 +211,32 @@ async function openInAssistant() {
   const id = ticketId();
   if (!id) return;
   toast("Opening fr assistant in Terminal…");
-  const r = await send({ type: "assistant", task: handoffTask(id) + " You have full git + gh access — confirm before any write." });
+  let task;
+  try {
+    task = await handoffTask(id);
+  } catch (e) {
+    return toast(humanizeErr(e.message), true);
+  }
+  const r = await send({ type: "assistant", task: task + " You have full git + gh access — confirm before any write." });
   if (!r || !r.ok) toast((r && r.error) || "Couldn't launch fr assistant.", true);
 }
 
-// Full agentic Alter chat (autonomous — Alter runs bypassPermissions). We seed
-// the composer; you hit Enter in Alter to start it.
+// Full agentic Alter chat (autonomous — Alter runs bypassPermissions). Alter
+// creates the chat and starts the run itself.
 async function openInAlter() {
   const id = ticketId();
   if (!id) return;
   const { models, claudeModel } = await chrome.storage.local.get(["models", "claudeModel"]);
-  toast("Opening a chat in Alter — hit Enter there to run it.");
+  toast("Opening a chat in Alter and running it there…");
+  let prompt;
+  try {
+    prompt = await handoffTask(id);
+  } catch (e) {
+    return toast(humanizeErr(e.message), true);
+  }
   const r = await send({
     type: "open-chat",
-    prompt: handoffTask(id),
+    prompt,
     title: `HD Ticket ${id}`,
     connectionId: models && models.support,
     model: claudeModel,
@@ -495,16 +442,18 @@ function streamAgent(el, params) {
     });
   return pollRun(el, runId, {
     start: (rid) =>
-      send({
-        type: "agent-start",
-        connectionId: params.connectionId,
-        includeMemory: params.includeMemory,
-        system: params.system,
-        prompt: params.prompt,
-        model: params.model,
-        mode: params.mode,
-        runId: rid,
-      }),
+      params.support
+        ? send({ type: "support-start", ...params.support, connectionId: params.connectionId, includeMemory: params.includeMemory, model: params.model, runId: rid })
+        : send({
+            type: "agent-start",
+            connectionId: params.connectionId,
+            includeMemory: params.includeMemory,
+            system: params.system,
+            prompt: params.prompt,
+            model: params.model,
+            mode: params.mode,
+            runId: rid,
+          }),
   });
 }
 

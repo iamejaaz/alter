@@ -105,6 +105,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return;
         }
         sendResponse({ ok: true, text: await res.text() });
+      } else if (msg.type === "support-start" || msg.type === "support-prompt") {
+        const r = await bridge("/support", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ticket: msg.ticket, verb: msg.verb, connectionId: msg.connectionId, site: msg.site, voice: msg.voice,
+            transcript: msg.transcript, model: msg.model, runId: msg.runId, includeMemory: msg.includeMemory,
+            renderOnly: msg.type === "support-prompt",
+          }),
+        });
+        sendResponse(r.ok ? { ok: true, runId: r.body.runId, prompt: r.body.prompt, system: r.body.system } : { ok: false, error: r.body.error || hint(r) });
       } else if (msg.type === "ticket-context") {
         const r = await bridge("/ticket-context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticket: msg.ticket }) });
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: r.body && r.body.error ? r.body.error : hint(r) });

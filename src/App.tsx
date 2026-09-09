@@ -351,7 +351,8 @@ export default function App() {
   const openSeededRef = useRef<(prompt: string, title?: string, connectionId?: string, model?: string) => void>(
     () => {}
   );
-  openSeededRef.current = (prompt: string, title?: string, connectionId?: string, model?: string) => {
+  const sendRef = useRef<(opts: { text: string; targetConvId: string; title?: string }) => unknown>(() => {});
+  openSeededRef.current = (prompt: string, title?: string, connectionId?: string, model_?: string) => {
     const conns = settings.connections ?? [];
     // Use the connection the extension picked (its support model); fall back to a
     // Claude Code connection so the seeded chat can still run tools.
@@ -364,14 +365,22 @@ export default function App() {
         messages: [],
         createdAt: Date.now(),
         connectionId: conn?.id ?? settings.activeConnectionId,
-        model: conn && isClaudeCodeUrl(conn.baseUrl) && model ? model : conn?.model ?? settings.model,
+        model: conn && isClaudeCodeUrl(conn.baseUrl) && model_ ? model_ : conn?.model ?? settings.model,
         effort: settings.effort,
         projectId: activeProjectId ?? undefined,
       },
       ...prev,
     ]);
     setActiveId(convId);
-    setInput(prompt);
+    setView("chat");
+    if (conn) {
+      const model = conn && isClaudeCodeUrl(conn.baseUrl) && model_ ? model_ : conn.model;
+      const s = { ...settings, activeConnectionId: conn.id, baseUrl: conn.baseUrl, apiKey: conn.apiKey, model };
+      setSettings(s);
+      storage.saveSettings(s);
+    }
+    // Start the run itself, on the next tick so `send` sees the new chat and settings.
+    setTimeout(() => void sendRef.current({ text: prompt, targetConvId: convId, title: title || prompt.slice(0, 40) }), 50);
   };
   useEffect(() => {
     let un: (() => void) | undefined;
@@ -1027,6 +1036,8 @@ export default function App() {
       endStream();
     }
   };
+
+  sendRef.current = send;
 
   const stop = () => {
     if (!activeId) return;

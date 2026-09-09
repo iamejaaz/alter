@@ -700,6 +700,65 @@ fn cors_empty(status: u16) -> tiny_http::Response<std::io::Empty> {
     tiny_http::Response::empty(status)
 }
 
+// ---- Support prompts live in the skill (prompts.json); the bridge renders them
+// so every surface (helpdesk panel, Alter chat, terminal) uses the same text.
+fn skill_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".claude/skills/frappe-support-diagnosis"))
+}
+
+fn load_prompts() -> Result<serde_json::Value, String> {
+    let p = skill_dir().ok_or("no HOME")?.join("prompts.json");
+    let raw = std::fs::read_to_string(&p).map_err(|_| "prompts.json not installed — install the support skill".to_string())?;
+    serde_json::from_str(&raw).map_err(|e| format!("prompts.json invalid: {e}"))
+}
+
+fn join_lines(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Array(a) => a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" "),
+        serde_json::Value::String(s) => s.clone(),
+        _ => String::new(),
+    }
+}
+
+fn fill(t: &str, vars: &[(&str, &str)]) -> String {
+    let mut out = t.to_string();
+    for (k, v) in vars {
+        out = out.replace(&format!("{{{k}}}"), v);
+    }
+    out
+}
+
+// context.py output, cached briefly so the panel card and the agent start
+// share one run instead of hitting the helpdesk twice.
+static CTX_CACHE: std::sync::OnceLock<Mutex<std::collections::HashMap<String, (std::time::Instant, String)>>> = std::sync::OnceLock::new();
+const CTX_TTL_SECS: u64 = 600;
+
+fn ticket_context(ticket: &str) -> Result<String, String> {
+    let cache = CTX_CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    if let Some((at, json)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(ticket) {
+        if at.elapsed().as_secs() < CTX_TTL_SECS {
+            return Ok(json.clone());
+        }
+    }
+    let script = skill_dir().ok_or("no HOME")?.join("scripts/context.py");
+    if !script.is_file() {
+        return Err("context script not installed".into());
+    }
+    let out = std::process::Command::new("python3")
+        .arg(&script)
+        .arg(ticket)
+        .arg("--json")
+        .current_dir(agent_workdir())
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stdout).chars().take(300).collect());
+    }
+    let json = String::from_utf8_lossy(&out.stdout).to_string();
+    cache.lock().unwrap_or_else(|e| e.into_inner()).insert(ticket.to_string(), (std::time::Instant::now(), json.clone()));
+    Ok(json)
+}
+
 fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -> (u16, String) {
     let state = match app.try_state::<BridgeState>() {
         Some(s) => s,
@@ -736,9 +795,6 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             (200, serde_json::json!({ "configured": configured, "versions": versions }).to_string())
         }
         (tiny_http::Method::Post, "/ticket-context") => {
-            // One deterministic call that gathers a ticket's facts, thread (with
-            // trust labels), installed apps and similar resolved tickets, so the
-            // panel can show them and the agent doesn't spend tool calls on it.
             #[derive(serde::Deserialize)]
             struct C {
                 ticket: String,
@@ -751,24 +807,101 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             if ticket.is_empty() || !ticket.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
                 return (400, "{\"error\":\"bad ticket id\"}".into());
             }
-            let script = match std::env::var_os("HOME") {
-                Some(h) => std::path::Path::new(&h).join(".claude/skills/frappe-support-diagnosis/scripts/context.py"),
-                None => return (500, "{\"error\":\"no HOME\"}".into()),
+            match ticket_context(&ticket) {
+                Ok(json) => (200, json),
+                Err(e) => (500, serde_json::json!({ "error": e }).to_string()),
+            }
+        }
+        (tiny_http::Method::Post, "/support") => {
+            // Thin surface API: {ticket, verb, connectionId, ...}. The bridge renders
+            // the skill's prompts, attaches the context bundle, and starts the run.
+            // render_only returns the text instead (handoff into a chat/terminal).
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct S {
+                ticket: String,
+                verb: String,
+                #[serde(default)]
+                connection_id: String,
+                #[serde(default)]
+                site: String,
+                #[serde(default)]
+                voice: String,
+                #[serde(default)]
+                transcript: String,
+                #[serde(default)]
+                model: Option<String>,
+                #[serde(default)]
+                run_id: Option<String>,
+                #[serde(default)]
+                include_memory: bool,
+                #[serde(default)]
+                render_only: bool,
+            }
+            let req: S = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
             };
-            if !script.is_file() {
-                return (404, "{\"error\":\"context script not installed\"}".into());
+            let ticket = req.ticket.trim().to_string();
+            if ticket.is_empty() || !ticket.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                return (400, "{\"error\":\"bad ticket id\"}".into());
             }
-            let out = std::process::Command::new("python3")
-                .arg(&script)
-                .arg(&ticket)
-                .arg("--json")
-                .current_dir(agent_workdir())
-                .output();
-            match out {
-                Ok(o) if o.status.success() => (200, String::from_utf8_lossy(&o.stdout).to_string()),
-                Ok(o) => (500, serde_json::json!({ "error": String::from_utf8_lossy(&o.stdout).chars().take(300).collect::<String>() }).to_string()),
-                Err(e) => (500, serde_json::json!({ "error": e.to_string() }).to_string()),
+            let prompts = match load_prompts() {
+                Ok(p) => p,
+                Err(e) => return (500, serde_json::json!({ "error": e }).to_string()),
+            };
+            let site = if req.site.is_empty() { agent_site() } else { req.site.clone() };
+            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", &req.transcript)];
+            let (system, mut prompt, mode): (String, String, Option<String>) = match req.verb.as_str() {
+                "summarize" | "diagnose" | "draft" | "deepen" => (
+                    fill(&join_lines(&prompts["system"]), &vars),
+                    fill(prompts["verbs"][req.verb.as_str()].as_str().unwrap_or(""), &vars),
+                    None,
+                ),
+                "pr" => (fill(&join_lines(&prompts["pr"]["system"]), &vars), fill(prompts["pr"]["prompt"].as_str().unwrap_or(""), &vars), Some("pr".into())),
+                "pr_push" => (fill(&join_lines(&prompts["pr_push"]["system"]), &vars), fill(prompts["pr_push"]["prompt"].as_str().unwrap_or(""), &vars), Some("pr-push".into())),
+                "handoff" => {
+                    let key = if req.transcript.trim().is_empty() { "fresh" } else { "continue" };
+                    (String::new(), fill(prompts["handoff"][key].as_str().unwrap_or(""), &vars), None)
+                }
+                _ => return (400, "{\"error\":\"unknown verb\"}".into()),
+            };
+            if prompt.is_empty() {
+                return (500, "{\"error\":\"prompt missing in prompts.json\"}".into());
             }
+            // Attach the context bundle to the read verbs (deepen/pr carry the transcript instead).
+            if matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft") {
+                if let Ok(json) = ticket_context(&ticket) {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
+                        if let Some(md) = v["markdown"].as_str() {
+                            let header = prompts["context_header"].as_str().unwrap_or("TICKET CONTEXT:\n");
+                            prompt = format!("{prompt}\n\n{header}{md}");
+                        }
+                    }
+                }
+            }
+            if req.render_only {
+                return (200, serde_json::json!({ "system": system, "prompt": prompt }).to_string());
+            }
+            let conn = state.conns.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|c| c.id == req.connection_id).cloned();
+            let mut conn = match conn {
+                Some(c) => c,
+                None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
+            };
+            if !conn.is_claude_code() {
+                return (400, "{\"error\":\"the support agent needs the Claude Code connection (it uses tools)\"}".into());
+            }
+            if let Some(m) = req.model.as_deref() {
+                if !m.is_empty() {
+                    conn.model = m.to_string();
+                }
+            }
+            let system = build_system(req.include_memory, Some(&system));
+            let run_id = req.run_id.clone().unwrap_or_else(gen_token);
+            state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
+            let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            spawn_agent_run(conn, system, prompt, run_id.clone(), mode, repro_root, state.running.clone(), state.progress.clone());
+            (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/run") => {
             let req: RunReq = match serde_json::from_str(body) {
