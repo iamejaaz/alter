@@ -893,7 +893,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let site = if req.site.is_empty() { agent_site() } else { req.site.clone() };
             let resuming = req.resume.as_deref().map(|s| !s.is_empty()).unwrap_or(false) && matches!(req.verb.as_str(), "followup" | "deepen");
             let transcript = if resuming { "" } else { req.transcript.as_str() };
-            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", transcript), ("question", &req.question)];
+            let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", transcript), ("question", &req.question), ("skill", &skill)];
             let (system, mut prompt, mode): (String, String, Option<String>) = match req.verb.as_str() {
                 "summarize" | "diagnose" | "draft" | "deepen" => (
                     fill(&join_lines(&prompts["system"]), &vars),
