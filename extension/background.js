@@ -111,7 +111,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ticket: msg.ticket, verb: msg.verb, connectionId: msg.connectionId, site: msg.site, voice: msg.voice,
-            transcript: msg.transcript, question: msg.question, model: msg.model, runId: msg.runId, includeMemory: msg.includeMemory,
+            transcript: msg.transcript, question: msg.question, resume: msg.resume, model: msg.model, runId: msg.runId, includeMemory: msg.includeMemory,
             renderOnly: msg.type === "support-prompt",
           }),
         });

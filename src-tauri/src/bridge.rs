@@ -50,6 +50,8 @@ pub struct AgentProgress {
     text: String,
     done: bool,
     error: Option<String>,
+    #[serde(rename = "sessionId")]
+    session_id: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -295,6 +297,7 @@ fn spawn_agent_run(
     running: Arc<Mutex<std::collections::HashMap<String, u32>>>,
     progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
     max_turns: Option<u32>,
+    resume: Option<String>,
 ) {
     let is_pr = mode.as_deref() == Some("pr");
     let is_pr_push = mode.as_deref() == Some("pr-push");
@@ -313,6 +316,9 @@ fn spawn_agent_run(
     let dir = agent_workdir();
     if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
         cmd.current_dir(&dir);
+    }
+    if let Some(sid) = resume.as_ref().filter(|s| !s.is_empty()) {
+        cmd.arg("--resume").arg(sid);
     }
     if is_pr {
         cmd.arg("--allowedTools").arg(pr_allowed_tools());
@@ -369,6 +375,14 @@ fn spawn_agent_run(
                     Ok(v) => v,
                     Err(_) => continue,
                 };
+                if let Some(sid) = v["session_id"].as_str() {
+                    let mut map = progress.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(p) = map.get_mut(&run_id) {
+                        if p.session_id.is_none() {
+                            p.session_id = Some(sid.to_string());
+                        }
+                    }
+                }
                 match v["type"].as_str().unwrap_or("") {
                     "assistant" => {
                         if let Some(content) = v["message"]["content"].as_array() {
@@ -839,6 +853,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 #[serde(default)]
                 question: String,
                 #[serde(default)]
+                resume: Option<String>,
+                #[serde(default)]
                 model: Option<String>,
                 #[serde(default)]
                 run_id: Option<String>,
@@ -860,7 +876,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Err(e) => return (500, serde_json::json!({ "error": e }).to_string()),
             };
             let site = if req.site.is_empty() { agent_site() } else { req.site.clone() };
-            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", &req.transcript), ("question", &req.question)];
+            let resuming = req.resume.as_deref().map(|s| !s.is_empty()).unwrap_or(false) && matches!(req.verb.as_str(), "followup" | "deepen");
+            let transcript = if resuming { "" } else { req.transcript.as_str() };
+            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", transcript), ("question", &req.question)];
             let (system, mut prompt, mode): (String, String, Option<String>) = match req.verb.as_str() {
                 "summarize" | "diagnose" | "draft" | "deepen" => (
                     fill(&join_lines(&prompts["system"]), &vars),
@@ -879,7 +897,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 return (500, "{\"error\":\"prompt missing in prompts.json\"}".into());
             }
             // Attach the context bundle to the read verbs (deepen/pr carry the transcript instead).
-            if matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft" | "deepen" | "followup") {
+            if !resuming && matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft" | "deepen" | "followup") {
                 if let Ok(json) = ticket_context(&ticket) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
                         if let Some(md) = v["markdown"].as_str() {
@@ -905,12 +923,12 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     conn.model = m.to_string();
                 }
             }
-            let system = build_system(req.include_memory, Some(&system));
+            let system = if resuming { String::new() } else { build_system(req.include_memory, Some(&system)) };
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
             let max_turns = prompts["budgets"][req.verb.as_str()].as_u64().map(|n| n as u32);
-            spawn_agent_run(conn, system, prompt, run_id.clone(), mode, repro_root, state.running.clone(), state.progress.clone(), max_turns);
+            spawn_agent_run(conn, system, prompt, run_id.clone(), mode, repro_root, state.running.clone(), state.progress.clone(), max_turns, if resuming { req.resume.clone() } else { None });
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/run") => {
@@ -1013,7 +1031,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            spawn_agent_run(conn, system, req.prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone(), None);
+            spawn_agent_run(conn, system, req.prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone(), None, None);
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/agent-poll") => {

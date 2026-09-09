@@ -138,7 +138,7 @@ async function runDeepDiagnose() {
     connectionId: supSession.connectionId,
     includeMemory: true,
     model: supSession.fixModel,
-    support: { ticket: supSession.id, verb: "deepen", site: SITE, transcript: t },
+    support: { ticket: supSession.id, verb: "deepen", site: SITE, transcript: t, resume: supSession.sessionId },
     label: "Confirm on bench",
   });
   supSession.transcript.push({ q: "Confirm on bench", a });
@@ -256,7 +256,7 @@ async function followUp(q) {
     includeMemory: true,
     model: supSession.model,
     label: wantsReply ? "Draft reply" : "Follow-up",
-    support: { ticket: supSession.id, verb: "followup", site: SITE, transcript: t, question: q, voice: wantsReply ? "Output ONLY the message text for the customer. " + REPLY_VOICE : "" },
+    support: { ticket: supSession.id, verb: "followup", site: SITE, transcript: t, question: q, resume: supSession.sessionId, voice: wantsReply ? "Output ONLY the message text for the customer. " + REPLY_VOICE : "" },
   });
   supSession.transcript.push({ q, a });
 }
@@ -380,6 +380,7 @@ function pollRun(el, runId, opts) {
       }
       misses = 0;
       const p = r.data;
+      if (p.sessionId && supSession) supSession.sessionId = p.sessionId;
       renderSteps(p.steps || []);
       if (p.done) {
         done = true;
