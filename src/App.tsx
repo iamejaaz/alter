@@ -7,7 +7,7 @@ import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
-import { Chevron, IconArrowUp, IconFolder, IconMic, IconPaperclip } from "./components/Icons";
+import { Chevron, IconArrowUp, IconChevronRight, IconFolder, IconMic, IconPaperclip } from "./components/Icons";
 
 function extractArtifacts(content: string): ArtifactType[] {
   const arts: ArtifactType[] = [];
@@ -19,34 +19,26 @@ function extractArtifacts(content: string): ArtifactType[] {
 
 // Collapse a run of tool-step lines into one expandable block (collapsed by default).
 function ToolSteps({ lines }: { lines: string[] }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   if (lines.length === 0) return null;
-  const summary = lines[lines.length - 1];
+  const shown = open ? lines : lines.slice(-1);
   return (
     <div className="pl-11 animate-fade-up">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 text-xs text-[var(--txt-faint)] hover:text-[var(--txt-dim)] transition-colors max-w-full"
-      >
-        <span className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
-        {open ? (
-          <span>{lines.length} step{lines.length > 1 ? "s" : ""}</span>
-        ) : (
-          <span className="font-mono truncate">
-            {summary}
-            {lines.length > 1 ? `  · +${lines.length - 1}` : ""}
-          </span>
-        )}
-      </button>
-      {open && (
-        <div className="mt-1 space-y-1 border-l border-[var(--bd-soft)] ml-[3px] pl-3">
-          {lines.map((l, j) => (
-            <div key={j} className="flex items-start gap-2 text-xs text-[var(--txt-faint)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-indigo-400/60 shrink-0 mt-1.5" />
-              <span className="font-mono break-all">{l}</span>
-            </div>
-          ))}
-        </div>
+      <div className="space-y-1 font-mono text-xs text-[var(--txt-faint)]">
+        {shown.map((l, j) => (
+          <div key={j} className="flex items-center gap-2">
+            <IconChevronRight />
+            <span className="truncate">{l}</span>
+          </div>
+        ))}
+      </div>
+      {lines.length > 1 && (
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="mt-1 pl-5 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt-dim)] transition-colors"
+        >
+          {open ? "Hide steps" : `+${lines.length - 1} more step${lines.length > 2 ? "s" : ""}`}
+        </button>
       )}
     </div>
   );
@@ -1527,6 +1519,7 @@ export default function App() {
         onOpenSettings={() => setShowSettings(true)}
         onOpenRoutines={() => setView("routines")}
         onOpenSkills={() => setView("skills")}
+        onOpenPalette={() => setShowPalette(true)}
       />
 
       <main className="relative flex-1 flex flex-col min-w-0">
