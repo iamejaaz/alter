@@ -18,28 +18,32 @@ function extractArtifacts(content: string): ArtifactType[] {
   return arts;
 }
 
-// Collapse a run of tool-step lines into one expandable block (collapsed by default).
-function ToolSteps({ lines }: { lines: string[] }) {
-  const [open, setOpen] = useState(true);
+// Collapse a run of tool-step lines into one expandable block: open while the turn is running, collapsed once it finishes.
+function ToolSteps({ lines, live }: { lines: string[]; live: boolean }) {
+  const [open, setOpen] = useState<boolean | null>(null);
   if (lines.length === 0) return null;
-  const shown = open ? lines : lines.slice(-1);
+  const expanded = open ?? live;
   return (
-    <div className="pl-11 animate-fade-up">
-      <div className="space-y-1 font-mono text-xs text-[var(--txt-faint)]">
-        {shown.map((l, j) => (
-          <div key={j} className="flex items-center gap-2">
-            <IconChevronRight />
-            <span className="truncate">{l}</span>
-          </div>
-        ))}
-      </div>
-      {lines.length > 1 && (
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className="mt-1 pl-5 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt-dim)] transition-colors"
-        >
-          {open ? "Hide steps" : `+${lines.length - 1} more step${lines.length > 2 ? "s" : ""}`}
-        </button>
+    <div className="pl-11 animate-fade-up font-mono text-xs text-[var(--txt-faint)]">
+      <button
+        onClick={() => setOpen(!expanded)}
+        className="flex items-center gap-2 hover:text-[var(--txt-dim)] transition-colors"
+      >
+        <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>
+          <IconChevronRight />
+        </span>
+        <span>
+          {live ? "Working" : "Ran"} {lines.length} step{lines.length > 1 ? "s" : ""}
+        </span>
+      </button>
+      {expanded && (
+        <div className="mt-1 space-y-1 pl-5">
+          {lines.map((l, j) => (
+            <div key={j} className="truncate">
+              {l}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -1655,9 +1659,9 @@ export default function App() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-              {groupMessages(active.messages).map((item) =>
+              {groupMessages(active.messages).map((item, idx, items) =>
                 item.kind === "tools" ? (
-                  <ToolSteps key={item.key} lines={item.lines} />
+                  <ToolSteps key={item.key} lines={item.lines} live={activeStreaming && items.slice(idx + 1).every((x) => x.kind === "msg" && x.m.role === "assistant" && !x.m.content)} />
                 ) : ((m, i) =>
                   m.role === "user" ? (
                   <div key={i} className="group flex justify-end animate-fade-up">
