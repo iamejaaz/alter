@@ -62,6 +62,8 @@ Build a bundle with `npm run tauri build`. The `.app` and `.dmg` land in `src-ta
 
 ## Settings worth knowing
 
+![Settings](docs/settings.png)
+
 | Setting | What it does |
 | --- | --- |
 | Connections | One entry per provider or Claude Code. Keys stay on your device. |
