@@ -113,7 +113,6 @@ async function runVerbInner(verb) {
   if (verb === "diagnose") {
     // The fast read is a first take; the bench pass always verifies it in code
     // before the verdict is trusted.
-    supSession.canDeepen = false;
     renderFooter();
     if (raw) {
       toast("Verifying in code on the bench…");
@@ -626,7 +625,6 @@ function renderFooter() {
           <button data-act="pr">Prepare fix<span>local branch, you review</span></button>
         </div>
       </div>
-      ${supSession && supSession.canDeepen ? '<button id="sup-deepen">🔬 Confirm on bench</button>' : ""}
       ${supSession && supSession.fixPrepared ? '<button id="sup-pr-push">Push &amp; open PR</button>' : ""}
     </div>
     <div id="sup-foot-ask"><input id="sup-ask" placeholder="Ask a follow-up…" /><button id="sup-ask-send">Send</button></div>`;
@@ -644,8 +642,6 @@ function renderFooter() {
       else if (act === "pr") runPr();
     })
   );
-  const deepBtn = foot.querySelector("#sup-deepen");
-  if (deepBtn) deepBtn.addEventListener("click", () => { supSession.canDeepen = false; renderFooter(); runDeepDiagnose(); });
   const pushBtn = foot.querySelector("#sup-pr-push");
   if (pushBtn) pushBtn.addEventListener("click", () => runPrPush());
   const input = foot.querySelector("#sup-ask");
