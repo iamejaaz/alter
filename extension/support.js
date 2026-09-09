@@ -240,9 +240,16 @@ async function openInAlter() {
   if (!r || !r.ok) toast((r && r.error) || "Couldn't open Alter — is the app running?", true);
 }
 
-async function followUp(q) {
+async function followUp(q, images) {
   if (!supSession || !q.trim()) return;
-  appendBlock("user").textContent = q;
+  const u = appendBlock("user");
+  u.textContent = q;
+  (images || []).forEach((src) => {
+    const img = document.createElement("img");
+    img.className = "sup-user-img";
+    img.src = src;
+    u.appendChild(img);
+  });
   const t = supSession.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
   const block = appendBlock("assistant");
   const wantsReply = REPLY_INTENT.test(q);
@@ -252,7 +259,7 @@ async function followUp(q) {
     includeMemory: true,
     model: supSession.model,
     label: wantsReply ? "Draft reply" : "Follow-up",
-    support: { ticket: supSession.id, verb: "followup", site: SITE, transcript: t, question: q, resume: supSession.sessionId, voice: wantsReply ? "Output ONLY the message text for the customer. " + REPLY_VOICE : "" },
+    support: { ticket: supSession.id, verb: "followup", site: SITE, transcript: t, question: q, resume: supSession.sessionId, images: images || [], voice: wantsReply ? "Output ONLY the message text for the customer. " + REPLY_VOICE : "" },
   });
   supSession.transcript.push({ q, a });
 }
@@ -627,7 +634,7 @@ function renderFooter() {
       </div>
       ${supSession && supSession.fixPrepared ? '<button id="sup-pr-push">Push &amp; open PR</button>' : ""}
     </div>
-    <div id="sup-foot-ask"><input id="sup-ask" placeholder="Ask a follow-up…" /><button id="sup-ask-send">Send</button></div>`;
+    <div id="sup-foot-ask"><div id="sup-ask-wrap"><div id="sup-ask-images"></div><textarea id="sup-ask" rows="1" placeholder="Ask a follow-up… (paste a screenshot, ⇧⏎ for a new line)"></textarea></div><button id="sup-ask-send">Send</button></div>`;
   const menu = foot.querySelector("#sup-menu");
   foot.querySelector("#sup-continue").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -645,15 +652,65 @@ function renderFooter() {
   const pushBtn = foot.querySelector("#sup-pr-push");
   if (pushBtn) pushBtn.addEventListener("click", () => runPrPush());
   const input = foot.querySelector("#sup-ask");
+  const imagesEl = foot.querySelector("#sup-ask-images");
+  let images = [];
+  const grow = () => {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 160) + "px";
+  };
+  const renderImages = () => {
+    imagesEl.innerHTML = "";
+    images.forEach((src, i) => {
+      const chip = document.createElement("span");
+      chip.className = "sup-ask-img";
+      const img = document.createElement("img");
+      img.src = src;
+      const x = document.createElement("button");
+      x.type = "button";
+      x.textContent = "×";
+      x.addEventListener("click", () => { images.splice(i, 1); renderImages(); });
+      chip.append(img, x);
+      imagesEl.appendChild(chip);
+    });
+    imagesEl.hidden = images.length === 0;
+  };
+  renderImages();
   const go = () => {
     const q = input.value.trim();
-    if (!q) return;
+    if (!q && !images.length) return;
+    const sent = images;
+    images = [];
     input.value = "";
-    followUp(q);
+    renderImages();
+    grow();
+    followUp(q || "See the attached screenshot.", sent);
   };
   foot.querySelector("#sup-ask-send").addEventListener("click", go);
+  input.addEventListener("input", grow);
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") go();
+    if (e.key !== "Enter") return;
+    if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) {
+      if (e.metaKey || e.ctrlKey) {
+        e.preventDefault();
+        const { selectionStart: a, selectionEnd: b, value } = input;
+        input.value = value.slice(0, a) + "\n" + value.slice(b);
+        input.selectionStart = input.selectionEnd = a + 1;
+        grow();
+      }
+      return;
+    }
+    e.preventDefault();
+    go();
+  });
+  input.addEventListener("paste", (e) => {
+    const files = Array.from((e.clipboardData && e.clipboardData.files) || []).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    e.preventDefault();
+    files.forEach((f) => {
+      const r = new FileReader();
+      r.onload = () => { images.push(String(r.result)); renderImages(); };
+      r.readAsDataURL(f);
+    });
   });
 }
 

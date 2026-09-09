@@ -231,6 +231,43 @@ fn agent_workdir() -> String {
         .unwrap_or_default()
 }
 
+fn base64_decode(input: &str) -> Option<Vec<u8>> {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = Vec::with_capacity(input.len() * 3 / 4);
+    let mut buf = 0u32;
+    let mut bits = 0u32;
+    for &c in input.as_bytes() {
+        if c == b'=' || c == b'\n' || c == b'\r' {
+            continue;
+        }
+        let v = TABLE.iter().position(|&t| t == c)? as u32;
+        buf = (buf << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push(((buf >> bits) & 0xff) as u8);
+        }
+    }
+    Some(out)
+}
+
+fn save_pasted_images(ticket: &str, images: &[String]) -> Vec<String> {
+    let dir = std::env::temp_dir().join("alter-tickets").join(ticket);
+    let _ = std::fs::create_dir_all(&dir);
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let mut paths = Vec::new();
+    for (i, data_url) in images.iter().enumerate().take(6) {
+        let Some((head, body)) = data_url.split_once(",") else { continue };
+        let ext = if head.contains("image/jpeg") { "jpg" } else if head.contains("image/webp") { "webp" } else if head.contains("image/gif") { "gif" } else { "png" };
+        let Some(bytes) = base64_decode(body) else { continue };
+        let path = dir.join(format!("paste-{stamp}-{i}.{ext}"));
+        if std::fs::write(&path, bytes).is_ok() {
+            paths.push(path.to_string_lossy().to_string());
+        }
+    }
+    paths
+}
+
 fn without_section(md: &str, heading: &str) -> String {
     let mut out = String::new();
     let mut skipping = false;
@@ -873,6 +910,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 #[serde(default)]
                 resume: Option<String>,
                 #[serde(default)]
+                images: Vec<String>,
+                #[serde(default)]
                 model: Option<String>,
                 #[serde(default)]
                 run_id: Option<String>,
@@ -916,6 +955,13 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 return (500, "{\"error\":\"prompt missing in prompts.json\"}".into());
             }
             // Attach the context bundle to the read verbs (deepen/pr carry the transcript instead).
+            let pasted = save_pasted_images(&ticket, &req.images);
+            if !pasted.is_empty() {
+                prompt.push_str("\n\nATTACHED SCREENSHOTS (pasted by the user just now — Read each path to see it before answering):");
+                for path in &pasted {
+                    prompt.push_str(&format!("\n- Read `{path}`"));
+                }
+            }
             if !resuming && matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft" | "deepen" | "followup") {
                 if let Ok(json) = ticket_context(&ticket) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
