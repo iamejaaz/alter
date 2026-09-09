@@ -142,18 +142,18 @@ fn agent_allowed_tools() -> String {
     // the only way a read-only triage run can actually confirm a bug. Live-site
     // writes stay blocked (fr writes are disallowed separately); this reaches the
     // user's throwaway benches only. Scoped to this exact command, nothing else.
-    let rel = ".claude/skills/frappe-support-diagnosis/scripts/repro.sh";
-    t.push(format!("Bash(~/{rel}:*)"));
-    // The read-only context bundle (ticket + thread + apps), same skill folder.
-    let ctx = ".claude/skills/frappe-support-diagnosis/scripts/context.py";
-    t.push(format!("Bash(~/{ctx}:*)"));
-    t.push(format!("Bash(python3 ~/{ctx}:*)"));
+    // Plus the read-only helpers beside it: the context bundle and the version
+    // triage / code search scripts. Each by absolute path (a `~` prefix is not
+    // matched by the permission rules).
+    let scripts = ".claude/skills/frappe-support-diagnosis/scripts";
     if let Some(home) = std::env::var_os("HOME") {
-        let abs = std::path::Path::new(&home).join(rel);
-        t.push(format!("Bash({}:*)", abs.display()));
-        let abs_ctx = std::path::Path::new(&home).join(ctx);
-        t.push(format!("Bash({}:*)", abs_ctx.display()));
-        t.push(format!("Bash(python3 {}:*)", abs_ctx.display()));
+        let dir = std::path::Path::new(&home).join(scripts);
+        for name in ["repro.sh", "across-versions.sh", "find-code.sh"] {
+            t.push(format!("Bash({}:*)", dir.join(name).display()));
+        }
+        let ctx = dir.join("context.py");
+        t.push(format!("Bash({}:*)", ctx.display()));
+        t.push(format!("Bash(python3 {}:*)", ctx.display()));
     }
     t.join(" ")
 }

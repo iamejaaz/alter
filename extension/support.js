@@ -634,7 +634,7 @@ function renderFooter() {
       </div>
       ${supSession && supSession.fixPrepared ? '<button id="sup-pr-push">Push &amp; open PR</button>' : ""}
     </div>
-    <div id="sup-foot-ask"><div id="sup-ask-wrap"><div id="sup-ask-images"></div><textarea id="sup-ask" rows="1" placeholder="Ask a follow-up… (paste a screenshot, ⇧⏎ for a new line)"></textarea></div><button id="sup-ask-send">Send</button></div>`;
+    <div id="sup-foot-ask"><div id="sup-ask-wrap"><div id="sup-ask-images"></div><textarea id="sup-ask" rows="1" placeholder="Ask a follow-up…" title="Enter to send · Shift+Enter for a new line · paste a screenshot to attach it"></textarea></div><button id="sup-ask-send">Send</button></div>`;
   const menu = foot.querySelector("#sup-menu");
   foot.querySelector("#sup-continue").addEventListener("click", (e) => {
     e.stopPropagation();
