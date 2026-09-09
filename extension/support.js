@@ -15,7 +15,7 @@ const SITE = location.host;
 const SUPPORT_MODEL = "sonnet";
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REPLY_VOICE, followupParams, nearBottom, stickBottom, pinToBottom } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REPLY_VOICE, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
@@ -249,20 +249,14 @@ async function followUp(q) {
   appendBlock("user").textContent = q;
   const t = supSession.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
   const block = appendBlock("assistant");
-  // Follow-ups are a normal CHAT about an already-diagnosed ticket — not a fresh
-  // review each time (shared voice logic in window.ALTER).
-  const { wantsReply, system, label } = followupParams(q, "The work here is a support-ticket diagnosis; you may use bare `fr` / Read / git / gh to check a fact.");
-  const prompt = wantsReply
-    ? `We are discussing HD Ticket ${supSession.id}.${t}\n\nUser: ${q}\n(Write the message itself — simple, human, in my voice. Output ONLY the message text.)\nYou:`
-    : `We are discussing HD Ticket ${supSession.id}.${t}\n\nUser: ${q}\nYou:`;
+  const wantsReply = REPLY_INTENT.test(q);
   const a = await streamAgent(block, {
     connectionId: supSession.connectionId,
     agent: true,
     includeMemory: true,
     model: supSession.model,
-    system,
-    prompt,
-    label,
+    label: wantsReply ? "Draft reply" : "Follow-up",
+    support: { ticket: supSession.id, verb: "followup", site: SITE, transcript: t, question: q, voice: wantsReply ? "Output ONLY the message text for the customer. " + REPLY_VOICE : "" },
   });
   supSession.transcript.push({ q, a });
 }

@@ -90,6 +90,35 @@ def parse_apps(raw):
     return apps
 
 
+IMAGE_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+
+
+def fetch_attachments(base, ticket, rows):
+    out_dir = os.path.join(os.environ.get("TMPDIR", "/tmp"), "alter-tickets", str(ticket))
+    os.makedirs(out_dir, exist_ok=True)
+    result = []
+
+    def get(r):
+        name = r.get("file_name") or os.path.basename(r.get("file_url") or "")
+        path = os.path.join(out_dir, name)
+        if not os.path.exists(path):
+            try:
+                subprocess.run(base + ["file", "download", r["name"], "-o", path], capture_output=True, timeout=60)
+            except subprocess.TimeoutExpired:
+                return None
+        return (name, path if os.path.exists(path) else None)
+
+    images = [r for r in rows if (r.get("file_name") or "").lower().endswith(IMAGE_EXT)][:6]
+    others = [r for r in rows if r not in images]
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for got in ex.map(get, images):
+            if got:
+                result.append(got)
+    for r in others:
+        result.append((r.get("file_name"), None))
+    return result
+
+
 def keywords(subject):
     stop = {"the", "and", "for", "with", "not", "from", "this", "that", "when", "after", "issue", "error", "problem",
             "frappe", "erpnext", "site", "help", "please", "urgent", "re:", "fwd:"}
@@ -111,16 +140,21 @@ def main():
                f"where reference_doctype='HD Ticket' and reference_name='{ticket}' order by creation")
     q_comments = ("select creation, commented_by, content from `tabHD Ticket Comment` "
                   f"where reference_ticket='{ticket}' order by creation")
+    q_files = ("select name, file_name, file_url from `tabFile` where attached_to_doctype='HD Ticket' "
+               f"and attached_to_name='{ticket}' order by creation")
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         f_doc = ex.submit(run, base, "doc", "get", "HD Ticket", ticket, "--json")
         f_comms = ex.submit(run, base, "query", q_comms, "--json")
         f_comments = ex.submit(run, base, "query", q_comments, "--json")
         f_apps = ex.submit(run, base, "method", "call", "get_installed_app_versions", "-f", f"ticket={ticket}")
+        f_files = ex.submit(run, base, "query", q_files, "--json")
         doc, err_doc = f_doc.result()
         comms, _ = f_comms.result()
         comments, _ = f_comments.result()
         live, _ = f_apps.result()
+        files, _ = f_files.result()
+    attachments = fetch_attachments(base, ticket, files or [])
 
     if not doc:
         print(f"Could not read HD Ticket {ticket}: {err_doc}")
@@ -225,6 +259,13 @@ def main():
         for when, who, text in notes:
             out.append(f"- {who} · {when}: {text}")
     out.append("")
+    out.append("## Attachments — screenshots are facts the customer is pointing at: Read each image path before concluding")
+    if attachments:
+        for name, path in attachments:
+            out.append(f"- {name}" + (f" → Read `{path}`" if path else " (not an image; download with `fr file download` if needed)"))
+    else:
+        out.append("- none")
+    out.append("")
     out.append("## Bot output — hypotheses only, NOT evidence. Confirm or refute each one explicitly.")
     if hypotheses:
         for kind, who, text in hypotheses:
@@ -252,6 +293,7 @@ def main():
                                         "custom_reference_module", "custom_sub_reference_module", "custom_site_name",
                                         "custom_plan", "custom_pull_request", "custom_is_awaiting_release")}
         print(json.dumps({"ticket": slim, "apps": apps, "apps_source": apps_source, "hypotheses": len(hypotheses),
+                          "attachments": [{"name": n, "path": p} for n, p in attachments],
                           "similar": [{"name": r["name"], "subject": r.get("subject"), "type": r.get("ticket_type")} for r in similar],
                           "gaps": gaps, "markdown": text}, default=str))
         return

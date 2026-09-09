@@ -91,7 +91,7 @@ struct RunReq {
 // won't match `Bash(fr doc get:*)` — we emit each verb in the bare form and the
 // site-flag forms the agent actually uses so reads never stall on approval.
 const FR_READ_VERBS: &[&str] = &[
-    "query", "guide", "doc get", "doc list", "doctype list", "doctype show", "report run",
+    "query", "guide", "doc get", "doc list", "doctype", "report run",
     "method search", "method list", "method show", "file download", "auth whoami", "auth list",
 ];
 const FR_WRITE_VERBS: &[&str] = &[
@@ -221,6 +221,7 @@ fn agent_workdir() -> String {
     std::env::var("ALTER_AGENT_WORKDIR")
         .ok()
         .filter(|d| !d.is_empty())
+        .or_else(|| std::env::var("ALTER_REPRO_DEVELOP").ok().filter(|d| !d.is_empty()))
         .or_else(|| std::env::var("HOME").ok())
         .unwrap_or_default()
 }
@@ -836,6 +837,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 #[serde(default)]
                 transcript: String,
                 #[serde(default)]
+                question: String,
+                #[serde(default)]
                 model: Option<String>,
                 #[serde(default)]
                 run_id: Option<String>,
@@ -857,7 +860,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Err(e) => return (500, serde_json::json!({ "error": e }).to_string()),
             };
             let site = if req.site.is_empty() { agent_site() } else { req.site.clone() };
-            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", &req.transcript)];
+            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", &req.transcript), ("question", &req.question)];
             let (system, mut prompt, mode): (String, String, Option<String>) = match req.verb.as_str() {
                 "summarize" | "diagnose" | "draft" | "deepen" => (
                     fill(&join_lines(&prompts["system"]), &vars),
@@ -876,7 +879,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 return (500, "{\"error\":\"prompt missing in prompts.json\"}".into());
             }
             // Attach the context bundle to the read verbs (deepen/pr carry the transcript instead).
-            if matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft" | "deepen") {
+            if matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft" | "deepen" | "followup") {
                 if let Ok(json) = ticket_context(&ticket) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
                         if let Some(md) = v["markdown"].as_str() {
