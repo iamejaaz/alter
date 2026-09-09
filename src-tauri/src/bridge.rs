@@ -876,7 +876,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 return (500, "{\"error\":\"prompt missing in prompts.json\"}".into());
             }
             // Attach the context bundle to the read verbs (deepen/pr carry the transcript instead).
-            if matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft") {
+            if matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft" | "deepen") {
                 if let Ok(json) = ticket_context(&ticket) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
                         if let Some(md) = v["markdown"].as_str() {
