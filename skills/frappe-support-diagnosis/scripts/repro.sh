@@ -92,7 +92,7 @@ cd "$bench"
 # pilot bench (no bench CLI); note that path can fail app enumeration on some
 # frappe versions, which is exactly why the classic CLI is preferred.
 script="$(cd "$(dirname "$script")" && pwd)/$(basename "$script")"
-runner="exec(compile(open('$script').read(), '$script', 'exec'))"
+runner="exec(\"import traceback\\ntry:\\n    exec(compile(open('$script').read(), '$script', 'exec'))\\nexcept Exception:\\n    traceback.print_exc()\")"
 if [ -n "$CLBENCH" ]; then
   printf '%s\n' "$runner" | "$CLBENCH" --site "$site" console
 elif [ -x "$bench/env/bin/python" ]; then

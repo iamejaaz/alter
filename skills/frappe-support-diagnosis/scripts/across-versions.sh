@@ -4,8 +4,9 @@
 # Usage: across-versions.sh <path-relative-to-app-repo> [app]
 #        across-versions.sh frappe/website/doctype/web_form/web_form.py frappe
 set -eu
-path="${1:?usage: across-versions.sh <repo-relative-path> [app=frappe]}"
+path="${1:?usage: across-versions.sh <repo-relative-path> [app=frappe] [symbol-regex]}"
 app="${2:-frappe}"
+sym="${3:-}"
 root="${BENCH:-$PWD}"
 repo="$root/apps/$app"
 [ -d "$repo/.git" ] || repo="$PWD"   # allow running from inside the app repo
@@ -31,8 +32,21 @@ for ref in develop version-16-hotfix version-15-hotfix; do
     echo "=== $ref: not found (try: git fetch upstream $ref) ==="; echo; continue
   fi
   echo "=== $ref ($(git rev-parse --short "$full")) : $path ==="
-  git show "$full:$path" 2>/dev/null || echo "(path absent at this ref)"
+  if ! body=$(git show "$full:$path" 2>/dev/null); then
+    echo "(path absent at this ref)"; echo; continue
+  fi
+  n=$(printf '%s\n' "$body" | wc -l | tr -d ' ')
+  if [ -n "$sym" ]; then
+    printf '%s\n' "$body" | grep -n -E -B3 -A25 -- "$sym" || echo "(no match for '$sym' — $n lines)"
+  elif [ "$n" -le 250 ]; then
+    printf '%s\n' "$body"
+  else
+    echo "($n lines — pass a symbol regex as the 3rd arg to see just that region)"
+    printf '%s\n' "$body" | grep -n -E '^(def |class |\t*def )' | head -60
+  fi
   echo
 done
+echo "=== diff stat: version-15-hotfix..develop -- $path ==="
+git --no-pager diff --stat "$(git rev-parse --verify upstream/version-15-hotfix 2>/dev/null || echo version-15-hotfix)" "$(git rev-parse --verify upstream/develop 2>/dev/null || echo develop)" -- "$path" 2>/dev/null || true
 echo "Tip: to compare, diff two refs directly:"
 echo "  git -C $repo diff version-15-hotfix develop -- $path"
