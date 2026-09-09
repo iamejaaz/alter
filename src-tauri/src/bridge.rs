@@ -125,6 +125,9 @@ fn fr_rules(verbs: &[&str]) -> Vec<String> {
 
 fn agent_allowed_tools() -> String {
     let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch", "Skill"].iter().map(|s| s.to_string()).collect();
+    for d in ["//private/tmp/**", "//tmp/**", "//private/var/folders/**", "//var/folders/**"] {
+        t.push(format!("Write({d})"));
+    }
     t.extend(fr_rules(FR_READ_VERBS));
     // `git -C <app> show …` is how the agent reads app repos (the bench root isn't
     // one), and a global flag before the subcommand can't match a `git show`

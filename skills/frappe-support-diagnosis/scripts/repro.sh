@@ -2,6 +2,7 @@
 # Run a reproduction script on the per-version bench, on its repro site.
 # Usage: repro.sh <develop|version-16|version-15> <script.py>
 #        repro.sh <develop|version-16|version-15> -   # read the script from stdin
+# The script runs as one unit (exec), so functions, try/except and loops work.
 #
 # Benches live under $ALTER_REPRO_ROOT (set in Alter → Settings → Repro benches):
 #   $ALTER_REPRO_ROOT/bench-develop, bench-version-16, bench-version-15
@@ -90,10 +91,12 @@ cd "$bench"
 # the script can use `frappe.*` directly. Fall back to bench_helper only on a real
 # pilot bench (no bench CLI); note that path can fail app enumeration on some
 # frappe versions, which is exactly why the classic CLI is preferred.
+script="$(cd "$(dirname "$script")" && pwd)/$(basename "$script")"
+runner="exec(compile(open('$script').read(), '$script', 'exec'))"
 if [ -n "$CLBENCH" ]; then
-  "$CLBENCH" --site "$site" console < "$script"
+  printf '%s\n' "$runner" | "$CLBENCH" --site "$site" console
 elif [ -x "$bench/env/bin/python" ]; then
-  "$bench/env/bin/python" -m frappe.utils.bench_helper frappe --site "$site" console < "$script"
+  printf '%s\n' "$runner" | "$bench/env/bin/python" -m frappe.utils.bench_helper frappe --site "$site" console
 else
   echo "no classic 'bench' CLI and no venv python — can't open a console" >&2; exit 2
 fi

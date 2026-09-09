@@ -188,16 +188,17 @@ and gh).
 A trace is a hypothesis; for a *real* bug, a repro is proof. Write a script that
 ASSERTS the buggy outcome and rolls back (no residue). The console auto-connects
 the site, so use `frappe.*` directly. Run it via the helper — **the read-only
-extension agent may run this too** (its one allowed bench command); pipe the script
-on **stdin** with `-`, no Write tool needed:
+extension agent may run this too** (its one allowed bench command); write the script to a file under /tmp (Write is allowed there; a heredoc with Python braces trips the shell checker) and pass the path — it runs as one unit, so functions and try/except work:
 ```sh
-~/.claude/skills/frappe-support-diagnosis/scripts/repro.sh develop - <<'PY'
+# /tmp/repro.py
 import frappe
 reproduced = False
 # … build the trigger, set reproduced = <the buggy outcome actually happened> …
 print("REPRODUCED" if reproduced else "NOT REPRODUCED")
 frappe.db.rollback()
-PY
+```
+```sh
+~/.claude/skills/frappe-support-diagnosis/scripts/repro.sh develop /tmp/repro.py
 ```
 Do **develop first** (reproduces there → new fix; not there but on v15/v16 →
 backport). If the helper says "no bench for '<ver>'", that bench isn't configured —
