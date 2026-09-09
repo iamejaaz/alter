@@ -228,6 +228,21 @@ fn agent_workdir() -> String {
         .unwrap_or_default()
 }
 
+fn without_section(md: &str, heading: &str) -> String {
+    let mut out = String::new();
+    let mut skipping = false;
+    for line in md.lines() {
+        if line.starts_with("## ") {
+            skipping = line.starts_with(heading);
+        }
+        if !skipping {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
 fn shared_memory() -> String {
     std::env::var("HOME")
         .ok()
@@ -902,6 +917,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
                         if let Some(md) = v["markdown"].as_str() {
                             let header = prompts["context_header"].as_str().unwrap_or("TICKET CONTEXT:\n");
+                            let md = if req.verb == "diagnose" { without_section(md, "## Bot output") } else { md.to_string() };
                             prompt = format!("{prompt}\n\n{header}{md}");
                         }
                     }
