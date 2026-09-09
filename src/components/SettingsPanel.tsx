@@ -16,7 +16,7 @@ interface Props {
 
 export default function SettingsPanel({ settings, memories, onSave, onDeleteMemory, onClose }: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
-  const [tab, setTab] = useState<"connection" | "memory">("connection");
+  const [tab, setTab] = useState<"connections" | "memory" | "agents" | "bridge">("connections");
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
   const [testing, setTesting] = useState(false);
@@ -161,28 +161,35 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col bg-[var(--bg)]">
-      <header className="flex items-center gap-2 px-6 py-4 border-b border-[var(--bd-soft)]">
-        <button onClick={onClose} className="text-[var(--txt-faint)] hover:text-[var(--txt)] text-sm">←</button>
-        <h1 className="text-sm font-semibold">Settings</h1>
+      <header className="flex min-h-12 items-center gap-3 px-5 border-b border-[var(--bd-soft)]">
+        <button onClick={onClose} className="text-[var(--txt-faint)] hover:text-[var(--txt)] text-sm" title="Back (Esc)">←</button>
+        <h1 className="text-base font-semibold text-[var(--txt)]">Settings</h1>
       </header>
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-6 py-6">
 
-        <div className="flex gap-1 mb-4 rounded-lg bg-[var(--panel)] p-1 w-fit">
-          {(["connection", "memory"] as const).map((t) => (
+        <div className="mb-5 flex gap-1 border-b border-[var(--bd-soft)] pb-3">
+          {(
+            [
+              ["connections", "Connections"],
+              ["memory", "Memory"],
+              ["agents", "Agents"],
+              ["bridge", "Browser bridge"],
+            ] as const
+          ).map(([id, label]) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-1 rounded-md text-sm capitalize ${
-                tab === t ? "bg-zinc-700 text-[var(--txt)]" : "text-[var(--txt-dim)] hover:text-[var(--txt)]"
+              key={id}
+              onClick={() => setTab(id)}
+              className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                tab === id ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
               }`}
             >
-              {t}
+              {label}
             </button>
           ))}
         </div>
 
-        {tab === "connection" && (
+        {tab === "connections" && (
           <div className="space-y-4">
             <div>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Connection</label>
@@ -331,29 +338,23 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
                 </div>
               </div>
             )}
-            {bridge && (
-              <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-                <p className="text-sm text-[var(--txt)]">Browser bridge</p>
-                <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
-                  Pair the Alter browser extension so it can use your models. Runs on localhost:{bridge.port}.
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-xs text-[var(--txt-dim)]">
-                    {bridge.token}
-                  </code>
-                  <button
-                    onClick={() => {
-                      void navigator.clipboard.writeText(bridge.token);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 1500);
-                    }}
-                    className="rounded-md border border-[var(--bd)] px-3 py-1.5 text-xs text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
-                  >
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)]">
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                className="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === "agents" && (
+          <div className="space-y-4">
+            <p className="text-[13px] text-[var(--txt-faint)]">Where browser-triggered agents run and what the support agent can reach.</p>
             <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
               <p className="text-sm text-[var(--txt)]">Agent working folder</p>
               <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
@@ -463,22 +464,53 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
           </div>
         )}
 
+        {tab === "bridge" && (
+          <div className="space-y-4">
+            <p className="text-[13px] text-[var(--txt-faint)]">A token-gated bridge on 127.0.0.1 lets the browser extension reuse your connections. No keys in the browser, only this pairing token.</p>
+            {bridge && (
+              <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+                <p className="text-sm text-[var(--txt)]">Browser bridge</p>
+                <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
+                  Pair the Alter browser extension so it can use your models. Runs on localhost:{bridge.port}.
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-xs text-[var(--txt-dim)]">
+                    {bridge.token}
+                  </code>
+                  <button
+                    onClick={() => {
+                      void navigator.clipboard.writeText(bridge.token);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    }}
+                    className="rounded-md border border-[var(--bd)] px-3 py-1.5 text-xs text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {!bridge && <p className="text-sm text-[var(--txt-faint)]">The bridge only runs inside the desktop app.</p>}
+          </div>
+        )}
+
         {tab === "memory" && (
           <div className="space-y-2">
+            <p className="mb-3 text-[13px] text-[var(--txt-faint)]">
+              Facts Alter picked up from your chats. They are carried into every new conversation and appended to <code className="rounded bg-[var(--input)] px-1 text-xs">~/.claude/CLAUDE.md</code>, so Claude Code learns them too.
+            </p>
             {memories.length === 0 && (
-              <p className="text-sm text-[var(--txt-faint)]">
-                Nothing yet. Tell Alter something about yourself — lasting facts get remembered automatically.
-              </p>
+              <p className="py-10 text-center text-sm text-[var(--txt-faint)]">Nothing remembered yet. Tell Alter something that should stick.</p>
             )}
             {memories.map((m) => (
-              <div key={m.id} className="group flex items-start gap-2 rounded-lg bg-[var(--panel)] px-3 py-2">
-                <p className="flex-1 text-sm text-[var(--txt)]">{m.text}</p>
+              <div key={m.id} className="group flex items-center gap-3 rounded-lg border border-[var(--bd-soft)] px-3 py-2.5">
+                <p className="min-w-0 flex-1 text-sm text-[var(--txt)]">{m.text}</p>
                 <button
                   onClick={() => onDeleteMemory(m.id)}
-                  className="hidden group-hover:block text-[var(--txt-faint)] hover:text-[var(--txt)]"
+                  className="rounded-md px-2 py-0.5 text-xs text-[var(--txt-faint)] opacity-0 transition-opacity hover:bg-[var(--panel-2)] hover:text-[var(--txt)] group-hover:opacity-100"
                   title="Forget"
                 >
-                  ×
+                  Forget
                 </button>
               </div>
             ))}

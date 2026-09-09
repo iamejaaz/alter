@@ -2,12 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import SettingsPanel from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
+import ComposerSelect from "./components/ComposerSelect";
 import AttachmentImage from "./components/AttachmentImage";
 import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
-import { Chevron, IconArrowUp, IconChevronRight, IconFolder, IconMic, IconPaperclip } from "./components/Icons";
+import { IconArrowUp, IconChevronRight, IconFolder, IconMic, IconPaperclip } from "./components/Icons";
 
 function extractArtifacts(content: string): ArtifactType[] {
   const arts: ArtifactType[] = [];
@@ -1673,7 +1674,7 @@ export default function App() {
                         </div>
                       )}
                       {m.content && (
-                        <div className="rounded-2xl rounded-br-md bg-[var(--user-bubble)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">
+                        <div className="rounded-2xl rounded-br-md bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
                           {m.content}
                         </div>
                       )}
@@ -1785,7 +1786,7 @@ export default function App() {
                 <span className="truncate max-w-[420px]">{pr.title}</span>
               </a>
             )}
-            <div className="rounded-2xl border border-[var(--bd)] bg-[var(--composer)] shadow-xl shadow-black/20 transition-colors focus-within:border-indigo-500/40">
+            <div className="rounded-2xl border border-[var(--bd)] bg-[var(--composer)] shadow-sm transition-colors focus-within:border-[var(--txt-faint)]">
               {attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-3 pt-3">
                   {attachments.map((a) => (
@@ -1902,29 +1903,26 @@ export default function App() {
                 }}
                 rows={1}
                 placeholder="Type / for commands"
-                className="relative w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
+                className="relative w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               </div>
-              <div className="flex items-center gap-0.5 px-2 pb-2 text-xs">
+              <div className="flex items-center gap-0.5 px-2 pb-2 text-[13px]">
                 {/* Left: mode + attach + mic */}
-                <div className="relative">
-                  <select
-                    value={settings.mode ?? "auto"}
-                    onChange={(e) => {
-                      const s = { ...settings, mode: e.target.value as typeof settings.mode };
-                      setSettings(s);
-                      storage.saveSettings(s);
-                    }}
-                    className="appearance-none bg-transparent rounded-md hover:bg-[var(--panel-2)] pl-1.5 pr-5 py-1 font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
-                    title="How Alter uses tools / permissions"
-                  >
-                    <option value="auto" className="bg-[var(--modal)]">Auto</option>
-                    <option value="ask" className="bg-[var(--modal)]">Ask first</option>
-                    <option value="plan" className="bg-[var(--modal)]">Plan</option>
-                    <option value="chat" className="bg-[var(--modal)]">Chat only</option>
-                  </select>
-                  <Chevron />
-                </div>
+                <ComposerSelect
+                  value={settings.mode ?? "auto"}
+                  onChange={(v) => {
+                    const s = { ...settings, mode: v as typeof settings.mode };
+                    setSettings(s);
+                    storage.saveSettings(s);
+                  }}
+                  options={[
+                    { value: "auto", label: "Auto" },
+                    { value: "ask", label: "Ask first" },
+                    { value: "plan", label: "Plan" },
+                    { value: "chat", label: "Chat only" },
+                  ]}
+                  title="How Alter uses tools / permissions"
+                />
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-[var(--panel-2)] text-[var(--txt-faint)] hover:text-[var(--txt)] transition-colors"
@@ -1948,62 +1946,37 @@ export default function App() {
                 )}
 
                 {/* model · (claude model) · effort · tokens — grouped next to the tools */}
-                <div className="relative">
-                  <select
-                    value={settings.activeConnectionId ?? ""}
-                    onChange={(e) => switchConnection(e.target.value)}
-                    className="appearance-none bg-transparent rounded-md hover:bg-[var(--panel-2)] pl-1.5 pr-5 py-1 font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors max-w-[150px] truncate"
-                    title={settings.model}
-                  >
-                    {connections.map((c) => {
-                      const short = c.model ? (c.model.includes("/") ? c.model.split("/").pop() : c.model) : "(no model)";
-                      const label = isClaudeCodeUrl(c.baseUrl)
-                        ? "Claude Code"
-                        : c.name === "Default"
-                          ? short
-                          : `${c.name} · ${short}`;
-                      return (
-                        <option key={c.id} value={c.id} className="bg-[var(--modal)]">
-                          {label}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <Chevron />
-                </div>
+                <ComposerSelect
+                  value={settings.activeConnectionId ?? ""}
+                  onChange={switchConnection}
+                  title={settings.model}
+                  options={connections.map((c) => {
+                    const short = c.model ? (c.model.includes("/") ? c.model.split("/").pop() : c.model) : "(no model)";
+                    const label = isClaudeCodeUrl(c.baseUrl) ? "Claude Code" : c.name === "Default" ? short : `${c.name} · ${short}`;
+                    return { value: c.id, label: label ?? "" };
+                  })}
+                />
                 {claudeCodeActive && (
-                  <div className="relative">
-                    <select
-                      value={CLAUDE_MODELS.some((m) => m.id === settings.model) ? settings.model : "claude-code"}
-                      onChange={(e) => setClaudeModel(e.target.value)}
-                      className="appearance-none bg-transparent rounded-md hover:bg-[var(--panel-2)] pl-1.5 pr-5 py-1 font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
-                      title="Claude Code model"
-                    >
-                      {CLAUDE_MODELS.map((m) => (
-                        <option key={m.id} value={m.id} className="bg-[var(--modal)]">
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
-                    <Chevron />
-                  </div>
+                  <ComposerSelect
+                    value={CLAUDE_MODELS.some((m) => m.id === settings.model) ? settings.model : "claude-code"}
+                    onChange={setClaudeModel}
+                    options={CLAUDE_MODELS.map((m) => ({ value: m.id, label: m.label }))}
+                    title="Claude Code model"
+                  />
                 )}
-                <div className="relative">
-                  <select
-                    value={settings.effort ?? ""}
-                    onChange={(e) => setEffort(e.target.value)}
-                    className="appearance-none bg-transparent rounded-md hover:bg-[var(--panel-2)] pl-1.5 pr-5 py-1 font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
-                    title="Reasoning effort"
-                  >
-                    <option value="" className="bg-[var(--modal)]">Effort</option>
-                    <option value="low" className="bg-[var(--modal)]">Low</option>
-                    <option value="medium" className="bg-[var(--modal)]">Medium</option>
-                    <option value="high" className="bg-[var(--modal)]">High</option>
-                    <option value="xhigh" className="bg-[var(--modal)]">X-High</option>
-                    <option value="max" className="bg-[var(--modal)]">Max</option>
-                  </select>
-                  <Chevron />
-                </div>
+                <ComposerSelect
+                  value={settings.effort ?? ""}
+                  onChange={setEffort}
+                  options={[
+                    { value: "", label: "Effort" },
+                    { value: "low", label: "Low" },
+                    { value: "medium", label: "Medium" },
+                    { value: "high", label: "High" },
+                    { value: "xhigh", label: "X-High" },
+                    { value: "max", label: "Max" },
+                  ]}
+                  title="Reasoning effort"
+                />
                 {activeStreaming && (
                   <span
                     className="mx-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[var(--txt-faint)] border-t-transparent animate-spin"
