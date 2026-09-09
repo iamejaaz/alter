@@ -27,14 +27,15 @@ function ToolSteps({ lines, live }: { lines: string[]; live: boolean }) {
     <div className="pl-11 animate-fade-up font-mono text-xs text-[var(--txt-faint)]">
       <button
         onClick={() => setOpen(!expanded)}
-        className="flex items-center gap-2 hover:text-[var(--txt-dim)] transition-colors"
+        className="flex w-full min-w-0 items-center gap-2 text-left hover:text-[var(--txt-dim)] transition-colors"
       >
-        <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>
+        <span className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}>
           <IconChevronRight />
         </span>
-        <span>
+        <span className="shrink-0">
           {live ? "Working" : "Ran"} {lines.length} step{lines.length > 1 ? "s" : ""}
         </span>
+        {!expanded && <span className="truncate text-[var(--txt-faint)]/70">· {lines[lines.length - 1]}</span>}
       </button>
       {expanded && (
         <div className="mt-1 space-y-1 pl-5">
