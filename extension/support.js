@@ -111,15 +111,12 @@ async function runVerbInner(verb) {
   // context — otherwise each follow-up is a fresh run that can't see what it said.
   if (raw) supSession.transcript.push({ q: VERB_LABELS[verb] || verb, a: raw });
   if (verb === "diagnose") {
-    // If the fast read calls it a likely BUG (🔴/🟡), auto-verify it on a bench so
-    // a bug-call is never shown unconfirmed — the fast read can be confidently
-    // wrong on a subtle mechanism. Not-a-bug verdicts (🟢) stay fast; the button
-    // is still there to deepen manually if wanted.
-    const likelyBug = raw && /🔴|🟡/.test(raw);
-    supSession.canDeepen = !likelyBug;
+    // The fast read is a first take; the bench pass always verifies it in code
+    // before the verdict is trusted.
+    supSession.canDeepen = false;
     renderFooter();
-    if (likelyBug) {
-      toast("Looks like a bug — verifying on a bench before calling it…");
+    if (raw) {
+      toast("Verifying in code on the bench…");
       await runDeepDiagnose();
     }
   } else {
