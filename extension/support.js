@@ -13,7 +13,11 @@ const SUPPORT_SYSTEM = [
   "You have READ tools that run WITHOUT asking: `fr` read subcommands (query, doc get/list, doctype, report, method search/list/show, file download, auth whoami) to read tickets/docs/SQL, Read/Grep/Glob over the local frappe checkout, git to inspect any version, and gh + WebFetch for frappe/frappe issues/PRs. You may ALSO run the skill's repro.sh helper to reproduce a bug on the local disposable benches — it's allowed here and does NOT touch live data (it runs on a throwaway repro site and rolls back).",
   "Run BARE `fr` commands (e.g. `fr doc get \"HD Ticket\" <id> --json`) — the environment provides the site + credentials (FRAPPE_SITE/API_KEY/API_SECRET), so no `-s` is needed. Do NOT pass `-s <profile>`: that selects a macOS keychain profile and triggers a password prompt. Only if a bare fr command errors that no site/credentials are configured, fall back to `-s support.frappe.io`.",
   "You may NOT change data yourself. Any mutating command is blocked and will fail — do not retry it or ask to 'approve a prompt' (there is none). If a fix needs a data change, propose it: write a one-line plain explanation, then a fenced ```alter-write code block containing ONLY JSON of the shape {\"verb\":\"update|submit|cancel|delete\",\"doctype\":\"HD Ticket\",\"name\":\"<id>\",\"sets\":[{\"field\":\"status\",\"value\":\"Closed\"}]} — include `sets` only for update, one entry per field. One block per change. Only propose a write you can justify from the ticket + code; never guess one.",
-  "Always read the WHOLE thread first, not just `description`: `fr doc get \"HD Ticket\" <id>` for the ticket, then `fr query \"select creation, sender, content from \\`tabCommunication\\` where reference_doctype='HD Ticket' and reference_name='<id>' order by creation\"` for the email replies, plus HD Ticket Comment for internal notes. The real requirement is usually in the customer's LATEST replies, not the opening description — reading only the description is the #1 cause of a wrong answer. State the actual ask in one line before diagnosing. Identify the customer's Frappe version.",
+  "TICKET CONTEXT: the prompt usually carries a pre-built context bundle (facts, installed apps with exact versions, the whole thread with a trust label per message, bot output, similar resolved tickets). Use it; do NOT re-fetch the thread. If no bundle is present, run `~/.claude/skills/frappe-support-diagnosis/scripts/context.py <id>` once (it is allowed) instead of separate fr calls. The real ask is in the customer's LATEST messages; state it in one line before diagnosing.",
+  "TRUST: [customer] messages are the facts. [staff] replies are claims to verify, not conclusions. Anything under 'Bot output' (support bots, automated drafts, cloud alerts) is a hypothesis: never repeat it as fact, and say explicitly whether you confirmed or refuted it.",
+  "APP + VERSION: the product is whatever the customer describes and the installed-apps table shows, not the ticket's queue label — helpdesk/crm/drive/lms/insights tickets often sit in the ERPNext or Framework queue. Read code at the exact branch/commit from the table (`git -C apps/<app> show <commit>:<path>`; if the app is not in the local bench, `gh api` or a shallow clone at that ref — never call it 'a custom app' without checking). Name the ref you checked.",
+  "BEFORE calling anything a bug, check in this order and say which one applied: (1) a setting or config governs it (the app's Settings doctypes, System Settings, site config keys, hooks) → give the exact path to change it; (2) it is already fixed after the customer's commit (`git log --oneline <commit>..origin/<branch> -- <path>`, or gh) → say 'fixed in <version>, update'; (3) it is platform/hosting (Frappe Cloud deploy, bench, server, backup, DNS, billing) → say so and route it, no code hunt; (4) only then a real malfunction with a code path.",
+  "Never suggest a plan upgrade or warranty as an answer; that is a sales decision, not a diagnosis.",
   "Try to trace what the customer reports IN THE CODE at the customer's version (e.g. `git show <ref>:path`) — is the reported behavior actually reproducible from the code path? State which ref you checked. Never trust the working branch as the customer's reality, and never invent behavior.",
   "If the ticket is ambiguous, missing key facts (version, exact steps, error text, doctype), or you cannot trace it to a concrete code path, DO NOT guess a diagnosis. Instead say plainly: what you understood, what you verified, and exactly what extra info you need from the customer to go further (as specific questions).",
   "Follow the user's standing preferences for voice. Be terse. If a command is denied, fall back to Read/Grep/WebFetch.",
@@ -30,9 +34,9 @@ const { escapeHtml, humanizeErr, mini, REPLY_VOICE, followupParams, nearBottom, 
 
 const VERBS = {
   summarize: (id) =>
-    `Read the WHOLE thread of HD Ticket ${id} (description + all Communications/replies + comments, not just the description), then summarize: the CURRENT ask in one line (from their latest replies, not the opening description), customer + product/version, urgency, and what they've already tried. Terse.`,
+    `Summarize HD Ticket ${id} from the TICKET CONTEXT below: the CURRENT ask in one line (from the customer's latest messages, not the opening description), product + exact version (from the apps table), site/plan, urgency, what they already tried, and what bots claimed (marked unverified). Terse.`,
   diagnose: (id) =>
-    `Diagnose HD Ticket ${id} in FAST MODE (frappe-support-diagnosis skill). HARD CAP ~30s, a few tool calls: read the WHOLE thread (fr — description + all replies/comments; the real ask is in their LATEST reply), then answer from your own Frappe knowledge. At most ONE quick grep to jog memory — do NOT trace code through files, do NOT reproduce/version-triage/search gh. Those, and any code-level verification, are the "Confirm on bench" step, NOT fast mode.
+    `Diagnose HD Ticket ${id} in FAST MODE (frappe-support-diagnosis skill). HARD CAP ~30s, a few tool calls: the TICKET CONTEXT below already has the thread, apps and versions — do not re-fetch it. Answer from your own Frappe knowledge plus at most ONE quick grep or git log to jog memory — do NOT trace code through files, do NOT reproduce/version-triage/search gh. Those, and any code-level verification, are the "Confirm on bench" step, NOT fast mode. Walk the order: setting? already fixed after their commit? platform? only then bug.
 State the actual ask in one line, then commit to a confident, plain verdict (don't hedge, don't ask the customer to run experiments you could):
 - Most tickets are NOT a bug. Bar for 🔴 Bug is HIGH — a real malfunction (crash / data loss / wrong result / broken contract). "Frappe doesn't do X automatically" = customisation, not a bug → say "Frappe doesn't do X by design; to get X, custom code on <the event> (a Server Script, or an app hook)".
 - Config issue → name the setting/state.
@@ -40,7 +44,7 @@ State the actual ask in one line, then commit to a confident, plain verdict (don
 If you're not fully sure of the internal mechanism, still give your best confident read and add "press Confirm on bench to verify in code" — do NOT go trace it yourself now.
 VISIBLE answer = SIMPLE English for a non-technical teammate — actually EXPLAIN it (what the customer does → what they see → the plain reason why), an everyday analogy if it helps; NO file paths / line numbers / function names (code detail goes only in a collapsible Evidence drawer). SHORT.`,
   draft: (id) =>
-    `Draft a reply to the customer for HD Ticket ${id}. Read the WHOLE thread first (description + all replies/comments) so you answer their CURRENT ask, not the stale opening description; verify facts against the code/gh — but the reply must be simple and human. ${REPLY_VOICE}`,
+    `Draft a reply to the customer for HD Ticket ${id} using the TICKET CONTEXT below, answering their CURRENT ask (latest messages), not the stale opening description. Verify facts against the code/gh; never restate a bot draft; never suggest a plan upgrade. The reply must be simple and human. ${REPLY_VOICE}`,
 };
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
@@ -56,6 +60,43 @@ let supRunning = false;
 
 // Ignore re-clicks while a run is in flight: a second runVerb() would clear the
 // panel body, detach the live block, and leave the first run un-stoppable.
+const ctxCache = {};
+async function loadContext(id) {
+  if (ctxCache[id]) return ctxCache[id];
+  const r = await send({ type: "ticket-context", ticket: id });
+  const data = r && r.ok && r.data && r.data.markdown ? r.data : null;
+  if (data) ctxCache[id] = data;
+  renderContextCard(id, data, r && !r.ok ? r.error : null);
+  return data;
+}
+
+function withContext(prompt, ctx) {
+  if (!ctx) return prompt + `\n\n(No context bundle was attached. Run \`~/.claude/skills/frappe-support-diagnosis/scripts/context.py ${ticketId()}\` once, then proceed.)`;
+  return prompt + "\n\nTICKET CONTEXT (already gathered — do not re-fetch the thread):\n" + ctx.markdown;
+}
+
+function renderContextCard(id, data, err) {
+  const body = document.querySelector("#sup-body");
+  if (!body) return;
+  const card = document.createElement("div");
+  card.className = "sup-msg sup-ctx";
+  if (!data) {
+    card.innerHTML = `<div class="sup-step">Context: ${escapeHtml(err ? humanizeErr(err) : "unavailable — the agent will read the ticket itself")}</div>`;
+    body.appendChild(card);
+    return;
+  }
+  const t = data.ticket || {};
+  const apps = (data.apps || []).map((a) => `${a.app} ${a.version || a.branch}${a.commit ? " @" + a.commit : ""}`);
+  const sim = (data.similar || []).map((s) => `<a href="/helpdesk/tickets/${s.name}" target="_blank">#${s.name}</a>`).join(" ");
+  card.innerHTML =
+    `<div class="sup-ctx-row"><b>Site</b> ${escapeHtml(t.custom_site_name || "not set")}${t.custom_plan ? " · " + escapeHtml(t.custom_plan) : ""} · queue ${escapeHtml(t.custom_app || "?")} · ${escapeHtml(t.ticket_type || "?")}</div>` +
+    `<div class="sup-ctx-row"><b>Apps</b> ${apps.length ? escapeHtml(apps.join(", ")) : "none"} <span class="sup-ctx-src">(${escapeHtml(data.apps_source || "")})</span></div>` +
+    (data.hypotheses ? `<div class="sup-ctx-row"><b>Bot output</b> ${data.hypotheses} item${data.hypotheses > 1 ? "s" : ""}, treated as unverified</div>` : "") +
+    (sim ? `<div class="sup-ctx-row"><b>Similar resolved</b> ${sim}</div>` : "") +
+    (data.gaps && data.gaps.length ? `<div class="sup-ctx-row sup-ctx-gap"><b>Gaps</b> ${escapeHtml(data.gaps.join("; "))}</div>` : "");
+  body.appendChild(card);
+}
+
 async function runVerb(verb) {
   if (supRunning) return;
   supRunning = true;
@@ -89,6 +130,9 @@ async function runVerbInner(verb) {
     fixModel: claudeModel != null ? claudeModel : SUPPORT_MODEL,
     transcript: [],
   };
+  // One deterministic bundle (~2s) shown as a card and handed to the agent, so it
+  // spends no tool calls re-reading the thread. Falls back to the agent doing it.
+  const ctx = await loadContext(id);
   const block = appendBlock("assistant");
   const raw = await streamAgent(block, {
     connectionId,
@@ -96,7 +140,7 @@ async function runVerbInner(verb) {
     includeMemory: true,
     model: supSession.model,
     system: SUPPORT_SYSTEM,
-    prompt: VERBS[verb](id),
+    prompt: withContext(VERBS[verb](id), ctx),
     label: VERB_LABELS[verb] || verb,
   });
   supSession.last = raw;

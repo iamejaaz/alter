@@ -345,3 +345,9 @@
 #sup-panel.sup-collapsed { height: auto; max-height: none; }
 #sup-panel.sup-collapsed #sup-body,
 #sup-panel.sup-collapsed #sup-foot { display: none; }
+
+#sup-panel .sup-ctx { font-size: 12px; line-height: 1.5; border: 1px solid var(--sup-bd, rgba(128,128,128,.25)); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; opacity: .9; }
+#sup-panel .sup-ctx-row { display: flex; gap: 6px; flex-wrap: wrap; }
+#sup-panel .sup-ctx-row b { font-weight: 600; min-width: 4.5em; }
+#sup-panel .sup-ctx-src { opacity: .6; }
+#sup-panel .sup-ctx-gap { opacity: .75; }

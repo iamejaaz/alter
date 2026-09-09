@@ -98,8 +98,9 @@ bug needs a repro; not every answer needs a wall of evidence. Judge, don't grind
 
 **Work fast — every step is a slow model round-trip, so do the FEWEST.** Aim to
 finish in a handful of tool calls, not dozens. Budget:
-1. Read the ticket + establish facts (steps 1–2). **Then classify: bug, or
-   customisation / functional-query / config / user-error?**
+1. `scripts/context.py <id>` (step 1), then app/version and the cheap answers
+   (step 2). **Then classify: setting / already fixed / platform / customisation /
+   bug?**
 2. If it's **not a clear framework bug**, STOP now — give the answer (the setting,
    the script, why it's intended). No code hunt, no version triage, no repro, no
    gh. Most tickets end here.
@@ -113,37 +114,51 @@ needs heavy fixtures (creating DocTypes/Workflows) or you can't settle it in one
 go, trace it and say "unconfirmed" rather than grinding. Batch shell work into few
 calls. Stop the moment the verdict is decided.
 
-### 1. Read the WHOLE thread — not just the description
-The opening `description` is rarely the real requirement; the customer clarifies
-what they actually want in the **replies**. Reading only the description is the #1
-cause of a misleading verdict — you MUST read the full conversation and base the
-requirement on the customer's **latest** messages, not the first one.
+### 1. Get the context in ONE call
 ```sh
-fr doc get "HD Ticket" <id> --json                              # ticket + description
-# the email thread (standard Frappe Communication — reliable across helpdesk versions):
-fr query "select creation, sender, content from \`tabCommunication\` where reference_doctype='HD Ticket' and reference_name='<id>' order by creation"
-# internal notes (verified fields):
-fr query "select creation, commented_by, content from \`tabHD Ticket Comment\` where reference_ticket='<id>' order by creation"
+scripts/context.py <id>          # ~2s: facts, installed apps + exact versions, the thread, bot output, similar tickets
 ```
-Run **bare** `fr` — the environment provides site + credentials (FRAPPE_SITE/
-API_KEY/API_SECRET); do NOT pass `-s <profile>` (it hits the macOS keychain and
-prompts). Fall back to `-s support.frappe.io` only if bare `fr` says no site/creds.
-Read every reply before you conclude; pull siblings/related with `fr query` when
-the thread is thin. **State the actual ask in one line before diagnosing** — if the
-thread and description disagree, the thread wins.
+It prints one bundle and replaces separate `fr` calls (the extension attaches the
+same bundle to its prompt — when it is already in the prompt, do not run it again).
+What it gives you and how to read it:
+- **Ticket facts** — subject, queue (`custom_app`), type, module, site, plan, PR
+  field, awaiting-release flag. The queue is where the ticket was filed, not proof
+  of which app is at fault.
+- **Site apps** — every installed app with branch, tag and commit, live from
+  Frappe Cloud when reachable, else the snapshot taken when the ticket was created.
+  This is your version source. Read code at exactly these refs.
+- **Thread with a trust label** — `[customer]` messages are the facts; the ask is
+  in their LATEST messages, and the thread beats the description. `[staff]`
+  replies are claims to verify, not conclusions.
+- **Bot output** — support bots, suggested drafts, cloud alerts. Hypotheses only.
+  Never repeat one as fact; say explicitly whether you confirmed or refuted it.
+- **Similar resolved tickets** — hints with the most useful staff reply. Cheap to
+  read, never proof.
+- **Gaps** — what the bundle could not get (no site, no apps, no version).
 
-### 2. Establish the facts — the ticket's custom fields already have them
-`fr doc get "HD Ticket" <id> --json` returns support.frappe.io's **custom fields**;
-read them instead of asking the customer for what's already there:
-- `custom_app` — the product (Frappe Framework / ERPNext / HRMS / …) → which app to look in.
-- `custom_installed_apps` — apps **and their versions**; `custom_released_version` — the version. This is your version source; don't ask "what version?" if these are set.
-- `custom_reference_module` / `custom_sub_reference_module` — the area.
-- `custom_site_name` / `custom_bench_name` / `custom_dashboard_link` — the customer's site; **`custom_allow_database_access` = Yes** means you may query their site directly (via `fr -s <that-site>`) to pull the real config/data instead of guessing.
-- `custom_is_security_issue` = checked → treat as sensitive: keep exploit/vuln details OUT of any public PR/issue (see PII rule).
+`fr` runs bare in the agent environment (site + credentials come from env). Pass
+`--site <profile>` only outside it. **State the actual ask in one line before
+diagnosing.**
 
-Then confirm the DocType/feature, exact steps, and exact error from the thread. A
-fact that's genuinely absent *and* blocking → ask; a fact sitting in a custom
-field → just read it.
+### 2. Resolve app, version, and the cheap answers first
+- **App**: the product the customer describes plus the apps table, not the queue.
+  Helpdesk, CRM, Drive, LMS, Insights and Frappe Cloud tickets routinely sit in the
+  ERPNext or Framework queue. An app missing from `apps/` is fetched at the
+  customer's ref (`gh api`, or a shallow clone) — never declared "custom" unchecked.
+- **Version**: the branch + commit from the table. Trace at that ref
+  (`git -C apps/<app> show <commit>:<path>`), and name the ref you checked.
+- Then, in this order, and say which one applied:
+  1. **A setting governs it** — the app's Settings doctypes, System Settings, site
+     config keys, hooks. Answer with the exact path to change it.
+  2. **Already fixed after their commit** — `git log --oneline <commit>..origin/<branch> -- <path>`
+     (or gh). Answer "fixed in <version>, update".
+  3. **Platform, not code** — deploy, bench, server, backup, DNS, storage, billing.
+     Say so and route it; no code hunt.
+  4. Only then a real malfunction with a code path → continue to step 3.
+- `custom_allow_database_access` = Yes lets you query the customer's site
+  (`fr -s <site>`) for real config instead of guessing. `custom_is_security_issue`
+  = checked → keep exploit details out of anything public.
+- Never suggest a plan upgrade or warranty as an answer.
 
 ### 3. Locate the code — across ALL installed apps
 ```sh

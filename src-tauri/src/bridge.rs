@@ -139,9 +139,16 @@ fn agent_allowed_tools() -> String {
     // user's throwaway benches only. Scoped to this exact command, nothing else.
     let rel = ".claude/skills/frappe-support-diagnosis/scripts/repro.sh";
     t.push(format!("Bash(~/{rel}:*)"));
+    // The read-only context bundle (ticket + thread + apps), same skill folder.
+    let ctx = ".claude/skills/frappe-support-diagnosis/scripts/context.py";
+    t.push(format!("Bash(~/{ctx}:*)"));
+    t.push(format!("Bash(python3 ~/{ctx}:*)"));
     if let Some(home) = std::env::var_os("HOME") {
         let abs = std::path::Path::new(&home).join(rel);
         t.push(format!("Bash({}:*)", abs.display()));
+        let abs_ctx = std::path::Path::new(&home).join(ctx);
+        t.push(format!("Bash({}:*)", abs_ctx.display()));
+        t.push(format!("Bash(python3 {}:*)", abs_ctx.display()));
     }
     t.join(" ")
 }
@@ -727,6 +734,41 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let has_root = std::env::var("ALTER_REPRO_ROOT").map(|s| !s.is_empty()).unwrap_or(false);
             let configured = has_root || !versions.is_empty();
             (200, serde_json::json!({ "configured": configured, "versions": versions }).to_string())
+        }
+        (tiny_http::Method::Post, "/ticket-context") => {
+            // One deterministic call that gathers a ticket's facts, thread (with
+            // trust labels), installed apps and similar resolved tickets, so the
+            // panel can show them and the agent doesn't spend tool calls on it.
+            #[derive(serde::Deserialize)]
+            struct C {
+                ticket: String,
+            }
+            let req: C = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
+            };
+            let ticket = req.ticket.trim().to_string();
+            if ticket.is_empty() || !ticket.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                return (400, "{\"error\":\"bad ticket id\"}".into());
+            }
+            let script = match std::env::var_os("HOME") {
+                Some(h) => std::path::Path::new(&h).join(".claude/skills/frappe-support-diagnosis/scripts/context.py"),
+                None => return (500, "{\"error\":\"no HOME\"}".into()),
+            };
+            if !script.is_file() {
+                return (404, "{\"error\":\"context script not installed\"}".into());
+            }
+            let out = std::process::Command::new("python3")
+                .arg(&script)
+                .arg(&ticket)
+                .arg("--json")
+                .current_dir(agent_workdir())
+                .output();
+            match out {
+                Ok(o) if o.status.success() => (200, String::from_utf8_lossy(&o.stdout).to_string()),
+                Ok(o) => (500, serde_json::json!({ "error": String::from_utf8_lossy(&o.stdout).chars().take(300).collect::<String>() }).to_string()),
+                Err(e) => (500, serde_json::json!({ "error": e.to_string() }).to_string()),
+            }
         }
         (tiny_http::Method::Post, "/run") => {
             let req: RunReq = match serde_json::from_str(body) {
