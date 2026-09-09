@@ -306,6 +306,32 @@ fn build_system(include_memory: bool, system: Option<&str>) -> String {
     }
 }
 
+fn wrap_up(session_id: &str, model: Option<&str>) -> Result<String, String> {
+    let mut cmd = std::process::Command::new("claude");
+    cmd.arg("-p")
+        .arg("Your tool budget is exhausted. Do NOT call any tool. Write the final answer now, in the required format, from what you already found — say plainly which parts are unverified.")
+        .arg("--resume")
+        .arg(session_id)
+        .arg("--max-turns")
+        .arg("1")
+        .arg("--output-format")
+        .arg("json")
+        .arg("--permission-mode")
+        .arg("default")
+        .arg("--allowedTools")
+        .arg("");
+    if let Some(m) = model {
+        cmd.arg("--model").arg(m);
+    }
+    let dir = agent_workdir();
+    if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
+        cmd.current_dir(&dir);
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+    Ok(v["result"].as_str().unwrap_or("").to_string())
+}
+
 fn push_step(progress: &Mutex<std::collections::HashMap<String, AgentProgress>>, rid: &str, s: String) {
     if let Some(p) = progress.lock().unwrap_or_else(|e| e.into_inner()).get_mut(rid) {
         if !p.done {
@@ -365,8 +391,9 @@ fn spawn_agent_run(
         .arg("--output-format")
         .arg("stream-json")
         .arg("--verbose");
-    if !conn.model.is_empty() && conn.model != "claude-code" {
-        cmd.arg("--model").arg(std::mem::take(&mut conn.model));
+    let model = if conn.model.is_empty() || conn.model == "claude-code" { None } else { Some(std::mem::take(&mut conn.model)) };
+    if let Some(m) = &model {
+        cmd.arg("--model").arg(m);
     }
     let dir = agent_workdir();
     if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
@@ -462,7 +489,15 @@ fn spawn_agent_run(
                     "result" => {
                         let is_err = v["is_error"].as_bool().unwrap_or(false);
                         let r = v["result"].as_str().unwrap_or("").to_string();
-                        if is_err {
+                        let capped = v["subtype"].as_str() == Some("error_max_turns");
+                        let sid = progress.lock().unwrap_or_else(|e| e.into_inner()).get(&run_id).and_then(|p| p.session_id.clone());
+                        if capped && sid.is_some() {
+                            push_step(&progress, &run_id, "Budget reached — writing the verdict from what it has".to_string());
+                            match wrap_up(sid.as_deref().unwrap_or(""), model.as_deref()) {
+                                Ok(text) if !text.trim().is_empty() => finish_progress(&progress, &run_id, Some(text), None),
+                                _ => finish_progress(&progress, &run_id, None, Some("ran out of steps before reaching a verdict — try again".to_string())),
+                            }
+                        } else if is_err {
                             let msg = if r.is_empty() { "the agent hit an error".to_string() } else { r };
                             finish_progress(&progress, &run_id, None, Some(msg));
                         } else {
