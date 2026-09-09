@@ -47,6 +47,12 @@ Alter is a native desktop chat app built on Tauri, so it is a few MB and light o
 
 ![Light theme](docs/screenshot-light.png)
 
+## Try the prototype
+
+A clickable walkthrough of the whole app, built with frappe-ui: [sketch.netchamp.dev/u/iamejaaz/alter](https://sketch.netchamp.dev/u/iamejaaz/alter). Send a message, press Esc mid-turn, open the slash menu, and click through Routines, Skills, Settings and the browser extension panels. Demo data only.
+
+![Prototype settings](docs/prototype-settings.png)
+
 ## Quick start
 
 Prerequisites: [Rust](https://rustup.rs) (stable), [Node](https://nodejs.org) 18+, and on macOS the Xcode Command Line Tools (`xcode-select --install`).

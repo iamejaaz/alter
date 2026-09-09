@@ -56,6 +56,12 @@ Reload the tab mid-run and the panel re-attaches to the job.
   any chat. The support agent is network-gated (can't write the site); the
   handoffs are more powerful — Alter chat is autonomous, fr assistant prompts.
 
+## Pairing
+
+Alter → Settings → Browser bridge shows the pairing token. Paste it into the extension's settings page.
+
+![Browser bridge settings](../docs/settings-bridge.png)
+
 ## Prerequisites
 
 - The Alter desktop app running, with a **Claude Code** connection (PR review and the support agent need tools).
