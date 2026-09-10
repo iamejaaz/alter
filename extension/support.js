@@ -178,6 +178,26 @@ async function runPrPush() {
     label: "Push & open PR",
   });
   supSession.transcript.push({ q: "Push & open PR", a });
+  const m = (a || "").match(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/);
+  if (m) {
+    supSession.prUrl = m[0];
+    supSession.fixPrepared = false;
+    renderFooter();
+  }
+}
+
+async function runPrReply() {
+  if (!supSession || !supSession.prUrl) return;
+  appendBlock("user").textContent = "Draft reply about the PR";
+  const block = appendBlock("assistant");
+  const a = await streamAgent(block, {
+    connectionId: supSession.connectionId,
+    includeMemory: true,
+    model: supSession.model,
+    support: { ticket: supSession.id, verb: "pr_reply", site: SITE, question: supSession.prUrl, voice: REPLY_VOICE },
+    label: "Draft reply",
+  });
+  supSession.transcript.push({ q: "Draft reply about the PR", a });
 }
 
 function toast(text, isErr) {
@@ -633,6 +653,7 @@ function renderFooter() {
         </div>
       </div>
       ${supSession && supSession.fixPrepared ? '<button id="sup-pr-push">Push &amp; open PR</button>' : ""}
+      ${supSession && supSession.prUrl ? '<button id="sup-pr-reply">✉️ Draft reply about the PR</button>' : ""}
     </div>
     <div id="sup-foot-ask"><div id="sup-ask-wrap"><div id="sup-ask-images"></div><textarea id="sup-ask" rows="1" placeholder="Ask a follow-up…" title="Enter to send · Shift+Enter for a new line · paste a screenshot to attach it"></textarea></div><button id="sup-ask-send">Send</button></div>`;
   const menu = foot.querySelector("#sup-menu");
@@ -651,6 +672,8 @@ function renderFooter() {
   );
   const pushBtn = foot.querySelector("#sup-pr-push");
   if (pushBtn) pushBtn.addEventListener("click", () => runPrPush());
+  const replyBtn = foot.querySelector("#sup-pr-reply");
+  if (replyBtn) replyBtn.addEventListener("click", (e) => { e.target.disabled = true; runPrReply().finally(() => { if (e.target.isConnected) e.target.disabled = false; }); });
   const input = foot.querySelector("#sup-ask");
   const imagesEl = foot.querySelector("#sup-ask-images");
   let images = [];

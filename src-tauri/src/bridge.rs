@@ -1011,7 +1011,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     prompt.push_str(&format!("\n- Read `{path}`"));
                 }
             }
-            if !resuming && matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft" | "deepen" | "followup") {
+            if !resuming && matches!(req.verb.as_str(), "summarize" | "diagnose" | "draft" | "deepen" | "followup" | "pr_reply") {
                 if let Ok(json) = ticket_context(&ticket) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
                         if let Some(md) = v["markdown"].as_str() {
