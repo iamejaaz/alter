@@ -1050,7 +1050,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill);
             let prompt = req.prompt.replace("{skill}", &skill);
             let reg = req.run_id.as_deref().map(|id| (&*state.running, id));
-            let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &req.prompt, req.agent, reg));
+            let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &prompt, req.agent, reg));
             match result {
                 Ok(content) => (200, serde_json::json!({ "content": strip_think(&content) }).to_string()),
                 Err(e) => (502, serde_json::json!({ "error": e }).to_string()),
@@ -1127,7 +1127,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     conn.model = m.to_string();
                 }
             }
-            let system = build_system(req.include_memory, req.system.as_deref());
+            let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+            let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill);
+            let prompt = req.prompt.replace("{skill}", &skill);
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
