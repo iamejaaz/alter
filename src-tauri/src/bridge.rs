@@ -125,9 +125,6 @@ fn fr_rules(verbs: &[&str]) -> Vec<String> {
 
 fn agent_allowed_tools() -> String {
     let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch", "Skill"].iter().map(|s| s.to_string()).collect();
-    for d in ["//private/tmp/**", "//tmp/**", "//private/var/folders/**", "//var/folders/**"] {
-        t.push(format!("Write({d})"));
-    }
     t.extend(fr_rules(FR_READ_VERBS));
     // `git -C <app> show …` is how the agent reads app repos (the bench root isn't
     // one), and a global flag before the subcommand can't match a `git show`
@@ -1049,7 +1046,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     }
                 }
             }
-            let system = build_system(req.include_memory, req.system.as_deref());
+            let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+            let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill);
+            let req = S { prompt: req.prompt.replace("{skill}", &skill), ..req };
             let reg = req.run_id.as_deref().map(|id| (&*state.running, id));
             let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &req.prompt, req.agent, reg));
             match result {
