@@ -22,6 +22,13 @@ function prParts() {
   return m ? { owner: m[1], repo: m[2], num: m[3] } : null;
 }
 
+function issueParts() {
+  const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/issues\/(\d+)/);
+  return m ? { owner: m[1], repo: m[2], num: m[3] } : null;
+}
+
+const pageParts = () => prParts() || issueParts();
+
 function prAuthor() {
   const el = document.querySelector("a.author");
   if (!el) return "";
@@ -113,14 +120,17 @@ async function followUp(q) {
   // Normal CHAT about the PR you already reviewed — not a fresh review each time.
   // A request for a comment to POST is a PR review comment (code refs welcome, in
   // your own review voice), NOT a customer reply — so bypass the customer voice.
-  const domain = "The work here is your review of a GitHub PR; cite file:line when the question is about the code.";
+  const isIssue = session.kind === "issue";
+  const domain = isIssue
+    ? "The work here is a fix you prepared on a local branch for a GitHub issue; you may read the branch with git and cite file:line."
+    : "The work here is your review of a GitHub PR; cite file:line when the question is about the code.";
   const wantsReply = REPLY_INTENT.test(q);
   const system = wantsReply
     ? `${domain} ${FOLLOWUP_SYSTEM} You are drafting a PR REVIEW COMMENT to post on GitHub, in your OWN terse review voice from memory (not a customer reply): plain, direct, your exact phrasing; file:line refs are fine and a \`\`\`suggestion block when a concrete fix fits. Address the PR author ${session.author ? `as @${session.author}` : "directly"} — NEVER write the literal '@author'. No preamble, no politeness padding, no hedging. Output ONLY the comment body.`
     : followupParams(q, domain).system;
   const label = wantsReply ? "Draft comment" : "Follow-up";
   const prompt =
-    `PR diff (may be truncated):\n${session.diff}${session.note}\n\n` +
+    (isIssue ? `GitHub issue ${session.issue}.\n\n` : `PR diff (may be truncated):\n${session.diff}${session.note}\n\n`) +
     `Your review:\n${session.review}${t}\n\nUser: ${q}\nYou:`;
   const block = appendBlock("assistant");
   const a = await streamAgent(block, {
@@ -260,7 +270,7 @@ async function getActiveRun(key) {
 // after reload (no start — it already exists server-side).
 function pollRun(el, runId, opts) {
   opts = opts || {};
-  const parts = prParts();
+  const parts = pageParts();
   const key = parts ? prKey(parts) : null;
   return new Promise((resolve) => {
     const t0 = Date.now();
@@ -383,7 +393,7 @@ function pollRun(el, runId, opts) {
 function streamAgent(el, params) {
   const runId =
     (self.crypto && crypto.randomUUID && crypto.randomUUID()) || "r" + Date.now() + Math.random();
-  const parts = prParts();
+  const parts = pageParts();
   if (parts)
     saveActiveRun({
       key: prKey(parts),
@@ -394,23 +404,25 @@ function streamAgent(el, params) {
     });
   return pollRun(el, runId, {
     start: (rid) =>
-      send({
-        type: "agent-start",
-        connectionId: params.connectionId,
-        includeMemory: params.includeMemory,
-        system: params.system,
-        prompt: params.prompt,
-        model: params.model,
-        mode: params.mode,
-        runId: rid,
-      }),
+      params.support
+        ? send({ type: "support-start", ...params.support, connectionId: params.connectionId, includeMemory: params.includeMemory, model: params.model, runId: rid })
+        : send({
+            type: "agent-start",
+            connectionId: params.connectionId,
+            includeMemory: params.includeMemory,
+            system: params.system,
+            prompt: params.prompt,
+            model: params.model,
+            mode: params.mode,
+            runId: rid,
+          }),
   });
 }
 
 // After a page-tab reload, re-attach to a review still running on the bridge.
 const reconnected = new Set();
 async function reconnectIfActive() {
-  const parts = prParts();
+  const parts = pageParts();
   if (!parts) return;
   const key = prKey(parts);
   if (reconnected.has(key) || document.getElementById("alter-panel")) return;
@@ -423,7 +435,9 @@ async function reconnectIfActive() {
     return;
   }
   openPanel();
-  session = { parts, connectionId: rec.connectionId, model: rec.model, diff: "", note: "", review: "", draft: "", transcript: [] };
+  const isIssue = !!issueParts();
+  session = { parts, connectionId: rec.connectionId, model: rec.model, diff: "", note: "", review: "", draft: "", transcript: [], kind: isIssue ? "issue" : "pr", issue: isIssue ? `${location.origin}/${parts.owner}/${parts.repo}/issues/${parts.num}` : "" };
+  if (isIssue) document.querySelector("#alter-panel-title").textContent = "Alter — Fix issue";
   clearBody();
   const note = document.createElement("div");
   note.className = "alter-step alter-step-say";
@@ -436,6 +450,10 @@ async function reconnectIfActive() {
     renderPostPreview(a);
   } else {
     session.review = a;
+    if (session.kind === "issue") {
+      session.transcript.push({ q: rec.label || "Prepare fix", a });
+      session.fixPrepared = rec.label !== "Push & open PR" && !!a;
+    }
     renderFooter();
   }
 }
@@ -446,16 +464,68 @@ function showStop(on) {
 }
 
 function ensureButton() {
-  if (!prParts()) return;
+  const isIssue = !!issueParts();
+  if (!prParts() && !isIssue) return;
   if (document.getElementById("alter-actions")) return;
   const wrap = document.createElement("div");
   wrap.id = "alter-actions";
   const b = document.createElement("button");
   b.className = "alter-action-btn";
-  b.textContent = "Review with Alter";
-  b.addEventListener("click", () => run());
+  b.textContent = isIssue ? "Fix with Alter" : "Review with Alter";
+  b.addEventListener("click", () => (isIssue ? runIssueFix() : run()));
   wrap.appendChild(b);
   document.body.appendChild(wrap);
+}
+
+async function runIssueFix() {
+  if (running) return;
+  running = true;
+  const btn = document.querySelector("#alter-actions button");
+  if (btn) btn.disabled = true;
+  try {
+    const parts = issueParts();
+    const { models, claudeModel } = await chrome.storage.local.get(["models", "claudeModel"]);
+    const connectionId = models && models.prReview;
+    openPanel();
+    document.querySelector("#alter-panel-title").textContent = "Alter — Fix issue";
+    clearBody();
+    if (!connectionId) return setStatus("Pick a model for PR review in the Alter extension settings first.", true);
+    const issue = `${location.origin}/${parts.owner}/${parts.repo}/issues/${parts.num}`;
+    session = { parts, issue, connectionId, model: claudeModel || undefined, review: "", draft: "", transcript: [], kind: "issue" };
+    appendBlock("user").textContent = `Fix ${parts.owner}/${parts.repo}#${parts.num}`;
+    const block = appendBlock("assistant");
+    const a = await streamAgent(block, {
+      connectionId,
+      includeMemory: true,
+      model: session.model,
+      mode: "pr",
+      support: { ticket: parts.num, verb: "issue", site: "github.com", issue },
+      label: "Prepare fix",
+    });
+    session.review = a;
+    session.transcript.push({ q: "Prepare fix", a });
+    session.fixPrepared = !!a;
+    renderFooter();
+  } finally {
+    running = false;
+    if (btn && btn.isConnected) btn.disabled = false;
+  }
+}
+
+async function pushIssueFix() {
+  if (!session || session.kind !== "issue") return;
+  appendBlock("user").textContent = "Push & open PR";
+  const t = session.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
+  const block = appendBlock("assistant");
+  const a = await streamAgent(block, {
+    connectionId: session.connectionId,
+    includeMemory: true,
+    model: session.model,
+    mode: "pr-push",
+    support: { ticket: session.parts.num, verb: "issue_push", site: "github.com", issue: session.issue, transcript: t },
+    label: "Push & open PR",
+  });
+  session.transcript.push({ q: "Push & open PR", a });
 }
 
 function openPanel() {
@@ -517,6 +587,29 @@ function appendBlock(cls) {
 
 function renderFooter() {
   const foot = document.querySelector("#alter-panel-foot");
+  if (session && session.kind === "issue") {
+    foot.innerHTML = `
+    <div id="alter-foot-btns">
+      ${session.fixPrepared ? '<button id="alter-push">Push &amp; open PR</button>' : ""}
+    </div>
+    <div id="alter-foot-ask">
+      <input id="alter-ask" placeholder="Ask a follow-up…" />
+      <button id="alter-ask-send">Send</button>
+    </div>
+    <div id="alter-foot-note"></div>`;
+    const pushBtn = foot.querySelector("#alter-push");
+    if (pushBtn) pushBtn.addEventListener("click", (e) => { e.target.disabled = true; pushIssueFix(); });
+    const input = foot.querySelector("#alter-ask");
+    const go = () => {
+      const q = input.value.trim();
+      if (!q) return;
+      input.value = "";
+      followUp(q);
+    };
+    foot.querySelector("#alter-ask-send").addEventListener("click", go);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+    return;
+  }
   foot.innerHTML = `
     <div id="alter-foot-btns">
       <button id="alter-draft">✍️ Draft comment</button>
@@ -587,9 +680,9 @@ function renderPostPreview(text) {
 // GitHub is an SPA: the URL changes without reloading. If the PR under an open
 // panel changes, drop the stale panel so it can't show the wrong PR's review,
 // then let reconnectIfActive pick up any run for the new one.
-let lastPrKey = prParts() ? prKey(prParts()) : null;
+let lastPrKey = pageParts() ? prKey(pageParts()) : null;
 setInterval(() => {
-  const parts = prParts();
+  const parts = pageParts();
   const key = parts ? prKey(parts) : null;
   if (key !== lastPrKey) {
     lastPrKey = key;

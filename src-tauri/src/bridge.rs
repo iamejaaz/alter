@@ -198,8 +198,15 @@ fn pr_allowed_tools() -> String {
     for g in [
         "git fetch", "git status", "git diff", "git log", "git show", "git branch",
         "git checkout", "git switch", "git add", "git commit", "git restore",
+        "gh issue view", "gh pr view", "gh search", "bench", "pre-commit",
     ] {
         t.push(format!("Bash({g}:*)"));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let dir = std::path::Path::new(&home).join(".claude/skills/frappe-support-diagnosis/scripts");
+        for name in ["repro.sh", "across-versions.sh", "find-code.sh"] {
+            t.push(format!("Bash({}:*)", dir.join(name).display()));
+        }
     }
     t.join(" ")
 }
@@ -944,6 +951,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 #[serde(default)]
                 images: Vec<String>,
                 #[serde(default)]
+                issue: String,
+                #[serde(default)]
                 model: Option<String>,
                 #[serde(default)]
                 run_id: Option<String>,
@@ -968,7 +977,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let resuming = req.resume.as_deref().map(|s| !s.is_empty()).unwrap_or(false) && matches!(req.verb.as_str(), "followup" | "deepen");
             let transcript = if resuming { "" } else { req.transcript.as_str() };
             let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
-            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", transcript), ("question", &req.question), ("skill", &skill)];
+            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", transcript), ("question", &req.question), ("skill", &skill), ("issue", &req.issue)];
             let (system, mut prompt, mode): (String, String, Option<String>) = match req.verb.as_str() {
                 "summarize" | "diagnose" | "draft" | "deepen" => (
                     fill(&join_lines(&prompts["system"]), &vars),
@@ -977,6 +986,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 ),
                 "pr" => (fill(&join_lines(&prompts["pr"]["system"]), &vars), fill(prompts["pr"]["prompt"].as_str().unwrap_or(""), &vars), Some("pr".into())),
                 "pr_push" => (fill(&join_lines(&prompts["pr_push"]["system"]), &vars), fill(prompts["pr_push"]["prompt"].as_str().unwrap_or(""), &vars), Some("pr-push".into())),
+                "issue" => (fill(&join_lines(&prompts["issue"]["system"]), &vars), fill(prompts["issue"]["prompt"].as_str().unwrap_or(""), &vars), Some("pr".into())),
+                "issue_push" => (fill(&join_lines(&prompts["pr_push"]["system"]), &vars), fill(prompts["issue"]["push_prompt"].as_str().unwrap_or(""), &vars), Some("pr-push".into())),
                 "handoff" => {
                     let key = if req.transcript.trim().is_empty() { "fresh" } else { "continue" };
                     (String::new(), fill(prompts["handoff"][key].as_str().unwrap_or(""), &vars), None)
