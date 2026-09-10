@@ -1048,7 +1048,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             }
             let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
             let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill);
-            let req = S { prompt: req.prompt.replace("{skill}", &skill), ..req };
+            let prompt = req.prompt.replace("{skill}", &skill);
             let reg = req.run_id.as_deref().map(|id| (&*state.running, id));
             let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &req.prompt, req.agent, reg));
             match result {
@@ -1131,7 +1131,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            spawn_agent_run(conn, system, req.prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone(), None, None);
+            spawn_agent_run(conn, system, prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone(), None, None);
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/agent-poll") => {
