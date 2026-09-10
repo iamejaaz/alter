@@ -195,11 +195,8 @@ fn verify_allowed_tools() -> String {
 // separate, explicit step (pr_push_allowed_tools). No bypassPermissions, no rm.
 fn pr_allowed_tools() -> String {
     let mut t: Vec<String> = ["Read", "Grep", "Glob", "Edit", "Write", "WebFetch"].iter().map(|s| s.to_string()).collect();
-    for g in [
-        "git fetch", "git status", "git diff", "git log", "git show", "git branch",
-        "git checkout", "git switch", "git add", "git commit", "git restore",
-        "gh issue view", "gh pr view", "gh search", "bench", "pre-commit",
-    ] {
+    t.push("Bash(git:*)".to_string());
+    for g in ["gh issue view", "gh pr view", "gh search", "bench", "pre-commit"] {
         t.push(format!("Bash({g}:*)"));
     }
     if let Some(home) = std::env::var_os("HOME") {
@@ -209,6 +206,14 @@ fn pr_allowed_tools() -> String {
         }
     }
     t.join(" ")
+}
+
+fn pr_disallowed_tools() -> String {
+    ["git push", "git remote", "git reset --hard", "git clean", "git rebase", "git merge", "git filter-branch", "git gc", "git worktree", "git branch -D", "git tag -d", "gh pr create", "gh pr merge"]
+        .iter()
+        .map(|g| format!("Bash({g}:*)"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 // The explicit second step: push the already-prepared local branch to the fork
@@ -408,6 +413,7 @@ fn spawn_agent_run(
     }
     if is_pr {
         cmd.arg("--allowedTools").arg(pr_allowed_tools());
+        cmd.arg("--disallowedTools").arg(pr_disallowed_tools());
     } else if is_pr_push {
         cmd.arg("--allowedTools").arg(pr_push_allowed_tools());
     } else if is_verify {
