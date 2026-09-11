@@ -179,10 +179,14 @@ fn agent_disallowed_tools() -> String {
 // Allowlist for VERIFYING a PR on a throwaway repro bench: fetch + checkout the
 // PR branch, run bench (migrate / tests / console), inspect with git/gh. No
 // `git push` — verification only. Runs against a repro bench, not the user's work.
+fn bench_rules() -> Vec<String> {
+    ["bench", "/opt/homebrew/bin/bench", "/usr/local/bin/bench"].iter().map(|b| format!("Bash({b}:*)")).collect()
+}
+
 fn verify_allowed_tools() -> String {
     let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch"].iter().map(|s| s.to_string()).collect();
     t.push("Bash(git:*)".to_string());
-    t.push("Bash(bench:*)".to_string());
+    t.extend(bench_rules());
     for g in ["gh pr view", "gh pr diff", "gh pr checkout", "gh pr checks", "gh pr list", "gh issue view"] {
         t.push(format!("Bash({g}:*)"));
     }
@@ -202,7 +206,8 @@ fn verify_allowed_tools() -> String {
 fn pr_allowed_tools() -> String {
     let mut t: Vec<String> = ["Read", "Grep", "Glob", "Edit", "Write", "WebFetch"].iter().map(|s| s.to_string()).collect();
     t.push("Bash(git:*)".to_string());
-    for g in ["gh issue view", "gh pr view", "gh search", "bench", "pre-commit"] {
+    t.extend(bench_rules());
+    for g in ["gh issue view", "gh pr view", "gh search", "pre-commit"] {
         t.push(format!("Bash({g}:*)"));
     }
     if let Some(home) = std::env::var_os("HOME") {
