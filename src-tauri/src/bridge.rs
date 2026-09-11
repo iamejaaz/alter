@@ -186,6 +186,12 @@ fn verify_allowed_tools() -> String {
     for g in ["gh pr view", "gh pr diff", "gh pr checkout", "gh pr checks", "gh pr list", "gh issue view"] {
         t.push(format!("Bash({g}:*)"));
     }
+    if let Some(home) = std::env::var_os("HOME") {
+        let dir = std::path::Path::new(&home).join(".claude/skills/frappe-support-diagnosis/scripts");
+        for name in ["repro.sh", "across-versions.sh", "find-code.sh"] {
+            t.push(format!("Bash({}:*)", dir.join(name).display()));
+        }
+    }
     t.join(" ")
 }
 
