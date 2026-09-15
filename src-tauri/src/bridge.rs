@@ -404,10 +404,20 @@ fn spawn_agent_run(
     let is_pr_push = mode.as_deref() == Some("pr-push");
     let is_verify = mode.as_deref() == Some("verify");
     progress.lock().unwrap_or_else(|e| e.into_inner()).insert(run_id.clone(), AgentProgress::default());
+    let session_id = if resume.as_ref().map(|s| !s.is_empty()).unwrap_or(false) { None } else { Some(gen_uuid()) };
+    let scratch = session_id.as_deref().and_then(agent_scratchpad);
+    let prompt = match &scratch {
+        Some(dir) => format!("{prompt}\n\nSCRATCHPAD: write any script or temp file ONLY under `{}` — it is the one writable place; /tmp, the bench and your memory folder are not.", dir.display()),
+        None => prompt,
+    };
     let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
     let mut cmd = std::process::Command::new("claude");
     cmd.arg("-p")
-        .arg(&full)
+        .arg(&full);
+    if let Some(sid) = &session_id {
+        cmd.arg("--session-id").arg(sid);
+    }
+    cmd
         .arg("--output-format")
         .arg("stream-json")
         .arg("--verbose");
@@ -610,6 +620,19 @@ fn strip_think(s: &str) -> String {
         None => s,
     };
     tail.replace("<think>", "").trim().to_string()
+}
+
+fn gen_uuid() -> String {
+    let t = gen_token();
+    format!("{}-{}-4{}-a{}-{}", &t[0..8], &t[8..12], &t[13..16], &t[17..20], &t[20..32])
+}
+
+fn agent_scratchpad(session_id: &str) -> Option<std::path::PathBuf> {
+    let uid = std::process::Command::new("id").arg("-u").output().ok().and_then(|o| String::from_utf8(o.stdout).ok())?.trim().to_string();
+    let slug = agent_workdir().replace('/', "-");
+    let dir = std::path::PathBuf::from(format!("/private/tmp/claude-{uid}/{slug}/{session_id}/scratchpad"));
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
 }
 
 fn gen_token() -> String {

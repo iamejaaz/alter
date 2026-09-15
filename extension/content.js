@@ -201,7 +201,7 @@ async function postToGh(event, body, btn) {
   }
   // Outward action — confirm the destination + kind before it leaves the machine.
   const dest = `${session.parts.owner}/${session.parts.repo}#${session.parts.num}`;
-  const kind = event === "request_changes" ? "a 🔴 Request-changes review" : "a comment";
+  const kind = event === "request_changes" ? "a 🔴 Request-changes review" : event === "approve" ? "a 🟢 Approve review" : "a comment";
   if (!window.confirm(`Post ${kind} to ${dest}?\n\nThis is public and posts as you.`)) return;
   const label = btn.textContent;
   btn.disabled = true;
@@ -224,6 +224,17 @@ async function postToGh(event, body, btn) {
 
 // Hide the reasoning-model <think> block while it streams; show the answer that
 // follows the closing tag.
+function extractDraft(review) {
+  const m = (review || "").match(/\*\*Draft comment[^*]*\*\*:?\s*([\s\S]*?)(?:\n\s*(?:---\s*\n)?\s*(?:\*\*)?Review event|$)/i);
+  if (!m) return "";
+  return m[1].split("\n").map((l) => l.replace(/^>\s?/, "")).join("\n").replace(/^\s*---\s*$/gm, "").trim();
+}
+
+function extractEvent(review) {
+  const m = (review || "").match(/Review event:?\**\s*\**\s*(APPROVE|REQUEST_CHANGES|COMMENT)/i);
+  return m ? m[1].toLowerCase() : "comment";
+}
+
 function displayText(full) {
   if (full.includes("</think>")) return full.slice(full.lastIndexOf("</think>") + 8).trim();
   if (full.includes("<think>")) return null; // still thinking
@@ -614,7 +625,7 @@ function renderFooter() {
     <div id="alter-foot-btns">
       <button id="alter-draft">✍️ Draft comment</button>
       <button id="alter-verify">🔬 Verify on bench</button>
-      <button id="alter-post-review" class="alter-ghost">Post review as-is…</button>
+      <button id="alter-post-review" class="alter-ghost">Post…</button>
     </div>
     <div id="alter-foot-ask">
       <input id="alter-ask" placeholder="Ask a follow-up…" />
@@ -642,7 +653,7 @@ function renderFooter() {
       verifyBtn.textContent = "🔬 Verify on bench — set up a bench";
     }
   });
-  foot.querySelector("#alter-post-review").addEventListener("click", () => renderPostPreview(session.review));
+  foot.querySelector("#alter-post-review").addEventListener("click", () => renderPostPreview(session.draft || extractDraft(session.review), extractEvent(session.review)));
   const input = foot.querySelector("#alter-ask");
   const go = () => {
     const q = input.value.trim();
@@ -658,19 +669,22 @@ function renderFooter() {
 
 // Show the exact text that will be posted, editable, with the post actions — so
 // clicking Post/Request always shows what goes to the PR first.
-function renderPostPreview(text) {
+function renderPostPreview(text, suggested) {
   const foot = document.querySelector("#alter-panel-foot");
+  const ev = suggested || (session && extractEvent(session.review)) || "comment";
   foot.innerHTML = `
-    <div class="alter-preview-label">This exact text posts to the PR — edit if needed:</div>
+    <div class="alter-preview-label">Only this comment posts to the PR — edit if needed. Suggested: ${escapeHtml(ev.replace("_", " "))}.</div>
     <textarea id="alter-post-text" class="alter-post-text" rows="6"></textarea>
     <div id="alter-foot-btns">
-      <button data-ev="comment">💬 Post as comment</button>
-      <button data-ev="request_changes">🔴 Request changes</button>
+      <button data-ev="approve" class="${ev === "approve" ? "" : "alter-ghost"}">🟢 Approve</button>
+      <button data-ev="request_changes" class="${ev === "request_changes" ? "" : "alter-ghost"}">🔴 Request changes</button>
+      <button data-ev="comment" class="${ev === "comment" ? "" : "alter-ghost"}">💬 Comment</button>
       <button id="alter-back" class="alter-ghost">← Back</button>
     </div>
     <div id="alter-foot-note"></div>`;
   const ta = foot.querySelector("#alter-post-text");
   ta.value = text || "";
+  if (!ta.value.trim()) foot.querySelector("#alter-foot-note").textContent = "No draft comment in this review — write the comment you want to post.";
   foot.querySelector("#alter-back").addEventListener("click", renderFooter);
   foot.querySelectorAll("#alter-foot-btns button[data-ev]").forEach((b) =>
     b.addEventListener("click", () => postToGh(b.dataset.ev, ta.value, b))
