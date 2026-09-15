@@ -225,7 +225,7 @@ async function postToGh(event, body, btn) {
 // Hide the reasoning-model <think> block while it streams; show the answer that
 // follows the closing tag.
 function extractDraft(review) {
-  const m = (review || "").match(/\*\*Draft comment[^*]*\*\*:?\s*([\s\S]*?)(?:\n\s*(?:---\s*\n)?\s*(?:\*\*)?Review event|$)/i);
+  const m = (review || "").match(/\*\*Draft comment[^\n]*?:\**[ \t]*\n?([\s\S]*?)(?=\n\s*(?:---\s*\n)?\s*(?:\*\*)?Review event|$)/i);
   if (!m) return "";
   return m[1].split("\n").map((l) => l.replace(/^>\s?/, "")).join("\n").replace(/^\s*---\s*$/gm, "").trim();
 }
