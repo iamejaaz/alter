@@ -10,8 +10,10 @@ function setStatus(text, cls) {
 }
 
 async function loadConnections() {
-  const stored = await chrome.storage.local.get(["token", "models", "claudeModel", "helpdeskSite", "grammarEverywhere", "autoReview"]);
+  const stored = await chrome.storage.local.get(["token", "models", "claudeModel", "helpdeskSite", "grammarEverywhere", "autoReview", "autoReviewPost"]);
   $("token").value = stored.token || "";
+  $("auto-review").checked = !!stored.autoReview;
+  $("auto-review-post").checked = stored.autoReviewPost !== false;
   $("helpdesk-site").value = stored.helpdeskSite || "";
   $("grammar-everywhere").checked = stored.grammarEverywhere !== false;
   $("claude-model").value = stored.claudeModel != null ? stored.claudeModel : "sonnet";
@@ -64,8 +66,6 @@ $("claude-model").addEventListener("change", saveModels);
 
 loadConnections();
 
-$("auto-review").checked = !!(await chrome.storage.local.get("autoReview")).autoReview;
-$("auto-review-post").checked = (await chrome.storage.local.get("autoReviewPost")).autoReviewPost !== false;
 $("auto-review-post").addEventListener("change", async () => {
   await chrome.storage.local.set({ autoReviewPost: $("auto-review-post").checked });
 });
