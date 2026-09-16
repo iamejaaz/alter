@@ -1120,7 +1120,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
         }
         (tiny_http::Method::Get, "/review-requests") => {
             let out = std::process::Command::new("gh")
-                .args(["api", "notifications?participating=true&per_page=50",
+                .args(["api", "notifications?all=true&participating=true&per_page=50",
                     "--jq", "[.[] | select(.subject.type == \"PullRequest\" and (.reason == \"review_requested\" or .reason == \"assign\")) | {url: .subject.url, reason: .reason, title: .subject.title, updated: .updated_at}]"])
                 .output();
             match out {
