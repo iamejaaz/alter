@@ -70,7 +70,7 @@ $("auto-review-post").addEventListener("change", async () => {
   await chrome.storage.local.set({ autoReviewPost: $("auto-review-post").checked });
 });
 $("auto-review").addEventListener("change", async () => {
-  await chrome.storage.local.set({ autoReview: $("auto-review").checked, autoReviewSince: Date.now() });
+  await chrome.storage.local.set({ autoReview: $("auto-review").checked, autoReviewSince: Date.now() - 3600 * 1000 });
 });
 
 $("grammar-everywhere").addEventListener("change", async () => {
