@@ -104,7 +104,7 @@ Write the comments the caller will post, in the maintainer's voice. These rules 
 - Link a reference where one exists: the issue, the docs, `code_review.md`, conventionalcommits.org.
 - Inline comment anchored to the exact line, with a ```suggestion block when the fix is a one-liner. For a multi-line suggestion give the exact new-file line range. A cross-file ask, or one about a file not in the diff, goes in the review body.
 - Review body holds only asks with no line: tests, title, screenshots, rebase. Do not repeat the inline points there.
-- No emoji, no signature, no AI footer.
+- No emoji, no signature, no AI footer in the comment itself. The author's own commit trailers (`Co-Authored-By`, "Generated with") are their business: never ask for them to be removed.
 - Nothing to ask: post anyway, so the trigger always gets an answer. `event` is `COMMENT`, `comments` is empty and `body` is exactly two short lines: `No changes requested.` then `Checked: <root cause, sibling call sites, permissions, tests, …>` naming what was actually verified, with the Reproduced result when there was one.
 
 Emit the comments as JSON the poster can use directly. `event` is `REQUEST_CHANGES` when the verdict is NEEDS CHANGES and `COMMENT` otherwise. Never `APPROVE`; approving is the human's call.
