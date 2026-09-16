@@ -1133,34 +1133,86 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             }
         }
         (tiny_http::Method::Post, "/gh") => {
+            #[derive(serde::Deserialize, Clone)]
+            struct InlineComment {
+                path: String,
+                line: u64,
+                body: String,
+            }
             #[derive(serde::Deserialize)]
             struct GhReq {
                 repo: String,
                 num: String,
                 body: String,
                 event: String,
+                #[serde(default)]
+                comments: Vec<InlineComment>,
             }
             let req: GhReq = match serde_json::from_str(body) {
                 Ok(r) => r,
                 Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
             };
+            let api_event = match req.event.as_str() {
+                "comment" => "COMMENT",
+                "request_changes" => "REQUEST_CHANGES",
+                "approve" => "APPROVE",
+                _ => return (400, "{\"error\":\"bad event\"}".into()),
+            };
+            let run_gh = |args: &[String], stdin: Option<&str>| -> Result<String, String> {
+                let mut cmd = std::process::Command::new("gh");
+                cmd.args(args);
+                cmd.stdin(if stdin.is_some() { std::process::Stdio::piped() } else { std::process::Stdio::null() });
+                cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+                let mut child = cmd.spawn().map_err(|e| format!("can't run gh: {e}"))?;
+                if let Some(input) = stdin {
+                    use std::io::Write;
+                    if let Some(mut si) = child.stdin.take() {
+                        let _ = si.write_all(input.as_bytes());
+                    }
+                }
+                let out = child.wait_with_output().map_err(|e| e.to_string())?;
+                if out.status.success() {
+                    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+                } else {
+                    Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+                }
+            };
+            // Inline asks go through the reviews API so each lands on its diff line.
+            if !req.comments.is_empty() {
+                let endpoint = format!("repos/{}/pulls/{}/reviews", req.repo, req.num);
+                let args: Vec<String> = vec!["api".into(), "-X".into(), "POST".into(), endpoint, "--input".into(), "-".into()];
+                let payload = serde_json::json!({
+                    "body": req.body,
+                    "event": api_event,
+                    "comments": req.comments.iter().map(|c| serde_json::json!({ "path": c.path, "line": c.line, "side": "RIGHT", "body": c.body })).collect::<Vec<_>>(),
+                });
+                match run_gh(&args, Some(&payload.to_string())) {
+                    Ok(_) => return (200, serde_json::json!({ "ok": true }).to_string()),
+                    Err(e) if e.contains("422") || e.contains("Unprocessable") || e.contains("line") => {
+                        // A line outside the diff: fold the asks into the body instead of losing the review.
+                        let mut folded = String::new();
+                        for c in &req.comments {
+                            folded.push_str(&format!("`{}:{}` {}\n\n", c.path, c.line, c.body));
+                        }
+                        folded.push_str(&req.body);
+                        let payload = serde_json::json!({ "body": folded.trim(), "event": api_event });
+                        return match run_gh(&args, Some(&payload.to_string())) {
+                            Ok(_) => (200, serde_json::json!({ "ok": true, "note": "Some lines are not in the diff, so the asks went into the review body." }).to_string()),
+                            Err(e2) => (502, serde_json::json!({ "error": e2 }).to_string()),
+                        };
+                    }
+                    Err(e) => return (502, serde_json::json!({ "error": e }).to_string()),
+                }
+            }
             // Post via the user's own `gh` auth — no GitHub token in the browser.
             let args: Vec<String> = match req.event.as_str() {
                 "comment" => vec!["pr".into(), "comment".into(), req.num, "-R".into(), req.repo, "--body".into(), req.body],
                 "request_changes" => vec!["pr".into(), "review".into(), req.num, "-R".into(), req.repo, "--request-changes".into(), "--body".into(), req.body],
-                "approve" => vec!["pr".into(), "review".into(), req.num, "-R".into(), req.repo, "--approve".into(), "--body".into(), req.body],
-                _ => return (400, "{\"error\":\"bad event\"}".into()),
+                _ => vec!["pr".into(), "review".into(), req.num, "-R".into(), req.repo, "--approve".into(), "--body".into(), req.body],
             };
-            match std::process::Command::new("gh").args(&args).output() {
-                Ok(out) if out.status.success() => (
-                    200,
-                    serde_json::json!({ "ok": true, "output": String::from_utf8_lossy(&out.stdout).trim() }).to_string(),
-                ),
-                Ok(out) => (
-                    502,
-                    serde_json::json!({ "error": String::from_utf8_lossy(&out.stderr).trim() }).to_string(),
-                ),
-                Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
+            match run_gh(&args, None) {
+                Ok(output) => (200, serde_json::json!({ "ok": true, "output": output }).to_string()),
+                Err(e) => (502, serde_json::json!({ "error": e }).to_string()),
             }
         }
         (tiny_http::Method::Post, "/agent-start") => {

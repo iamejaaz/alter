@@ -136,9 +136,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const r = await bridge("/gh", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repo: msg.repo, num: msg.num, body: msg.body, event: msg.event }),
+          body: JSON.stringify({ repo: msg.repo, num: msg.num, body: msg.body, event: msg.event, comments: msg.comments || [] }),
         });
-        sendResponse(r.ok ? { ok: true } : { ok: false, error: r.body.error || hint(r) });
+        sendResponse(r.ok ? { ok: true, note: r.body.note || "" } : { ok: false, error: r.body.error || hint(r) });
       } else if (msg.type === "run") {
         const r = await bridge("/run", {
           method: "POST",

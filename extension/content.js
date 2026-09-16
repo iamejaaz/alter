@@ -8,7 +8,7 @@ const REVIEW_SYSTEM = [
   "JUDGE like a maintainer: is the root cause fixed everywhere it lives, or is the first symptom moved (does the same failure fire later, or in export/print/API while the screen is fixed)? Does it leave residue (junk rows, sentinel values, dead flags)? Is it idempotent on repeated saves? Edge cases: None / empty / 0 / \"0\", permissions, multi-site, Postgres vs MariaDB. Same check copied into several files → the ask is ONE shared helper called from every site, not a patch per site. A silently-discarded value that is already an offered/documented option (e.g. 0 in a Select) is a BUG, not a breaking change: sites relying on the old fallback were misconfigured, so say the merge worry is small. Any changed shipped doctype JSON (child tables included) must bump its `modified` timestamp — a required nit. `frappe.throw` in validation should carry a descriptive `title=_(...)`. Frappe conventions: no explanatory code comments, frappe.utils.icon() not hand-written SVG, es-button/es-badge over bootstrap in desk UI, no AI-attribution footers (Co-Authored-By, Generated with) in commits or body. 'It works' is not enough.",
   "VERDICT RULE: 🟢 Ready to approve = correct AND complete, nits allowed. 🔴 Needs changes = anything that must change before merge, INCLUDING an incomplete fix (the same buggy pattern left at another call site, or a path that now disagrees with the fixed ones) and AI footers. 🟡 Needs your judgment = ONLY a genuine product/UX trade-off the maintainer must call, or a merge question the author explicitly put to them; state the trade-off in one line and then still give your lean. The verdict and the findings must never contradict: a gap listed below can't sit under a 🟢.",
   "REPORT SHAPE, in this order, plain English, sentences of 10-20 words: line 1 the verdict; line 2 **Bottom line:** one sentence the reader acts on ('merge as-is', 'merge after <the one thing>', 'hold — <the decision>'). Then the mechanism in ONE short paragraph with a before→after example a non-specialist follows ('set precision to 0 → amount still shows 100.00'). Then **Reproduced:** yes/no/skipped with the exact snippet, or omit the line if you didn't try. Then **Blocking:** numbered, each ONE sentence that is true, anchored by file:line, and phrased as the user-visible consequence ('after this PR the screen shows 100 while the Excel export of the same column shows 100.00'). Then **nit:** items, one line each, never in the draft unless asked. If a prior reviewer's request is unanswered, say so in one line. Nothing about green CI, Mergify, upgrade notes or asides that change nothing.",
-  "**Draft comment:** always when 🔴, optional one-liner when 🟢. Write it in the user's own comment voice: '@<handle>, could you please …' — the handle ONCE, the REAL author's handle from the body if the PR was raised on their behalf; if no handle is known, address them directly and never write the literal word author. ONLY the asks: never open with 'the fix is correct' or a reassurance paragraph, even when the author asked whether it is safe — that reasoning goes in the report above, not in the comment. Order: WHERE the problem is first (file:line, what is missing), THEN the fix or refactor ask. One concern per sentence, 1-3 sentences total, simple English a non-native reader gets in one pass: no idioms, no 'bail out' / 'gated on' / 'mutated' register, say 'return early', 'doesn't check X', 'before anything is changed'. When the ask is 'do X instead', show X as a ```suggestion block on the exact line instead of describing it. Link the issue or convention where one exists. An ask about a file not in the diff goes in the review body, since inline comments can only anchor to diff lines. No preamble, no praise, no 'see inline', no closing line. Evidence you gathered stays out of the comment: the conclusion and the anchor only. Note the review event under it: REQUEST_CHANGES for someone else's PR, COMMENT if the PR author is iamejaaz (GitHub blocks the rest), APPROVE when 🟢.",
+  "**Draft comment:** always when 🔴, one line or nothing when 🟢. This is what gets posted, in the user's own voice: a maintainer typing fast, not a report. Write it as anchored asks. Each ask starts on its own line with `📍 <path>:<line>` (a line that is IN the diff, new side), then 1-2 short plain sentences: what is wrong at that line and what to do. The line itself is the context, so don't restate the mechanism, don't explain why it matters, don't add evidence. When the ask is 'do X instead', put X as a ```suggestion block right under the sentence. Anything that has no diff line to anchor to (a missing file, a design question) goes under one `💬` line at the end, 1-2 sentences, no more. Address the author with their handle ONCE in the first ask ('@<handle>, could you please …'), the REAL author's handle from the body if raised on their behalf; if no handle is known, skip it and never write the literal word author. Hard limits: at most 3 📍 asks plus one 💬, each ask under 35 words, simple English a non-native reader gets in one pass (no 'bail out' / 'gated on' / 'mutated', say 'return early', 'doesn't check X'). Drop nits, 'your call', 'same pattern exists elsewhere', CI commentary, praise, preamble, 'see inline', closing lines and any sentence that starts with 'On <topic>:'. Link the issue or convention only where one exists. Note the review event under it: REQUEST_CHANGES for someone else's PR, COMMENT if the PR author is iamejaaz (GitHub blocks the rest), APPROVE when 🟢.",
   "Deep evidence (per-branch refs, the trace, exact values) is optional and goes LAST inside `<details><summary>Details</summary> … </details>`, only when it backs a blocker. The visible part must stand on its own. No meta, no restating the diff, no premature victory: judge a claim in the PR's own title/description against what the diff actually delivers.",
 ].join(" ");
 
@@ -192,17 +192,42 @@ async function draftComment() {
   }
 }
 
-async function postToGh(event, body, btn) {
+function parseDraft(text) {
+  const out = { body: [], comments: [] };
+  let cur = out.body;
+  for (const raw of (text || "").split("\n")) {
+    const line = raw.trim();
+    const a = line.match(/^📍\s*([^\s:]+):(\d+)\s*$/);
+    if (a) {
+      cur = [];
+      out.comments.push({ path: a[1], line: Number(a[2]), lines: cur });
+      continue;
+    }
+    if (/^💬\s*$/.test(line)) {
+      cur = out.body;
+      continue;
+    }
+    cur.push(raw);
+  }
+  return {
+    body: out.body.join("\n").trim(),
+    comments: out.comments.map((c) => ({ path: c.path, line: c.line, body: c.lines.join("\n").trim() })).filter((c) => c.body),
+  };
+}
+
+async function postToGh(event, text, btn) {
   if (!session) return;
   const note = document.querySelector("#alter-foot-note");
-  if (!body || !body.trim()) {
+  const { body, comments } = parseDraft(text);
+  if (!body && !comments.length) {
     if (note) note.innerHTML = `<span class="alter-err">Nothing to post — the comment is empty.</span>`;
     return;
   }
   // Outward action — confirm the destination + kind before it leaves the machine.
   const dest = `${session.parts.owner}/${session.parts.repo}#${session.parts.num}`;
   const kind = event === "request_changes" ? "a 🔴 Request-changes review" : event === "approve" ? "a 🟢 Approve review" : "a comment";
-  if (!window.confirm(`Post ${kind} to ${dest}?\n\nThis is public and posts as you.`)) return;
+  const inline = comments.length ? ` with ${comments.length} inline comment${comments.length > 1 ? "s" : ""}` : "";
+  if (!window.confirm(`Post ${kind}${inline} to ${dest}?\n\nThis is public and posts as you.`)) return;
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Posting…";
@@ -212,11 +237,12 @@ async function postToGh(event, body, btn) {
     num: session.parts.num,
     body,
     event,
+    comments,
   });
   btn.disabled = false;
   btn.textContent = label;
   if (r && r.ok) {
-    if (note) note.innerHTML = "✓ Posted to the PR.";
+    if (note) note.innerHTML = r.note ? `✓ Posted. ${escapeHtml(r.note)}` : "✓ Posted to the PR.";
   } else {
     if (note) note.innerHTML = `<span class="alter-err">${escapeHtml((r && r.error) || "Failed to post.")}</span>`;
   }
@@ -673,7 +699,7 @@ function renderPostPreview(text, suggested) {
   const foot = document.querySelector("#alter-panel-foot");
   const ev = suggested || (session && extractEvent(session.review)) || "comment";
   foot.innerHTML = `
-    <div class="alter-preview-label">Only this comment posts to the PR — edit if needed. Suggested: ${escapeHtml(ev.replace("_", " "))}.</div>
+    <div class="alter-preview-label">Only this posts. Each 📍 path:line block goes inline on that line, the rest is the review body. Suggested: ${escapeHtml(ev.replace("_", " "))}.</div>
     <textarea id="alter-post-text" class="alter-post-text" rows="6"></textarea>
     <div id="alter-foot-btns">
       <button data-ev="approve" class="${ev === "approve" ? "" : "alter-ghost"}">🟢 Approve</button>
