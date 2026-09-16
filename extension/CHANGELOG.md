@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Auto-review** (Settings toggle) — a review request or PR assignment in your GitHub notifications starts the review within a minute, notifies you when the draft is ready, and opening the PR shows it. Drafts only, never posts.
+- **Inline asks** — the post preview parses `📍 path:line` blocks into inline review comments; unanchored text becomes the review body.
 - **PR review** runs the `frappe-pr-review` skill instead of its own prompt, so the extension and the daily digest review the same way; the draft is read from the skill's JSON.
 - **Post as frappe-pr-bot** — dispatches the repo's `post-review.yml` workflow so the review lands under the bot, not your account.
 

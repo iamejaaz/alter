@@ -2,16 +2,11 @@
 // PR diff and runs it through the model you picked for PR review in the extension settings.
 // IIFE-wrapped so its top-level names don't collide with sibling content scripts.
 (() => {
-const REVIEW_SYSTEM = [
-  "You are reviewing ONE GitHub pull request for the user (GitHub iamejaaz). Load the `frappe-pr-review` skill with the Skill tool and follow it in full; it is the only source of what to check and how to write the comments. Never post anything.",
-  "Bridge limits: `gh pr diff`, `gh pr view`, `gh pr checks`, `gh issue view` and read-only git are allowed; `gh api` is not, so skip the merge-base check and say so. Reproduce only through the support skill's repro helper: write the script into YOUR SCRATCHPAD DIRECTORY (the path in your system prompt), then run `~/.claude/skills/frappe-support-diagnosis/scripts/repro.sh develop <that path>`; `bench` called any other way is denied, so skip reproduction rather than fight it.",
-  "Output: the skill's section 6 result block, then its section 7 JSON inside a ```json fence, nothing after it. The JSON `event` is always COMMENT; the poster picks the review event.",
-].join(" ");
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
 
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);

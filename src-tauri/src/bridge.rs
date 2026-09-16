@@ -52,6 +52,13 @@ pub struct AgentProgress {
     error: Option<String>,
     #[serde(rename = "sessionId")]
     session_id: Option<String>,
+    #[serde(skip)]
+    finished_at: Option<std::time::Instant>,
+}
+
+fn prune_progress(map: &mut std::collections::HashMap<String, AgentProgress>) {
+    let keep = std::time::Duration::from_secs(12 * 3600);
+    map.retain(|_, p| !p.done || p.finished_at.map(|t| t.elapsed() < keep).unwrap_or(false));
 }
 
 #[derive(serde::Serialize)]
@@ -384,6 +391,7 @@ fn finish_progress(
             p.error = Some(e);
         }
         p.done = true;
+        p.finished_at = Some(std::time::Instant::now());
     }
 }
 
@@ -1077,7 +1085,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             }
             let system = if resuming { String::new() } else { build_system(req.include_memory, Some(&system)) };
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
-            state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
+            prune_progress(&mut state.progress.lock().unwrap_or_else(|e| e.into_inner()));
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
             let max_turns = prompts["budgets"][req.verb.as_str()].as_u64().map(|n| n as u32);
             spawn_agent_run(conn, system, prompt, run_id.clone(), mode, repro_root, state.running.clone(), state.progress.clone(), max_turns, if resuming { req.resume.clone() } else { None });
@@ -1108,6 +1116,32 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             match result {
                 Ok(content) => (200, serde_json::json!({ "content": strip_think(&content) }).to_string()),
                 Err(e) => (502, serde_json::json!({ "error": e }).to_string()),
+            }
+        }
+        (tiny_http::Method::Get, "/review-requests") => {
+            let out = std::process::Command::new("gh")
+                .args(["api", "notifications?participating=true&per_page=50",
+                    "--jq", "[.[] | select(.subject.type == \"PullRequest\" and (.reason == \"review_requested\" or .reason == \"assign\")) | {url: .subject.url, reason: .reason, title: .subject.title, updated: .updated_at}]"])
+                .output();
+            match out {
+                Ok(o) if o.status.success() => {
+                    let items: Vec<serde_json::Value> = serde_json::from_slice(&o.stdout).unwrap_or_default();
+                    let list: Vec<serde_json::Value> = items
+                        .into_iter()
+                        .filter_map(|it| {
+                            let api = it.get("url")?.as_str()?.to_string();
+                            let mut segs = api.trim_start_matches("https://api.github.com/repos/").split('/');
+                            let owner = segs.next()?.to_string();
+                            let repo = segs.next()?.to_string();
+                            segs.next()?;
+                            let num: u64 = segs.next()?.parse().ok()?;
+                            Some(serde_json::json!({ "owner": owner, "repo": repo, "num": num, "reason": it.get("reason").and_then(|a| a.as_str()).unwrap_or(""), "title": it.get("title").and_then(|a| a.as_str()).unwrap_or(""), "updated": it.get("updated").and_then(|a| a.as_str()).unwrap_or(""), "url": format!("https://github.com/{owner}/{repo}/pull/{num}") }))
+                        })
+                        .collect();
+                    (200, serde_json::json!(list).to_string())
+                }
+                Ok(o) => (502, serde_json::json!({ "error": String::from_utf8_lossy(&o.stderr).trim() }).to_string()),
+                Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
             }
         }
         (tiny_http::Method::Post, "/gh-checks") => {
@@ -1263,7 +1297,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill);
             let prompt = req.prompt.replace("{skill}", &skill);
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
-            state.progress.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, p| !p.done);
+            prune_progress(&mut state.progress.lock().unwrap_or_else(|e| e.into_inner()));
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
             spawn_agent_run(conn, system, prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone(), None, None);
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())

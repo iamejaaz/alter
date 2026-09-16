@@ -255,3 +255,95 @@ chrome.runtime.onStartup.addListener(() => void registerHelpdesk());
 chrome.storage.onChanged.addListener((c) => {
   if (c.helpdeskSite) void registerHelpdesk();
 });
+
+// Auto-review: a "review requested" / "assigned" entry in the GitHub notifications
+// feed starts the same review the panel would, keeps its runId under the PR key
+// so opening the PR page reconnects to it, and notifies when the draft is ready.
+// Drafts only, never posts.
+const AUTO_ALARM = "alter-auto-review";
+const AUTO_POLL = "alter-auto-poll";
+const AUTO_STORE = "auto_reviews";
+const notifyUrls = {};
+
+async function syncAutoReview() {
+  const { autoReview } = await chrome.storage.local.get("autoReview");
+  if (autoReview) chrome.alarms.create(AUTO_ALARM, { periodInMinutes: 1, delayInMinutes: 0.1 });
+  else {
+    chrome.alarms.clear(AUTO_ALARM);
+    chrome.alarms.clear(AUTO_POLL);
+  }
+}
+
+function notify(id, title, message, url) {
+  chrome.notifications.create(id, { type: "basic", iconUrl: "icons/icon128.png", title, message, priority: 1 });
+  if (url) notifyUrls[id] = url;
+}
+chrome.notifications.onClicked.addListener((id) => {
+  if (notifyUrls[id]) chrome.tabs.create({ url: notifyUrls[id] });
+  chrome.notifications.clear(id);
+});
+
+async function autoReviewTick() {
+  const { models, claudeModel, pr_active_runs, autoReviewSince } = await chrome.storage.local.get(["models", "claudeModel", "pr_active_runs", "autoReviewSince"]);
+  const connectionId = models && models.prReview;
+  if (!connectionId) return;
+  const store = (await chrome.storage.local.get(AUTO_STORE))[AUTO_STORE] || {};
+  const r = await bridge("/review-requests");
+  if (!r.ok || !Array.isArray(r.body)) return;
+  const runs = pr_active_runs || {};
+  let started = 0;
+  for (const pr of r.body) {
+    const key = `${pr.owner}/${pr.repo}#${pr.num}`;
+    if (store[key] || runs[key] || Date.parse(pr.updated) < (autoReviewSince || 0)) continue;
+    const runId = crypto.randomUUID();
+    const prompt = `Review ${key} with the frappe-pr-review skill.\n\nRead the PR author's GitHub handle from \`gh pr view\` and address them by it.\n\n`;
+    const s = await bridge("/agent-start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId, system: ALTER.REVIEW_SYSTEM, prompt, includeMemory: true, model: claudeModel || undefined, runId }),
+    });
+    if (!s.ok) continue;
+    runs[key] = { key, runId, connectionId, model: claudeModel || undefined, label: "review" };
+    store[key] = { runId, url: pr.url, title: pr.title, ts: Date.now(), notified: false };
+    notify("start-" + runId, `Reviewing #${pr.num} (${pr.reason === "assign" ? "assigned" : "review requested"})`, pr.title, pr.url);
+    started++;
+  }
+  const week = 7 * 24 * 3600 * 1000;
+  for (const k of Object.keys(store)) if (Date.now() - store[k].ts > week) delete store[k];
+  await chrome.storage.local.set({ pr_active_runs: runs, [AUTO_STORE]: store });
+  if (started || Object.values(store).some((x) => !x.notified)) chrome.alarms.create(AUTO_POLL, { periodInMinutes: 0.5 });
+}
+
+async function autoPollTick() {
+  const store = (await chrome.storage.local.get(AUTO_STORE))[AUTO_STORE] || {};
+  let pending = 0;
+  for (const [key, rec] of Object.entries(store)) {
+    if (rec.notified) continue;
+    const r = await bridge("/agent-poll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: rec.runId }) });
+    const p = r.ok ? r.body : null;
+    if (!p || !p.done) {
+      pending++;
+      continue;
+    }
+    rec.notified = true;
+    const num = key.split("#")[1];
+    if (p.error === "run not found") continue;
+    if (p.error) notify("done-" + rec.runId, `Review failed for #${num}`, p.error.slice(0, 120), rec.url);
+    else {
+      const verdict = (p.text || "").split("\n").find((l) => l.trim()) || "Review ready";
+      notify("done-" + rec.runId, `Review ready for #${num}`, verdict.replace(/[*_`#]/g, "").slice(0, 120), rec.url);
+    }
+  }
+  await chrome.storage.local.set({ [AUTO_STORE]: store });
+  if (!pending) chrome.alarms.clear(AUTO_POLL);
+}
+
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === AUTO_ALARM) autoReviewTick().catch(() => {});
+  if (a.name === AUTO_POLL) autoPollTick().catch(() => {});
+});
+chrome.runtime.onInstalled.addListener(() => void syncAutoReview());
+chrome.runtime.onStartup.addListener(() => void syncAutoReview());
+chrome.storage.onChanged.addListener((c) => {
+  if (c.autoReview) syncAutoReview();
+});

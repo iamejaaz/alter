@@ -10,7 +10,7 @@ function setStatus(text, cls) {
 }
 
 async function loadConnections() {
-  const stored = await chrome.storage.local.get(["token", "models", "claudeModel", "helpdeskSite", "grammarEverywhere"]);
+  const stored = await chrome.storage.local.get(["token", "models", "claudeModel", "helpdeskSite", "grammarEverywhere", "autoReview"]);
   $("token").value = stored.token || "";
   $("helpdesk-site").value = stored.helpdeskSite || "";
   $("grammar-everywhere").checked = stored.grammarEverywhere !== false;
@@ -63,6 +63,11 @@ ACTIONS.forEach((a) => $("m-" + a).addEventListener("change", saveModels));
 $("claude-model").addEventListener("change", saveModels);
 
 loadConnections();
+
+$("auto-review").checked = !!(await chrome.storage.local.get("autoReview")).autoReview;
+$("auto-review").addEventListener("change", async () => {
+  await chrome.storage.local.set({ autoReview: $("auto-review").checked, autoReviewSince: Date.now() });
+});
 
 $("grammar-everywhere").addEventListener("change", async () => {
   await chrome.storage.local.set({ grammarEverywhere: $("grammar-everywhere").checked });
