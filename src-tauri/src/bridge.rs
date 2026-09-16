@@ -334,6 +334,8 @@ fn wrap_up(session_id: &str, model: Option<&str>) -> Result<String, String> {
         .arg(session_id)
         .arg("--max-turns")
         .arg("1")
+        .arg("--effort")
+        .arg("medium")
         .arg("--output-format")
         .arg("json")
         .arg("--permission-mode")
@@ -425,6 +427,7 @@ fn spawn_agent_run(
     if let Some(m) = &model {
         cmd.arg("--model").arg(m);
     }
+    cmd.arg("--effort").arg("medium");
     let dir = agent_workdir();
     if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
         cmd.current_dir(&dir);
