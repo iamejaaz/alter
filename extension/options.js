@@ -65,6 +65,10 @@ $("claude-model").addEventListener("change", saveModels);
 loadConnections();
 
 $("auto-review").checked = !!(await chrome.storage.local.get("autoReview")).autoReview;
+$("auto-review-post").checked = (await chrome.storage.local.get("autoReviewPost")).autoReviewPost !== false;
+$("auto-review-post").addEventListener("change", async () => {
+  await chrome.storage.local.set({ autoReviewPost: $("auto-review-post").checked });
+});
 $("auto-review").addEventListener("change", async () => {
   await chrome.storage.local.set({ autoReview: $("auto-review").checked, autoReviewSince: Date.now() });
 });

@@ -6,7 +6,7 @@
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
 
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
@@ -231,20 +231,6 @@ async function postToGh(event, text, btn) {
 
 // Hide the reasoning-model <think> block while it streams; show the answer that
 // follows the closing tag.
-// The JSON is the last fence in the review, and comment bodies carry their own
-// ```suggestion fences, so try the greedy match (last closing fence) first.
-function reviewJson(review) {
-  for (const re of [/```json\s*([\s\S]*)```/i, /```json\s*([\s\S]*?)```/i]) {
-    const m = (review || "").match(re);
-    if (!m) continue;
-    try {
-      const j = JSON.parse(m[1]);
-      if (j && Array.isArray(j.comments)) return j;
-    } catch {}
-  }
-  return null;
-}
-
 function draftFromJson(j) {
   const parts = j.comments.map((c) => `📍 ${c.path}:${c.line}\n${(c.body || "").trim()}`);
   if ((j.body || "").trim()) parts.push(`💬\n${j.body.trim()}`);
@@ -750,7 +736,7 @@ async function postAsBot(text, btn) {
     type: "gh-bot",
     repo: `${session.parts.owner}/${session.parts.repo}`,
     num: session.parts.num,
-    review: { event: "COMMENT", body, comments: comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })) },
+    review: { event: (reviewJson(session.review) || {}).event || "COMMENT", body, comments: comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })) },
   });
   btn.disabled = false;
   btn.textContent = label;

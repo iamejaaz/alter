@@ -85,7 +85,11 @@
         </div>
         <label class="check">
           <input id="auto-review" type="checkbox" />
-          <span>Auto-review when someone requests my review or assigns me a PR <span class="hint">(watches your GitHub notifications every minute, drafts the review, notifies you; never posts)</span></span>
+          <span>Auto-review when someone requests my review or assigns me a PR <span class="hint">(watches your GitHub notifications every minute; skips PRs you or frappe-pr-bot already reviewed)</span></span>
+        </label>
+        <label class="check">
+          <input id="auto-review-post" type="checkbox" checked />
+          <span>Post the finished review as frappe-pr-bot automatically <span class="hint">(off = only notify, you post from the PR page)</span></span>
         </label>
         <label class="check">
           <input id="grammar-everywhere" type="checkbox" checked />

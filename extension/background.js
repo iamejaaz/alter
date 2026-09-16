@@ -258,8 +258,8 @@ chrome.storage.onChanged.addListener((c) => {
 
 // Auto-review: a "review requested" / "assigned" entry in the GitHub notifications
 // feed starts the same review the panel would, keeps its runId under the PR key
-// so opening the PR page reconnects to it, and notifies when the draft is ready.
-// Drafts only, never posts.
+// so opening the PR page reconnects to it, and posts the result as frappe-pr-bot
+// (or only notifies when auto-post is off).
 const AUTO_ALARM = "alter-auto-review";
 const AUTO_POLL = "alter-auto-poll";
 const AUTO_STORE = "auto_reviews";
@@ -294,7 +294,14 @@ async function autoReviewTick() {
   let started = 0;
   for (const pr of r.body) {
     const key = `${pr.owner}/${pr.repo}#${pr.num}`;
-    if (store[key] || runs[key] || Date.parse(pr.updated) < (autoReviewSince || 0)) continue;
+    if (runs[key] || Date.parse(pr.updated) < (autoReviewSince || 0)) continue;
+    if (store[key] && (store[key].updated || 0) >= Date.parse(pr.updated)) continue;
+    const chk = await bridge("/pr-reviewed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo: `${pr.owner}/${pr.repo}`, num: String(pr.num) }) });
+    if (!chk.ok) continue;
+    if (chk.body.reviewed || chk.body.own) {
+      store[key] = { runId: "", url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), notified: true, skipped: chk.body.own ? "own PR" : "already reviewed" };
+      continue;
+    }
     const runId = crypto.randomUUID();
     const prompt = `Review ${key} with the frappe-pr-review skill.\n\nRead the PR author's GitHub handle from \`gh pr view\` and address them by it.\n\n`;
     const s = await bridge("/agent-start", {
@@ -304,7 +311,7 @@ async function autoReviewTick() {
     });
     if (!s.ok) continue;
     runs[key] = { key, runId, connectionId, model: claudeModel || undefined, label: "review" };
-    store[key] = { runId, url: pr.url, title: pr.title, ts: Date.now(), notified: false };
+    store[key] = { runId, url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), notified: false };
     notify("start-" + runId, `Reviewing #${pr.num} (${pr.reason === "assign" ? "assigned" : "review requested"})`, pr.title, pr.url);
     started++;
   }
@@ -330,8 +337,16 @@ async function autoPollTick() {
     if (p.error === "run not found") continue;
     if (p.error) notify("done-" + rec.runId, `Review failed for #${num}`, p.error.slice(0, 120), rec.url);
     else {
-      const verdict = (p.text || "").split("\n").find((l) => l.trim()) || "Review ready";
-      notify("done-" + rec.runId, `Review ready for #${num}`, verdict.replace(/[*_`#]/g, "").slice(0, 120), rec.url);
+      const verdict = ((p.text || "").split("\n").find((l) => l.trim()) || "Review ready").replace(/[*_`#]/g, "").slice(0, 120);
+      const { autoReviewPost } = await chrome.storage.local.get("autoReviewPost");
+      const j = autoReviewPost !== false ? ALTER.reviewJson(p.text) : null;
+      if (j && (j.comments.length || (j.body || "").trim())) {
+        const [repo, prNum] = key.split("#");
+        const review = { event: j.event || "COMMENT", body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })) };
+        const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(review))));
+        const post = await bridge("/gh-bot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo, num: prNum, review_b64: b64 }) });
+        notify("done-" + rec.runId, post.ok ? `Posted as frappe-pr-bot on #${num}` : `Review ready for #${num}, bot post failed`, post.ok ? verdict : (post.body.error || "").slice(0, 120), rec.url);
+      } else notify("done-" + rec.runId, `Review ready for #${num}`, verdict, rec.url);
     }
   }
   await chrome.storage.local.set({ [AUTO_STORE]: store });

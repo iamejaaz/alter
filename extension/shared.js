@@ -97,5 +97,19 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     "Output: the skill's section 6 result block, then its section 7 JSON inside a ```json fence, nothing after it. The JSON `event` is always COMMENT; the poster picks the review event.",
   ].join(" ");
 
-  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom };
+  // The JSON is the last fence in the review, and comment bodies carry their own
+  // ```suggestion fences, so try the greedy match (last closing fence) first.
+  function reviewJson(review) {
+    for (const re of [/```json\s*([\s\S]*)```/i, /```json\s*([\s\S]*?)```/i]) {
+      const m = (review || "").match(re);
+      if (!m) continue;
+      try {
+        const j = JSON.parse(m[1]);
+        if (j && Array.isArray(j.comments)) return j;
+      } catch {}
+    }
+    return null;
+  }
+
+  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, reviewJson, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom };
 })();

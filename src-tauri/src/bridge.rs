@@ -1144,6 +1144,48 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
             }
         }
+        (tiny_http::Method::Post, "/pr-reviewed") => {
+            #[derive(serde::Deserialize)]
+            struct Q {
+                repo: String,
+                num: String,
+            }
+            let req: Q = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(_) => return (400, "{\"error\":\"bad request\"}".into()),
+            };
+            let me = std::process::Command::new("gh")
+                .args(["api", "user", "--jq", ".login"])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+            let out = std::process::Command::new("gh")
+                .args(["pr", "view", &req.num, "-R", &req.repo, "--json", "reviews,commits,author",
+                    "--jq", "{author: .author.login, last: (.commits | last | .committedDate), reviews: [.reviews[] | {a: .author.login, at: .submittedAt}]}"])
+                .output();
+            match out {
+                Ok(o) if o.status.success() => {
+                    let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap_or_default();
+                    let last = v.get("last").and_then(|x| x.as_str()).unwrap_or("");
+                    let author = v.get("author").and_then(|x| x.as_str()).unwrap_or("");
+                    let reviewed = v
+                        .get("reviews")
+                        .and_then(|r| r.as_array())
+                        .map(|rs| {
+                            rs.iter().any(|r| {
+                                let a = r.get("a").and_then(|x| x.as_str()).unwrap_or("");
+                                let at = r.get("at").and_then(|x| x.as_str()).unwrap_or("");
+                                (a == me || a == "frappe-pr-bot") && at >= last
+                            })
+                        })
+                        .unwrap_or(false);
+                    (200, serde_json::json!({ "reviewed": reviewed, "own": !me.is_empty() && author == me, "author": author }).to_string())
+                }
+                Ok(o) => (502, serde_json::json!({ "error": String::from_utf8_lossy(&o.stderr).trim() }).to_string()),
+                Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
+            }
+        }
         (tiny_http::Method::Post, "/gh-checks") => {
             #[derive(serde::Deserialize)]
             struct C {
