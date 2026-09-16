@@ -100,7 +100,7 @@ async function followUp(q) {
     : "The work here is your review of a GitHub PR; cite file:line when the question is about the code.";
   const wantsReply = REPLY_INTENT.test(q);
   const system = wantsReply
-    ? `${domain} ${FOLLOWUP_SYSTEM} You are drafting a PR REVIEW COMMENT to post on GitHub, in your OWN terse review voice from memory (not a customer reply): plain, direct, your exact phrasing; file:line refs are fine and a \`\`\`suggestion block when a concrete fix fits. Address the PR author ${session.author ? `as @${session.author}` : "directly"} — NEVER write the literal '@author'. No preamble, no politeness padding, no hedging. Output ONLY the comment body.`
+    ? `${domain} ${FOLLOWUP_SYSTEM} You are drafting a PR REVIEW COMMENT to post on GitHub, in your OWN terse review voice from memory (not a customer reply): plain, direct, your exact phrasing. Address the PR author ${session.author ? `as @${session.author}` : "directly"} — NEVER write the literal '@author'. No preamble, no politeness padding, no hedging. ${ANCHOR_FORMAT} Output ONLY the comment.`
     : followupParams(q, domain).system;
   const label = wantsReply ? "Draft comment" : "Follow-up";
   const prompt =
@@ -118,8 +118,11 @@ async function followUp(q) {
   session.transcript.push({ q, a });
 }
 
+const ANCHOR_FORMAT =
+  "FORMAT, strictly: every ask that points at a line in the diff starts on its own line with `📍 <path>:<line>` (new-file side, a line that is IN the diff), followed by one to three short sentences and, when the fix is a one-liner, a ```suggestion block. Asks with no diff line (tests, title, rebase, screenshots, description) go together under one line containing only `💬`, at the end. Nothing before the first marker. Each 📍 block is posted as an inline comment on that line; the 💬 block is the review body.";
+
 const DRAFT_SYSTEM =
-  "You are the reviewer writing the comment to post on this PR, in your OWN standing voice from memory: terse, plain, direct, your exact phrasing — not a cleaned-up polished version. No preamble, no praise-fluff, no meta, no politeness padding ('would help to see…'), no hedging. Open by addressing the PR author with the GitHub @handle given in the prompt (e.g. `@octocat`); if none is given, address them directly with no placeholder — NEVER write the literal word `@author`. Cite file:line, include a ```suggestion block when a concrete fix fits. Output ONLY the comment body, ready to paste.";
+  "You are the reviewer writing the comment to post on this PR, in your OWN standing voice from memory: terse, plain, direct, your exact phrasing — not a cleaned-up polished version. No preamble, no praise-fluff, no meta, no politeness padding ('would help to see…'), no hedging. Open by addressing the PR author with the GitHub @handle given in the prompt (e.g. `@octocat`); if none is given, address them directly with no placeholder — NEVER write the literal word `@author`. " + ANCHOR_FORMAT + " Output ONLY the comment, ready to paste.";
 
 // Verify a PR by actually running it on a throwaway repro bench (SWE-agent-style
 // reproducer). Uses the per-version repro benches; never touches the user's own
@@ -151,6 +154,15 @@ async function verifyOnBench() {
 async function draftComment() {
   if (!session) return;
   appendBlock("user").textContent = "Draft comment";
+  // The skill already wrote the comments as JSON; render those instead of
+  // asking the model for a second, prose version that would lose its anchors.
+  const fromSkill = reviewJson(session.review);
+  if (fromSkill) {
+    session.draft = draftFromJson(fromSkill);
+    appendBlock("assistant").textContent = session.draft || "The review has nothing to ask.";
+    renderPostPreview(session.draft);
+    return;
+  }
   const block = appendBlock("assistant");
   const draft = await streamAgent(block, {
     connectionId: session.connectionId,
@@ -707,7 +719,14 @@ function renderPostPreview(text, suggested) {
     <div id="alter-foot-note"></div>`;
   const ta = foot.querySelector("#alter-post-text");
   ta.value = text || "";
-  if (!ta.value.trim()) foot.querySelector("#alter-foot-note").textContent = "No draft comment in this review — write the comment you want to post.";
+  const noteEl = foot.querySelector("#alter-foot-note");
+  const warnAnchors = () => {
+    if (!ta.value.trim()) noteEl.textContent = "No draft comment in this review — write the comment you want to post.";
+    else if (!parseDraft(ta.value).comments.length) noteEl.innerHTML = `<span class="alter-err">No 📍 path:line blocks — the whole text would post as one review body with no inline comments.</span>`;
+    else noteEl.textContent = "";
+  };
+  warnAnchors();
+  ta.addEventListener("input", warnAnchors);
   foot.querySelector("#alter-back").addEventListener("click", renderFooter);
   foot.querySelectorAll("#alter-foot-btns button[data-ev]").forEach((b) =>
     b.addEventListener("click", () => postToGh(b.dataset.ev, ta.value, b))
