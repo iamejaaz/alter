@@ -436,6 +436,7 @@ fn spawn_agent_run(
         cmd.arg("--model").arg(m);
     }
     cmd.arg("--effort").arg("medium");
+    cmd.env("CLAUDE_CODE_ENTRYPOINT", "claude-desktop");
     let dir = agent_workdir();
     if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
         cmd.current_dir(&dir);
