@@ -131,7 +131,7 @@ fn agent_allowed_tools() -> String {
     // prefix rule — so allow git broadly and keep it read-only via the skill's
     // rules. The real boundary (no site mutation) is fr/network, gated separately.
     t.push("Bash(git:*)".to_string());
-    for g in ["gh pr view", "gh pr list", "gh issue view", "gh issue list", "gh search"] {
+    for g in ["gh pr view", "gh pr list", "gh pr diff", "gh pr checks", "gh issue view", "gh issue list", "gh search"] {
         t.push(format!("Bash({g}:*)"));
     }
     // The ONE bench-exec hole: the repro helper, by its installed absolute path.
@@ -1213,6 +1213,32 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             match run_gh(&args, None) {
                 Ok(output) => (200, serde_json::json!({ "ok": true, "output": output }).to_string()),
                 Err(e) => (502, serde_json::json!({ "error": e }).to_string()),
+            }
+        }
+        (tiny_http::Method::Post, "/gh-bot") => {
+            #[derive(serde::Deserialize)]
+            struct B {
+                repo: String,
+                num: String,
+                review_b64: String,
+            }
+            let req: B = match serde_json::from_str(body) {
+                Ok(r) => r,
+                Err(_) => return (400, "{\"error\":\"bad request\"}".into()),
+            };
+            if !req.num.chars().all(|c| c.is_ascii_digit()) || req.repo.split('/').count() != 2 {
+                return (400, "{\"error\":\"bad repo or number\"}".into());
+            }
+            if req.review_b64.len() > 60_000 {
+                return (400, "{\"error\":\"review too large for workflow_dispatch; shorten it\"}".into());
+            }
+            let out = std::process::Command::new("gh")
+                .args(["workflow", "run", "post-review.yml", "-R", &req.repo, "-f", &format!("pr={}", req.num), "-f", &format!("review={}", req.review_b64)])
+                .output();
+            match out {
+                Ok(o) if o.status.success() => (200, serde_json::json!({ "ok": true }).to_string()),
+                Ok(o) => (502, serde_json::json!({ "error": String::from_utf8_lossy(&o.stderr).trim() }).to_string()),
+                Err(e) => (502, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
             }
         }
         (tiny_http::Method::Post, "/agent-start") => {

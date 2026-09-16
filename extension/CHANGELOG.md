@@ -1,5 +1,10 @@
 # Changelog — Alter browser extension
 
+## Unreleased
+
+- **PR review** runs the `frappe-pr-review` skill instead of its own prompt, so the extension and the daily digest review the same way; the draft is read from the skill's JSON.
+- **Post as frappe-pr-bot** — dispatches the repo's `post-review.yml` workflow so the review lands under the bot, not your account.
+
 ## 0.1.0
 
 - **PR review (GitHub)** — maintainer-lens review with a live tool feed; Draft comment; editable post preview before *Post as comment* / *Request changes*; follow-ups; reconnect after a page reload.

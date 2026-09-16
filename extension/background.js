@@ -139,6 +139,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           body: JSON.stringify({ repo: msg.repo, num: msg.num, body: msg.body, event: msg.event, comments: msg.comments || [] }),
         });
         sendResponse(r.ok ? { ok: true, note: r.body.note || "" } : { ok: false, error: r.body.error || hint(r) });
+      } else if (msg.type === "gh-bot") {
+        const json = JSON.stringify(msg.review || {});
+        const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)));
+        const r = await bridge("/gh-bot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repo: msg.repo, num: msg.num, review_b64: b64 }),
+        });
+        sendResponse(r.ok ? { ok: true } : { ok: false, error: r.body.error || hint(r) });
       } else if (msg.type === "run") {
         const r = await bridge("/run", {
           method: "POST",

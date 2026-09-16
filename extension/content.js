@@ -3,13 +3,9 @@
 // IIFE-wrapped so its top-level names don't collide with sibling content scripts.
 (() => {
 const REVIEW_SYSTEM = [
-  "You are reviewing ONE GitHub pull request as a senior Frappe maintainer, on behalf of the user (GitHub iamejaaz). Output is a MERGE DECISION a busy colleague gets in under a minute, plus a comment ready to paste. Never post anything.",
-  "INVESTIGATE BEFORE JUDGING — the diff alone is not enough. In order, batching calls: (1) `gh pr view <N> -R <owner/repo> --json title,body,author,reviews,comments,statusCheckRollup` — read the description and the WHOLE discussion: who really authored it (an iamejaaz PR is usually raised on behalf of someone named in the body), what earlier reviewers asked and whether new commits answered it, and any question the author put to the reviewer. (2) If the body says Closes/Fixes #X, `gh issue view X` and check the PR really fixes THAT. (3) Read the surrounding and calling code of every changed function in the local checkout (apps/<app>), not just the hunk. (4) COMPLETENESS SWEEP: Grep the repo for the exact pattern/symbol the PR fixes and list every other site that still has it. (5) Trace where the state being fixed is written (the setting's JSON definition, the fixture, the writer function) — the fix should undo the writer's artifact, not paper over it. (6) If the issue gives concrete steps and the fix looks right, reproduce ONCE on the local bench, ONLY through the skill's repro helper: Write the script into YOUR SCRATCHPAD DIRECTORY (the path named in your system prompt; /tmp and the bench are denied), then `{skill}/scripts/repro.sh develop <that path>` (rollback, no residue) — bench/python invoked any other way is denied — and state the exact snippet; never through the UI. Never take the author's or a bot's explanation of a CI failure at face value — look at the check. Verify every claim you are about to make by grep; if the symbol is not where you say it is, drop the claim.",
-  "JUDGE like a maintainer: is the root cause fixed everywhere it lives, or is the first symptom moved (does the same failure fire later, or in export/print/API while the screen is fixed)? Does it leave residue (junk rows, sentinel values, dead flags)? Is it idempotent on repeated saves? Edge cases: None / empty / 0 / \"0\", permissions, multi-site, Postgres vs MariaDB. Same check copied into several files → the ask is ONE shared helper called from every site, not a patch per site. A silently-discarded value that is already an offered/documented option (e.g. 0 in a Select) is a BUG, not a breaking change: sites relying on the old fallback were misconfigured, so say the merge worry is small. Any changed shipped doctype JSON (child tables included) must bump its `modified` timestamp — a required nit. `frappe.throw` in validation should carry a descriptive `title=_(...)`. Frappe conventions: no explanatory code comments, frappe.utils.icon() not hand-written SVG, es-button/es-badge over bootstrap in desk UI, no AI-attribution footers (Co-Authored-By, Generated with) in commits or body. 'It works' is not enough.",
-  "VERDICT RULE: 🟢 Ready to approve = correct AND complete, nits allowed. 🔴 Needs changes = anything that must change before merge, INCLUDING an incomplete fix (the same buggy pattern left at another call site, or a path that now disagrees with the fixed ones) and AI footers. 🟡 Needs your judgment = ONLY a genuine product/UX trade-off the maintainer must call, or a merge question the author explicitly put to them; state the trade-off in one line and then still give your lean. The verdict and the findings must never contradict: a gap listed below can't sit under a 🟢.",
-  "REPORT SHAPE, in this order, plain English, sentences of 10-20 words: line 1 the verdict; line 2 **Bottom line:** one sentence the reader acts on ('merge as-is', 'merge after <the one thing>', 'hold — <the decision>'). Then the mechanism in ONE short paragraph with a before→after example a non-specialist follows ('set precision to 0 → amount still shows 100.00'). Then **Reproduced:** yes/no/skipped with the exact snippet, or omit the line if you didn't try. Then **Blocking:** numbered, each ONE sentence that is true, anchored by file:line, and phrased as the user-visible consequence ('after this PR the screen shows 100 while the Excel export of the same column shows 100.00'). Then **nit:** items, one line each, never in the draft unless asked. If a prior reviewer's request is unanswered, say so in one line. Nothing about green CI, Mergify, upgrade notes or asides that change nothing.",
-  "**Draft comment:** always when 🔴, one line or nothing when 🟢. This is what gets posted, in the user's own voice: a maintainer typing fast, not a report. Write it as anchored asks. Each ask starts on its own line with `📍 <path>:<line>` (a line that is IN the diff, new side), then 1-2 short plain sentences: what is wrong at that line and what to do. The line itself is the context, so don't restate the mechanism, don't explain why it matters, don't add evidence. When the ask is 'do X instead', put X as a ```suggestion block right under the sentence. Anything that has no diff line to anchor to (a missing file, a design question) goes under one `💬` line at the end, 1-2 sentences, no more. Address the author with their handle ONCE in the first ask ('@<handle>, could you please …'), the REAL author's handle from the body if raised on their behalf; if no handle is known, skip it and never write the literal word author. Hard limits: at most 3 📍 asks plus one 💬, each ask under 35 words, simple English a non-native reader gets in one pass (no 'bail out' / 'gated on' / 'mutated', say 'return early', 'doesn't check X'). Drop nits, 'your call', 'same pattern exists elsewhere', CI commentary, praise, preamble, 'see inline', closing lines and any sentence that starts with 'On <topic>:'. Link the issue or convention only where one exists. Note the review event under it: REQUEST_CHANGES for someone else's PR, COMMENT if the PR author is iamejaaz (GitHub blocks the rest), APPROVE when 🟢.",
-  "Deep evidence (per-branch refs, the trace, exact values) is optional and goes LAST inside `<details><summary>Details</summary> … </details>`, only when it backs a blocker. The visible part must stand on its own. No meta, no restating the diff, no premature victory: judge a claim in the PR's own title/description against what the diff actually delivers.",
+  "You are reviewing ONE GitHub pull request for the user (GitHub iamejaaz). Load the `frappe-pr-review` skill with the Skill tool and follow it in full; it is the only source of what to check and how to write the comments. Never post anything.",
+  "Bridge limits: `gh pr diff`, `gh pr view`, `gh pr checks`, `gh issue view` and read-only git are allowed; `gh api` is not, so skip the merge-base check and say so. Reproduce only through the support skill's repro helper: write the script into YOUR SCRATCHPAD DIRECTORY (the path in your system prompt), then run `~/.claude/skills/frappe-support-diagnosis/scripts/repro.sh develop <that path>`; `bench` called any other way is denied, so skip reproduction rather than fight it.",
+  "Output: the skill's section 6 result block, then its section 7 JSON inside a ```json fence, nothing after it. The JSON `event` is always COMMENT; the poster picks the review event.",
 ].join(" ");
 
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
@@ -36,13 +32,6 @@ function prAuthor() {
   const m = href.match(/^\/([^/?#]+)$/);
   const login = m ? m[1] : el.textContent.trim();
   return /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i.test(login) ? login : "";
-}
-
-async function getDiff(parts) {
-  const url = `${location.origin}/${parts.owner}/${parts.repo}/pull/${parts.num}.diff`;
-  const r = await send({ type: "diff", url });
-  if (!r || !r.ok) throw new Error(r?.error || "Couldn't fetch the PR diff.");
-  return r.text || "";
 }
 
 async function getChecks(parts) {
@@ -76,29 +65,14 @@ async function runInner() {
   openPanel();
   if (!connectionId) return setStatus("Pick a model for PR review in the Alter extension settings first.", true);
 
-  setStatus("Fetching the diff + CI…");
-  let diff = "";
-  try {
-    diff = await getDiff(parts);
-  } catch (e) {
-    return setStatus(String(e.message || e), true);
-  }
-  if (!diff.trim()) return setStatus("Empty diff — nothing to review.", true);
+  setStatus("Reading CI…");
   const checks = await getChecks(parts).catch(() => "");
-
-  let note = "";
-  const CAP = 60000;
-  if (diff.length > CAP) {
-    diff = diff.slice(0, CAP);
-    note = "\n\n[diff truncated to first 60k chars]";
-  }
-
   const author = prAuthor();
   const authorBlock = author ? `PR author GitHub handle: @${author}\n\n` : "";
   const ciBlock = checks.trim() ? `CI checks:\n${checks.slice(0, 4000)}\n\n` : "";
-  const prompt = `Review this pull request (${parts.owner}/${parts.repo}#${parts.num}).\n\n${authorBlock}${ciBlock}Diff:\n${diff}${note}`;
+  const prompt = `Review ${parts.owner}/${parts.repo}#${parts.num} with the frappe-pr-review skill.\n\n${authorBlock}${ciBlock}`;
 
-  session = { parts, author, connectionId, model: claudeModel || undefined, diff, note, review: "", draft: "", transcript: [] };
+  session = { parts, author, connectionId, model: claudeModel || undefined, review: "", draft: "", transcript: [] };
   clearBody();
   const block = appendBlock("assistant");
   const raw = await streamAgent(block, {
@@ -130,7 +104,7 @@ async function followUp(q) {
     : followupParams(q, domain).system;
   const label = wantsReply ? "Draft comment" : "Follow-up";
   const prompt =
-    (isIssue ? `GitHub issue ${session.issue}.\n\n` : `PR diff (may be truncated):\n${session.diff}${session.note}\n\n`) +
+    (isIssue ? `GitHub issue ${session.issue}.\n\n` : "") +
     `Your review:\n${session.review}${t}\n\nUser: ${q}\nYou:`;
   const block = appendBlock("assistant");
   const a = await streamAgent(block, {
@@ -250,7 +224,29 @@ async function postToGh(event, text, btn) {
 
 // Hide the reasoning-model <think> block while it streams; show the answer that
 // follows the closing tag.
+// The JSON is the last fence in the review, and comment bodies carry their own
+// ```suggestion fences, so try the greedy match (last closing fence) first.
+function reviewJson(review) {
+  for (const re of [/```json\s*([\s\S]*)```/i, /```json\s*([\s\S]*?)```/i]) {
+    const m = (review || "").match(re);
+    if (!m) continue;
+    try {
+      const j = JSON.parse(m[1]);
+      if (j && Array.isArray(j.comments)) return j;
+    } catch {}
+  }
+  return null;
+}
+
+function draftFromJson(j) {
+  const parts = j.comments.map((c) => `📍 ${c.path}:${c.line}\n${(c.body || "").trim()}`);
+  if ((j.body || "").trim()) parts.push(`💬\n${j.body.trim()}`);
+  return parts.join("\n\n");
+}
+
 function extractDraft(review) {
+  const j = reviewJson(review);
+  if (j) return draftFromJson(j);
   const m = (review || "").match(/\*\*Draft comment[^\n]*?:\**[ \t]*\n?([\s\S]*?)(?=\n\s*(?:---\s*\n)?\s*(?:\*\*)?Review event|$)/i);
   if (!m) return "";
   return m[1].split("\n").map((l) => l.replace(/^>\s?/, "")).join("\n").replace(/^\s*---\s*$/gm, "").trim();
@@ -705,6 +701,7 @@ function renderPostPreview(text, suggested) {
       <button data-ev="approve" class="${ev === "approve" ? "" : "alter-ghost"}">🟢 Approve</button>
       <button data-ev="request_changes" class="${ev === "request_changes" ? "" : "alter-ghost"}">🔴 Request changes</button>
       <button data-ev="comment" class="${ev === "comment" ? "" : "alter-ghost"}">💬 Comment</button>
+      <button id="alter-post-bot" class="alter-ghost">🤖 Post as frappe-pr-bot</button>
       <button id="alter-back" class="alter-ghost">← Back</button>
     </div>
     <div id="alter-foot-note"></div>`;
@@ -715,6 +712,35 @@ function renderPostPreview(text, suggested) {
   foot.querySelectorAll("#alter-foot-btns button[data-ev]").forEach((b) =>
     b.addEventListener("click", () => postToGh(b.dataset.ev, ta.value, b))
   );
+  const bot = foot.querySelector("#alter-post-bot");
+  bot.addEventListener("click", () => postAsBot(ta.value, bot));
+}
+
+// Same text, posted by the bot: the bridge dispatches the repo's post-review
+// workflow, which posts a COMMENT review under frappe-pr-bot. Never as you.
+async function postAsBot(text, btn) {
+  if (!session) return;
+  const note = document.querySelector("#alter-foot-note");
+  const { body, comments } = parseDraft(text);
+  if (!body && !comments.length) {
+    if (note) note.innerHTML = `<span class="alter-err">Nothing to post — the comment is empty.</span>`;
+    return;
+  }
+  const dest = `${session.parts.owner}/${session.parts.repo}#${session.parts.num}`;
+  const inline = comments.length ? ` with ${comments.length} inline comment${comments.length > 1 ? "s" : ""}` : "";
+  if (!window.confirm(`Post a comment review${inline} to ${dest} as frappe-pr-bot?\n\nThis is public.`)) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Dispatching…";
+  const r = await send({
+    type: "gh-bot",
+    repo: `${session.parts.owner}/${session.parts.repo}`,
+    num: session.parts.num,
+    review: { event: "COMMENT", body, comments: comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })) },
+  });
+  btn.disabled = false;
+  btn.textContent = label;
+  if (note) note.innerHTML = r && r.ok ? "✓ Dispatched. The bot posts within a minute." : `<span class="alter-err">${escapeHtml((r && r.error) || "Failed to dispatch.")}</span>`;
 }
 
 // GitHub is an SPA: the URL changes without reloading. If the PR under an open

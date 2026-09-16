@@ -17,14 +17,17 @@ Opus / Sonnet / Haiku picker for the Claude Code ones.
 
 ## PR review (GitHub)
 
-Open any pull request → **Review with Alter** (bottom-right). It fetches the diff
-and CI status and reviews it with a maintainer's lens — verdict, mechanism,
-assessment, and a draft comment — streaming each step live as it reads code and
-checks `gh`. Then:
+Open any pull request → **Review with Alter** (bottom-right). It runs the
+`frappe-pr-review` Claude Code skill (`~/.claude/skills/frappe-pr-review`), the
+same rules the daily review digest uses — verdict, findings, and comments in
+your voice — streaming each step live as it reads code and checks `gh`. Then:
 
 - **Draft comment** — a terse, ready-to-paste review comment.
 - **Post** — *Post as comment* / *Request changes* open an editable preview of the
   exact text; nothing posts until you confirm. Posting uses your own `gh` auth.
+- **Post as frappe-pr-bot** — same preview, posted by the bot: the bridge
+  dispatches the repo's `post-review.yml` workflow, which posts a comment review
+  under `frappe-pr-bot`. Needs that workflow on the repo (frappe/frappe has it).
 - Ask follow-ups; reload the tab and it re-attaches to a review still running.
 
 ## Frappe Helpdesk support agent
