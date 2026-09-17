@@ -158,6 +158,8 @@ fn agent_allowed_tools() -> String {
         let ctx = dir.join("context.py");
         t.push(format!("Bash({}:*)", ctx.display()));
         t.push(format!("Bash(python3 {}:*)", ctx.display()));
+        let threads = std::path::Path::new(&home).join(".claude/skills/frappe-pr-review/scripts/pr-threads.sh");
+        t.push(format!("Bash({}:*)", threads.display()));
     }
     t.join(" ")
 }

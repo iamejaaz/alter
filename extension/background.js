@@ -322,7 +322,18 @@ async function autoReviewTick() {
   if (started || Object.values(store).some((x) => !x.notified)) chrome.alarms.create(AUTO_POLL, { periodInMinutes: 0.5 });
 }
 
+let polling = false;
 async function autoPollTick() {
+  if (polling) return;
+  polling = true;
+  try {
+    await autoPollOnce();
+  } finally {
+    polling = false;
+  }
+}
+
+async function autoPollOnce() {
   const store = (await chrome.storage.local.get(AUTO_STORE))[AUTO_STORE] || {};
   let pending = 0;
   for (const [key, rec] of Object.entries(store)) {
@@ -334,6 +345,7 @@ async function autoPollTick() {
       continue;
     }
     rec.notified = true;
+    await chrome.storage.local.set({ [AUTO_STORE]: store });
     const num = key.split("#")[1];
     if (p.error === "run not found") continue;
     if (p.error) notify("done-" + rec.runId, `Review failed for #${num}`, p.error.slice(0, 120), rec.url);
