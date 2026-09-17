@@ -1170,18 +1170,39 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap_or_default();
                     let last = v.get("last").and_then(|x| x.as_str()).unwrap_or("");
                     let author = v.get("author").and_then(|x| x.as_str()).unwrap_or("");
-                    let reviewed = v
+                    let last_review = v
                         .get("reviews")
                         .and_then(|r| r.as_array())
                         .map(|rs| {
-                            rs.iter().any(|r| {
-                                let a = r.get("a").and_then(|x| x.as_str()).unwrap_or("");
-                                let at = r.get("at").and_then(|x| x.as_str()).unwrap_or("");
-                                (a == me || a == "frappe-pr-bot") && at >= last
-                            })
+                            rs.iter()
+                                .filter(|r| {
+                                    let a = r.get("a").and_then(|x| x.as_str()).unwrap_or("");
+                                    a == me || a == "frappe-pr-bot"
+                                })
+                                .filter_map(|r| r.get("at").and_then(|x| x.as_str()).map(str::to_string))
+                                .max()
+                                .unwrap_or_default()
                         })
-                        .unwrap_or(false);
-                    (200, serde_json::json!({ "reviewed": reviewed, "own": !me.is_empty() && author == me, "author": author }).to_string())
+                        .unwrap_or_default();
+                    // The trigger is an explicit request or assignment aimed at me, not a push:
+                    // a new commit alone never re-reviews; the author re-requesting does.
+                    let events = std::process::Command::new("gh")
+                        .args(["api", &format!("repos/{}/issues/{}/events", req.repo, req.num), "--paginate",
+                            "--jq", "[.[] | select(.event == \"review_requested\" or .event == \"assigned\") | {e: .event, at: .created_at, who: (.requested_reviewer.login // .assignee.login)}]"])
+                        .output()
+                        .ok()
+                        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                        .unwrap_or_default();
+                    let last_request = events
+                        .lines()
+                        .filter_map(|l| serde_json::from_str::<Vec<serde_json::Value>>(l).ok())
+                        .flatten()
+                        .filter(|e| e.get("who").and_then(|w| w.as_str()) == Some(me.as_str()))
+                        .filter_map(|e| e.get("at").and_then(|x| x.as_str()).map(str::to_string))
+                        .max()
+                        .unwrap_or_default();
+                    let reviewed = if last_request.is_empty() { !last_review.is_empty() && last_review.as_str() >= last } else { last_review >= last_request };
+                    (200, serde_json::json!({ "reviewed": reviewed, "own": !me.is_empty() && author == me, "author": author, "lastRequest": last_request, "lastReview": last_review }).to_string())
                 }
                 Ok(o) => (502, serde_json::json!({ "error": String::from_utf8_lossy(&o.stderr).trim() }).to_string()),
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),

@@ -298,8 +298,9 @@ async function autoReviewTick() {
     if (store[key] && (store[key].updated || 0) >= Date.parse(pr.updated)) continue;
     const chk = await bridge("/pr-reviewed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo: `${pr.owner}/${pr.repo}`, num: String(pr.num) }) });
     if (!chk.ok) continue;
-    if (chk.body.reviewed || chk.body.own) {
-      store[key] = { runId: "", url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), notified: true, skipped: chk.body.own ? "own PR" : "already reviewed" };
+    const already = store[key] && store[key].runId && store[key].lastRequest === chk.body.lastRequest;
+    if (chk.body.reviewed || chk.body.own || already) {
+      store[key] = { ...(store[key] || {}), url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), lastRequest: chk.body.lastRequest, notified: store[key] ? store[key].notified : true, skipped: chk.body.own ? "own PR" : already ? "run already started for this request" : "already reviewed" };
       continue;
     }
     const runId = crypto.randomUUID();
@@ -311,7 +312,7 @@ async function autoReviewTick() {
     });
     if (!s.ok) continue;
     runs[key] = { key, runId, connectionId, model: claudeModel || undefined, label: "review" };
-    store[key] = { runId, url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), notified: false };
+    store[key] = { runId, url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), lastRequest: chk.body.lastRequest, notified: false };
     notify("start-" + runId, `Reviewing #${pr.num} (${pr.reason === "assign" ? "assigned" : "review requested"})`, pr.title, pr.url);
     started++;
   }

@@ -21,7 +21,8 @@ Inputs: `REPO` (default `frappe/frappe`), `PR` number, optional `FOCUS` text fro
 2. `gh pr diff <PR> -R <REPO>`. Read the whole diff. In a diff, `-` is the base side and `+` is the PR side; state direction correctly in every finding.
 3. Every linked issue: `gh issue view <N> -R <REPO> --comments`. Verify the "Closes #N" claim against the issue text, not the PR title.
 4. Read the existing review threads. Note what Greptile or another bot claimed; you will confirm or contradict each claim with a file and line, never repeat it.
-5. `code_review.md` from the checkout.
+5. Read every earlier review by the maintainer or `frappe-pr-bot` on this PR, thread by thread, and check each ask against the current diff. Sort them: addressed, still open, no longer applies. This is a re-review whenever such a review exists.
+6. `code_review.md` from the checkout.
 
 ## 2. Before reading the code
 
@@ -104,6 +105,7 @@ Write the comments the caller will post, in the maintainer's voice. These rules 
 - Link a reference where one exists: the issue, the docs, `code_review.md`, conventionalcommits.org.
 - Inline comment anchored to the exact line, with a ```suggestion block when the fix is a one-liner. For a multi-line suggestion give the exact new-file line range. A cross-file ask, or one about a file not in the diff, goes in the review body.
 - Review body holds only asks with no line: tests, title, screenshots, rebase. Do not repeat the inline points there.
+- On a re-review, never post an earlier ask again as a new inline comment. An ask that is still open gets one short line in the body, `Still open from the last review: <what>` with the link to that thread, and nothing else. Inline comments are only for findings that are new in this round or where the author's change made the ask worse. If nothing is new and nothing is open, the two-line "No changes requested" body is the whole review.
 - No emoji, no signature, no AI footer in the comment itself. The author's own commit trailers (`Co-Authored-By`, "Generated with") are their business: never ask for them to be removed.
 - Nothing to ask: post anyway, so the trigger always gets an answer. `event` is `COMMENT`, `comments` is empty and `body` is exactly two short lines: `No changes requested.` then `Checked: <root cause, sibling call sites, permissions, tests, …>` naming what was actually verified, with the Reproduced result when there was one.
 
