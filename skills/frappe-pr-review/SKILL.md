@@ -122,3 +122,14 @@ Emit the comments as JSON the poster can use directly. `event` is `REQUEST_CHANG
 ```
 
 `line` is the new-file line for `RIGHT`, the old-file line for `LEFT`. Anchor only to lines present in the diff; everything else goes in `body`.
+
+## 8. Thread replies
+
+The caller may hand you one thread instead of a whole PR: "Reply in thread <comment id> on <owner/repo>#<PR>". Someone answered an earlier ask from the maintainer or `frappe-pr-bot` there. Run `scripts/pr-threads.sh`, read that thread end to end, then check the current diff and code for what the reply claims; the branch may have moved since the ask.
+
+Decide one of three:
+- Addressed: the diff shows the change. Reply with one short line that closes it, plain, no praise ("Looks good, this covers it.").
+- Declined with a reason that holds: accept it in one line and drop the ask for good ("Fair, that keeps the classic path untouched. Leaving it.").
+- Declined with a reason that does not hold, or "done" that the diff does not show: one or two plain sentences with the fact that decides it, anchored to what you saw (a line, a call site, a repro result). No repeat of the original ask word for word, no lecture.
+
+Never reply to your own or the maintainer's comments, and never reply twice to the same comment. Output the same JSON as section 7 with `event` `COMMENT`, `body` empty, `comments` empty, and a `replies` array: `[{"in_reply_to": <comment id>, "body": "…"}]`.

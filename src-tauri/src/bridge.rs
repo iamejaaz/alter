@@ -1147,6 +1147,57 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
             }
         }
+        (tiny_http::Method::Get, "/bot-replies") => {
+            // Threads on open PRs reviewed by frappe-pr-bot where the last word is a
+            // human's, not the bot's or mine: each is a reply the bot still owes.
+            let me = std::process::Command::new("gh")
+                .args(["api", "user", "--jq", ".login"])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+            let prs = std::process::Command::new("gh")
+                .args(["search", "prs", "--repo", "frappe/frappe", "--state", "open", "--reviewed-by", "frappe-pr-bot", "--limit", "50", "--json", "number,title,url", "--jq", ".[]"])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                .unwrap_or_default();
+            let query = "query($n:Int!){ repository(owner:\"frappe\",name:\"frappe\"){ pullRequest(number:$n){ reviewThreads(first:100){ nodes{ isResolved path line originalLine comments(first:100){ nodes{ databaseId author{login} createdAt url } } } } } } }";
+            let mut out = Vec::new();
+            for line in prs.lines() {
+                let pr: serde_json::Value = match serde_json::from_str(line) { Ok(v) => v, Err(_) => continue };
+                let num = match pr.get("number").and_then(|n| n.as_u64()) { Some(n) => n, None => continue };
+                let res = std::process::Command::new("gh")
+                    .args(["api", "graphql", "-F", &format!("n={num}"), "-f", &format!("query={query}"), "--jq", ".data.repository.pullRequest.reviewThreads.nodes"])
+                    .output();
+                let threads: Vec<serde_json::Value> = res.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok()).unwrap_or_default();
+                let mut pending = Vec::new();
+                for t in threads {
+                    if t.get("isResolved").and_then(|x| x.as_bool()).unwrap_or(false) {
+                        continue;
+                    }
+                    let comments = t.get("comments").and_then(|c| c.get("nodes")).and_then(|n| n.as_array()).cloned().unwrap_or_default();
+                    let bot_in = comments.iter().any(|c| c.pointer("/author/login").and_then(|a| a.as_str()) == Some("frappe-pr-bot"));
+                    let last = match comments.last() { Some(c) => c, None => continue };
+                    let last_author = last.pointer("/author/login").and_then(|a| a.as_str()).unwrap_or("");
+                    if !bot_in || last_author == "frappe-pr-bot" || last_author == me || last_author.ends_with("[bot]") || last_author == "greptile-apps" {
+                        continue;
+                    }
+                    pending.push(serde_json::json!({
+                        "commentId": last.get("databaseId"),
+                        "author": last_author,
+                        "at": last.get("createdAt"),
+                        "url": last.get("url"),
+                        "path": t.get("path"),
+                        "line": t.get("line").filter(|l| !l.is_null()).or_else(|| t.get("originalLine")),
+                    }));
+                }
+                if !pending.is_empty() {
+                    out.push(serde_json::json!({ "repo": "frappe/frappe", "num": num, "title": pr.get("title"), "url": pr.get("url"), "threads": pending }));
+                }
+            }
+            (200, serde_json::json!(out).to_string())
+        }
         (tiny_http::Method::Post, "/pr-reviewed") => {
             #[derive(serde::Deserialize)]
             struct Q {

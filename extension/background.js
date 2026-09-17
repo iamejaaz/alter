@@ -267,9 +267,12 @@ const notifyUrls = {};
 
 async function syncAutoReview() {
   const { autoReview } = await chrome.storage.local.get("autoReview");
-  if (autoReview) chrome.alarms.create(AUTO_ALARM, { periodInMinutes: 1, delayInMinutes: 0.1 });
-  else {
+  if (autoReview) {
+    chrome.alarms.create(AUTO_ALARM, { periodInMinutes: 1, delayInMinutes: 0.1 });
+    chrome.alarms.create(REPLY_ALARM, { periodInMinutes: 5, delayInMinutes: 0.5 });
+  } else {
     chrome.alarms.clear(AUTO_ALARM);
+    chrome.alarms.clear(REPLY_ALARM);
     chrome.alarms.clear(AUTO_POLL);
   }
 }
@@ -353,20 +356,55 @@ async function autoPollOnce() {
       const verdict = ((p.text || "").split("\n").find((l) => l.trim()) || "Review ready").replace(/[*_`#]/g, "").slice(0, 120);
       const { autoReviewPost } = await chrome.storage.local.get("autoReviewPost");
       const j = autoReviewPost !== false ? ALTER.reviewJson(p.text) : null;
-      if (j && (j.comments.length || (j.body || "").trim())) {
+      const replies = (j && Array.isArray(j.replies) ? j.replies : []).filter((x) => x && typeof x.in_reply_to === "number" && (x.body || "").trim());
+      if (j && (j.comments.length || (j.body || "").trim() || replies.length)) {
         const [repo, prNum] = key.split("#");
-        const review = { event: j.event || "COMMENT", body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })) };
+        const review = { event: j.event || "COMMENT", body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies };
         const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(review))));
         const post = await bridge("/gh-bot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo, num: prNum, review_b64: b64 }) });
-        notify("done-" + rec.runId, post.ok ? `Posted as frappe-pr-bot on #${num}` : `Review ready for #${num}, bot post failed`, post.ok ? verdict : (post.body.error || "").slice(0, 120), rec.url);
-      } else notify("done-" + rec.runId, `Review ready for #${num}`, verdict, rec.url);
+        const what = rec.kind === "reply" ? "Replied" : "Posted";
+        notify("done-" + rec.runId, post.ok ? `${what} as frappe-pr-bot on #${num}` : `${rec.kind === "reply" ? "Reply" : "Review"} ready for #${num}, bot post failed`, post.ok ? verdict : (post.body.error || "").slice(0, 120), rec.url);
+      } else notify("done-" + rec.runId, `${rec.kind === "reply" ? "Reply" : "Review"} ready for #${num}`, verdict, rec.url);
     }
   }
   await chrome.storage.local.set({ [AUTO_STORE]: store });
   if (!pending) chrome.alarms.clear(AUTO_POLL);
 }
 
+// A human answered one of the bot's asks: read the thread, judge it, answer in
+// the thread. One reply per comment, never to the bot's or the user's own.
+const REPLY_ALARM = "alter-auto-replies";
+async function autoReplyTick() {
+  const { models, claudeModel, autoReview, autoReviewPost } = await chrome.storage.local.get(["models", "claudeModel", "autoReview", "autoReviewPost"]);
+  const connectionId = models && models.prReview;
+  if (!autoReview || !connectionId || autoReviewPost === false) return;
+  const store = (await chrome.storage.local.get(AUTO_STORE))[AUTO_STORE] || {};
+  const r = await bridge("/bot-replies", { signal: AbortSignal.timeout(170_000) });
+  if (!r.ok || !Array.isArray(r.body)) return;
+  let started = 0;
+  for (const pr of r.body) {
+    for (const t of pr.threads || []) {
+      const key = `${pr.repo}#${pr.num}#c${t.commentId}`;
+      if (store[key]) continue;
+      const runId = crypto.randomUUID();
+      const prompt = `Reply in thread ${t.commentId} on ${pr.repo}#${pr.num} (${t.path}:${t.line}, answered by ${t.author}) with section 8 of the frappe-pr-review skill.\n\n`;
+      const s = await bridge("/agent-start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId, system: ALTER.REVIEW_SYSTEM, prompt, includeMemory: true, model: claudeModel || undefined, runId }),
+      });
+      if (!s.ok) continue;
+      store[key] = { runId, url: t.url, title: pr.title, ts: Date.now(), notified: false, kind: "reply" };
+      notify("start-" + runId, `Reading a reply on #${pr.num}`, `${t.author} answered at ${t.path}:${t.line}`, t.url);
+      started++;
+    }
+  }
+  await chrome.storage.local.set({ [AUTO_STORE]: store });
+  if (started) chrome.alarms.create(AUTO_POLL, { periodInMinutes: 0.5 });
+}
+
 chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === REPLY_ALARM) autoReplyTick().catch(() => {});
   if (a.name === AUTO_ALARM) autoReviewTick().catch(() => {});
   if (a.name === AUTO_POLL) autoPollTick().catch(() => {});
 });
