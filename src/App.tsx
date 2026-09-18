@@ -135,6 +135,14 @@ export default function App() {
   const [input, setInput] = useState("");
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
+  const INFLIGHT_KEY = "alter.inflight";
+  const RESUME_TEXT = "The app was quit while you were working. Please continue from where you left off.";
+  const setInflight = (convId: string, on: boolean) => {
+    try {
+      const ids = (JSON.parse(localStorage.getItem(INFLIGHT_KEY) || "[]") as string[]).filter((x) => x !== convId);
+      localStorage.setItem(INFLIGHT_KEY, JSON.stringify(on ? [...ids, convId] : ids));
+    } catch {}
+  };
   // Soft-interrupt flags per conversation, and the abort controller of the HTTP
   // request currently streaming (so an interrupt can cut the text without ending the turn's bookkeeping).
   const interruptsRef = useRef<Record<string, boolean>>({});
@@ -304,6 +312,18 @@ export default function App() {
     if (!storage.saveConversations(conversations))
       setError("Couldn't save your chats — local storage is full. Delete some old chats to free space.");
   }, [conversations]);
+  // Chats that were mid-turn when the app quit pick up where they left off.
+  useEffect(() => {
+    let ids: string[] = [];
+    try {
+      ids = JSON.parse(localStorage.getItem(INFLIGHT_KEY) || "[]");
+    } catch {}
+    localStorage.removeItem(INFLIGHT_KEY);
+    const resumable = ids.filter((id) => conversations.some((c) => c.id === id));
+    if (!resumable.length) return;
+    setQueued((q) => Object.fromEntries([...Object.entries(q), ...resumable.map((id) => [id, [...(q[id] || []), RESUME_TEXT]])]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => setError(null), [activeId, settings.activeConnectionId, settings.model]);
   // Changing model/connection is how a user fixes a chat's error (e.g. a text-only
   // model refusing an image), so drop the ACTIVE chat's own error then — but never
@@ -734,7 +754,9 @@ export default function App() {
     const controller = new AbortController();
     abortsRef.current[convId] = controller;
     setStreamingIds((ids) => (ids.includes(convId!) ? ids : [...ids, convId!]));
+    setInflight(convId, true);
     const endStream = () => {
+      setInflight(convId!, false);
       setStreamingIds((ids) => ids.filter((x) => x !== convId));
       delete abortsRef.current[convId!];
       delete streamCtlsRef.current[convId!];
@@ -797,7 +819,8 @@ export default function App() {
               }
               return { ...c, messages: msgs };
             }),
-          controller.signal
+          controller.signal,
+          (sid) => updateConversation(convId!, (c) => ({ ...c, claudeSessionId: sid }))
         );
         updateConversation(convId, (c) => ({
           ...c,

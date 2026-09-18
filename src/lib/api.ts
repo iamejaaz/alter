@@ -250,7 +250,8 @@ export async function claudeCodeChat(
   permissionMode: string | null,
   onDelta: (text: string) => void,
   onActivity: (label: string) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onSession?: (sid: string) => void
 ): Promise<{ content: string; sessionId: string | null; costUsd: number | null; tokens: number | null }> {
   let streamed = ""; // text of the current segment (reset at each tool boundary)
   let result = ""; // authoritative final answer from the result event
@@ -265,7 +266,10 @@ export async function claudeCodeChat(
   channel.onmessage = (line: string) => {
     try {
       const ev = JSON.parse(line);
-      if (ev.session_id) sid = ev.session_id;
+      if (ev.session_id && ev.session_id !== sid) {
+        sid = ev.session_id;
+        onSession?.(sid!);
+      }
 
       // Backend watchdog: a long silence is surfaced as a step, never as a kill —
       // a slow tool call (a big test run) can legitimately go quiet for minutes.
