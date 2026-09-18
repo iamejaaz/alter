@@ -1215,14 +1215,15 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_default();
             let out = std::process::Command::new("gh")
-                .args(["pr", "view", &req.num, "-R", &req.repo, "--json", "reviews,commits,author",
-                    "--jq", "{author: .author.login, last: (.commits | last | .committedDate), reviews: [.reviews[] | {a: .author.login, at: .submittedAt}]}"])
+                .args(["pr", "view", &req.num, "-R", &req.repo, "--json", "reviews,commits,author,state",
+                    "--jq", "{author: .author.login, state: .state, last: (.commits | last | .committedDate), reviews: [.reviews[] | {a: .author.login, at: .submittedAt}]}"])
                 .output();
             match out {
                 Ok(o) if o.status.success() => {
                     let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap_or_default();
                     let last = v.get("last").and_then(|x| x.as_str()).unwrap_or("");
                     let author = v.get("author").and_then(|x| x.as_str()).unwrap_or("");
+                    let open = v.get("state").and_then(|x| x.as_str()) == Some("OPEN");
                     let last_review = v
                         .get("reviews")
                         .and_then(|r| r.as_array())
@@ -1255,7 +1256,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                         .max()
                         .unwrap_or_default();
                     let reviewed = if last_request.is_empty() { !last_review.is_empty() && last_review.as_str() >= last } else { last_review >= last_request };
-                    (200, serde_json::json!({ "reviewed": reviewed, "own": !me.is_empty() && author == me, "author": author, "lastRequest": last_request, "lastReview": last_review }).to_string())
+                    (200, serde_json::json!({ "reviewed": reviewed, "own": !me.is_empty() && author == me, "open": open, "author": author, "lastRequest": last_request, "lastReview": last_review }).to_string())
                 }
                 Ok(o) => (502, serde_json::json!({ "error": String::from_utf8_lossy(&o.stderr).trim() }).to_string()),
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),

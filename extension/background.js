@@ -302,8 +302,8 @@ async function autoReviewTick() {
     const chk = await bridge("/pr-reviewed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo: `${pr.owner}/${pr.repo}`, num: String(pr.num) }) });
     if (!chk.ok) continue;
     const already = store[key] && store[key].runId && store[key].lastRequest === chk.body.lastRequest;
-    if (chk.body.reviewed || chk.body.own || already) {
-      store[key] = { ...(store[key] || {}), url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), lastRequest: chk.body.lastRequest, notified: store[key] ? store[key].notified : true, skipped: chk.body.own ? "own PR" : already ? "run already started for this request" : "already reviewed" };
+    if (!chk.body.open || chk.body.reviewed || chk.body.own || already) {
+      store[key] = { ...(store[key] || {}), url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), lastRequest: chk.body.lastRequest, notified: store[key] ? store[key].notified : true, skipped: !chk.body.open ? "closed or merged" : chk.body.own ? "own PR" : already ? "run already started for this request" : "already reviewed" };
       continue;
     }
     const runId = crypto.randomUUID();
