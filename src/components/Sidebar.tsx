@@ -119,10 +119,15 @@ export default function Sidebar({
           className="flex-1 min-w-0 bg-transparent border-b border-[var(--bd)] focus:border-zinc-500 text-[var(--txt)] focus:outline-none"
         />
       ) : (
-        <span className="flex-1 truncate">
-          {c.pinned && <span className="mr-1.5 text-[var(--txt-faint)]">★</span>}
-          {c.title}
-        </span>
+        <>
+          {streamingIds.includes(c.id) && (
+            <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" title="Running" />
+          )}
+          <span className="flex-1 truncate">
+            {c.pinned && <span className="mr-1.5 text-[var(--txt-faint)]">★</span>}
+            {c.title}
+          </span>
+        </>
       )}
       <button
         onClick={(e) => {
