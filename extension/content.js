@@ -6,7 +6,7 @@
 const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
 
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
@@ -95,7 +95,7 @@ async function followUp(q) {
     : "The work here is your review of a GitHub PR; cite file:line when the question is about the code.";
   const wantsReply = REPLY_INTENT.test(q);
   const system = wantsReply
-    ? `${domain} ${FOLLOWUP_SYSTEM} You are drafting a PR REVIEW COMMENT to post on GitHub, in your OWN terse review voice from memory (not a customer reply): plain, direct, your exact phrasing. Do NOT @-mention the PR author; the comment sits on their PR and already reaches them. Use an @handle only to pull in a third person. NEVER write the literal '@author'. No preamble, no politeness padding, no hedging. ${ANCHOR_FORMAT} Output ONLY the comment.`
+    ? `${domain} ${FOLLOWUP_SYSTEM} You are drafting a PR REVIEW COMMENT to post on GitHub, in your OWN terse review voice from memory (not a customer reply): plain, direct, your exact phrasing. ${COMMENT_VOICE} ${ANCHOR_FORMAT} Output ONLY the comment.`
     : followupParams(q, domain).system;
   const label = wantsReply ? "Draft comment" : "Follow-up";
   const prompt =
@@ -117,7 +117,7 @@ const ANCHOR_FORMAT =
   "FORMAT, strictly: every ask that points at a line in the diff starts on its own line with `📍 <path>:<line>` (new-file side, a line that is IN the diff), followed by one to three short sentences and, when the fix is a one-liner, a ```suggestion block. Asks with no diff line (tests, title, rebase, screenshots, description) go together under one line containing only `💬`, at the end. Nothing before the first marker. Each 📍 block is posted as an inline comment on that line; the 💬 block is the review body.";
 
 const DRAFT_SYSTEM =
-  "You are the reviewer writing the comment to post on this PR, in your OWN standing voice from memory: terse, plain, direct, your exact phrasing — not a cleaned-up polished version. No preamble, no praise-fluff, no meta, no politeness padding ('would help to see…'), no hedging. Do NOT @-mention the PR author: the comment sits on their PR and already reaches them, and an @ reads as pushy. Use an @handle only to pull in a third person who would not otherwise see it. NEVER write the literal word `@author`." + ANCHOR_FORMAT + " Output ONLY the comment, ready to paste.";
+  "You are the reviewer writing the comment to post on this PR, in your OWN standing voice from memory: terse, plain, direct, your exact phrasing — not a cleaned-up polished version. " + COMMENT_VOICE + " " + ANCHOR_FORMAT + " Output ONLY the comment, ready to paste.";
 
 // Verify a PR by actually running it on a throwaway repro bench (SWE-agent-style
 // reproducer). Uses the per-version repro benches; never touches the user's own

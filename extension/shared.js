@@ -112,11 +112,19 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return null;
   }
 
+  // The voice every PR comment surface shares: the panel's Draft comment, a
+  // follow-up that asks for a comment, and the review skill's own rules. Keep the
+  // wording here only — content.js must not restate it.
+  const COMMENT_VOICE =
+    "You are opening a discussion, not handing down a decision. State what you saw as fact, then put the change as a question or an option: 'Should we …?', 'Would it be better to …?', 'Could we …?', 'One option is …'. Never a bare imperative ('drop this', 'use that'), and never the same opener twice in one comment set — vary it; 'Could you please …' is one option among several, not the house opener. Where more than one shape is reasonable, name the options and what each buys, then leave the choice to the author. Where the point rests on an assumption about their intent, say so and ask. " +
+    "If the author has already pushed back on this point, assume they may be right: they wrote the code and know the intent, you read a diff. Re-check their claim against the code itself, not against your earlier reasoning, and hold the point only if you can name a concrete fact their reply does not account for — a line, a call site, a test, a repro. If the strongest thing you have is that you still think so, say plainly that they are right and drop it. " +
+    "Do NOT @-mention the PR author: the comment sits on their PR and already reaches them, and an @ reads as pushy. Use an @handle only to pull in a third person who would not otherwise see it. NEVER write the literal word `@author`. No preamble, no praise-fluff, no meta, no politeness padding ('would help to see…').";
+
   // Thread node ids the review wants closed. The workflow re-checks that each one
   // is an unresolved frappe-pr-bot thread on that PR; this only keeps the shape sane.
   function resolveIds(j) {
     return (j && Array.isArray(j.resolve) ? j.resolve : []).filter((x) => typeof x === "string" && x.startsWith("PRRT_"));
   }
 
-  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom };
+  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom };
 })();

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Softer bot reviews** — the review skill opens a discussion instead of issuing instructions, varies its opener, and always posts as a comment rather than requesting changes.
+- **Pushback gets investigated** — when the author says a finding is wrong, the review re-checks their claim against the code and retracts when it cannot name a fact their reply misses.
 - **Threads close themselves** — a re-review resolves its own threads once the ask is addressed and never restates an ask that is already open.
 - Alter now installs the `frappe-pr-review` skill into `~/.claude/skills` on first run, alongside the support skill.
 - **Auto-review** (Settings toggle) — a review request or PR assignment in your GitHub notifications starts the review within a minute, notifies you when the draft is ready, and opening the PR shows it. Drafts only, never posts.
