@@ -65,9 +65,11 @@ Work every step in order. Steps 2, 3 and 4 are the ones normally skipped. Record
 Only when the PR or its linked issue gives concrete steps, and the fix looks correct from reading. Skip for pure UI or design PRs and say "UI-only".
 
 - No browser, no UI. Use `bench --site test.local console`, `bench --site test.local execute <dotted.path>`, `frappe.db`, `frappe.get_doc`, or a throwaway script through the console.
+- **The console is a full Python shell with the whole bench environment on its path**, so a claim about any installed library reproduces there too — `pypika`, `requests`, `redis`, `croniter`, anything in `env/lib/python*/site-packages`. Import it and call it directly; a pure-library check needs no site data and no DocType. A PR in another repo (`frappe/pypika`) is still reproducible this way against the installed copy, which is the pre-PR baseline you want. "The helper only drives frappe sites" is wrong; never use it as a reason to skip.
 - Reproduce against the base branch as it is on the bench, without the PR's patch, to confirm the bug fires. State the branch or SHA you reproduced against, or say the baseline is stale and skip.
 - Read-only bias. If a write is needed, end with `frappe.db.rollback()` or delete the throwaway record. Never commit, never migrate, never touch real fixtures, never switch branches.
 - One focused attempt. If it does not reproduce in a couple of tries, report that; a non-reproducing "fix" is itself a signal.
+- `Reproduced: no` needs a reason you actually hit — a command that was denied, a fixture you could not build, a step the PR never gave. Never a guess about what the tooling can do. Before writing it, ask whether the claim is a few lines of Python; if it is, run it.
 
 ## 6. Result
 
