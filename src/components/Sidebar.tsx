@@ -219,6 +219,7 @@ export default function Sidebar({
             <div className="space-y-0.5">
               {routineRows.map(({ routine, runs }) => {
                 const activeHere = runs.some((x) => x.id === activeId);
+                const running = runs.some((x) => streamingIds.includes(x.id));
                 return (
                   <div
                     key={routine.id}
@@ -228,18 +229,12 @@ export default function Sidebar({
                         : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
                     }`}
                     onClick={() => onOpenRuns(routine.id)}
-                    title={runs.length ? `${runs.length} run${runs.length > 1 ? "s" : ""}` : "No runs yet"}
+                    title={`${runs.length ? `${runs.length} run${runs.length > 1 ? "s" : ""}` : "No runs yet"}${routine.enabled ? "" : " · paused"}`}
                   >
-                    <span
-                      className={`mr-2 h-1.5 w-1.5 shrink-0 rounded-full ${
-                        runs.some((x) => streamingIds.includes(x.id))
-                          ? "bg-[var(--txt-dim)] animate-pulse"
-                          : routine.enabled
-                            ? "bg-[var(--txt-dim)]"
-                            : "border border-[var(--txt-faint)]"
-                      }`}
-                    />
-                    <span className="flex-1 truncate">{routine.name}</span>
+                    {/* A dot means running, nothing else — a permanent one would read
+                        as "this is going" on a routine that is merely scheduled. */}
+                    {running && <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" />}
+                    <span className={`flex-1 truncate ${routine.enabled ? "" : "opacity-50"}`}>{routine.name}</span>
                     {runs.length > 0 && (
                       <span className="ml-1.5 text-[10px] text-[var(--txt-faint)]">{runs.length}</span>
                     )}
