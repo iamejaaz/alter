@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Softer bot reviews** — the review skill opens a discussion instead of issuing instructions, varies its opener, and always posts as a comment rather than requesting changes.
+- **Threads close themselves** — a re-review resolves its own threads once the ask is addressed and never restates an ask that is already open.
+- Alter now installs the `frappe-pr-review` skill into `~/.claude/skills` on first run, alongside the support skill.
 - **Auto-review** (Settings toggle) — a review request or PR assignment in your GitHub notifications starts the review within a minute, notifies you when the draft is ready, and opening the PR shows it. Drafts only, never posts.
 - **Inline asks** — the post preview parses `📍 path:line` blocks into inline review comments; unanchored text becomes the review body.
 - **PR review** runs the `frappe-pr-review` skill instead of its own prompt, so the extension and the daily digest review the same way; the draft is read from the skill's JSON.

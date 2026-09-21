@@ -357,9 +357,9 @@ async function autoPollOnce() {
       const { autoReviewPost } = await chrome.storage.local.get("autoReviewPost");
       const j = autoReviewPost !== false ? ALTER.reviewJson(p.text) : null;
       const replies = (j && Array.isArray(j.replies) ? j.replies : []).filter((x) => x && typeof x.in_reply_to === "number" && (x.body || "").trim());
-      if (j && (j.comments.length || (j.body || "").trim() || replies.length)) {
+      if (j && (j.comments.length || (j.body || "").trim() || replies.length || ALTER.resolveIds(j).length)) {
         const [repo, prNum] = key.split("#");
-        const review = { event: j.event || "COMMENT", body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies };
+        const review = { event: "COMMENT", body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, resolve: ALTER.resolveIds(j) };
         const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(review))));
         const post = await bridge("/gh-bot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo, num: prNum, review_b64: b64 }) });
         const what = rec.kind === "reply" ? "Replied" : "Posted";

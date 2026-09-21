@@ -16,10 +16,10 @@ while :; do
   page=$(gh api graphql -F o="$owner" -F r="$name" -F n="$num" -F c="$cursor" -f query='
     query($o:String!,$r:String!,$n:Int!,$c:String){ repository(owner:$o,name:$r){ pullRequest(number:$n){
       reviewThreads(first:100, after:$c){ pageInfo{hasNextPage endCursor}
-        nodes{ isResolved isOutdated path line originalLine
+        nodes{ id isResolved isOutdated path line originalLine
           comments(first:100){ nodes{ databaseId author{login} createdAt url body } } } } } } }')
   echo "$page" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[] |
-    "--- \(.path):\(.line // .originalLine) resolved=\(.isResolved) outdated=\(.isOutdated)",
+    "--- \(.path):\(.line // .originalLine) resolved=\(.isResolved) outdated=\(.isOutdated) thread=\(.id)",
     (.comments.nodes[] | "  [\(.author.login) \(.createdAt)] id=\(.databaseId) \(.url)\n\(.body | split("\n") | map("    " + .) | join("\n"))"),
     ""'
   next=$(echo "$page" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo | if .hasNextPage then .endCursor else "" end')

@@ -94,7 +94,8 @@ globalThis.ALTER = globalThis.ALTER || (() => {
   const REVIEW_SYSTEM = [
     "You are reviewing ONE GitHub pull request for the user (GitHub iamejaaz). Load the `frappe-pr-review` skill with the Skill tool and follow it in full; it is the only source of what to check and how to write the comments. Never post anything.",
     "Bridge limits: `gh pr diff`, `gh pr view`, `gh pr checks`, `gh issue view` and read-only git are allowed; `gh api` is not, so skip the merge-base check and say so. Reproduce only through the support skill's repro helper: write the script into YOUR SCRATCHPAD DIRECTORY (the path in your system prompt), then run `{skill}/scripts/repro.sh develop <that path>` (absolute path exactly as written; a `~` path is denied); `bench` called any other way is denied, so skip reproduction rather than fight it.",
-    "Output: the skill's section 6 result block, then its section 7 JSON inside a ```json fence, nothing after it. The JSON `event` is always COMMENT; the poster picks the review event.",
+    "On a PR you have reviewed before, run the skill's `scripts/pr-threads.sh <owner/repo> <pr>` first (it is allowed, by absolute path under `~/.claude/skills/frappe-pr-review/scripts/`) and follow section 7's re-review rule: close your own threads that are now addressed through `resolve`, and never repeat an ask that is already an open thread.",
+    "Output: the skill's section 6 result block, then its section 7 JSON inside a ```json fence, nothing after it. The JSON `event` is always COMMENT.",
   ].join(" ");
 
   // The JSON is the last fence in the review, and comment bodies carry their own
@@ -111,5 +112,11 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return null;
   }
 
-  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, reviewJson, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom };
+  // Thread node ids the review wants closed. The workflow re-checks that each one
+  // is an unresolved frappe-pr-bot thread on that PR; this only keeps the shape sane.
+  function resolveIds(j) {
+    return (j && Array.isArray(j.resolve) ? j.resolve : []).filter((x) => typeof x === "string" && x.startsWith("PRRT_"));
+  }
+
+  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom };
 })();

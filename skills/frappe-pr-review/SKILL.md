@@ -97,39 +97,48 @@ Verdict rules from `code_review.md`: any real ask is NEEDS CHANGES. Blocking, no
 
 Write the comments the caller will post, in the maintainer's voice. These rules are not optional.
 
-- Open with `Could you please …`. A request, not an order. Do not `@`-mention the author: the review lands on their PR and already notifies them, and an `@` reads as pushy. Use an `@handle` only when it is really needed, to pull in a third party who would not otherwise be notified.
+- You are opening a discussion, not handing down a decision. State what you saw as fact, then put the change as a question or an option: "Should we …?", "Would it be better to …?", "Could we …?", "One option is …", "Worth considering …". Never a bare imperative ("drop this", "use that", "add a check"), and never the same opener twice in one review — vary it. `Could you please …` is one option among several, not the house opener, and it never belongs on a reply.
+- Where more than one shape is reasonable, name the options and say what each buys, then leave the choice to the author. Where the finding rests on an assumption, say so and ask: "unless there is a reason to keep it", "does that hold?". The author knows things you do not.
+- Do not `@`-mention the author: the review lands on their PR and already notifies them, and an `@` reads as pushy. Use an `@handle` only when it is really needed, to pull in a third party who would not otherwise be notified.
 - One concern per comment, one to three sentences. The user story, the ask, at most one sentence of why. Cut everything gathered while verifying; state the conclusion and the anchor. Simple English, no idioms, no dense clauses. Someone who is not a native speaker must read it once and know what to do.
 - Explain a problem as a user story first: a user does X, on the base branch they see Y, with this PR they see Z. Name at most the one symbol they must change. Keep the mechanism out unless it is needed to fix it.
-- Where the problem is first, then the fix. Frame fixes as concrete actions: "use `frappe.ui.empty_state()`" beats "revert".
+- Where the problem is first, then the proposal. Be concrete about the shape you have in mind — "we could use `frappe.ui.empty_state()` here" beats "this needs work" — while leaving the call to the author.
 - No preamble, no thanks, no praise, no "see inline", no summary of the diff, no verdict, no reassurance that the fix is correct. Only the asks.
 - Link a reference where one exists: the issue, the docs, `code_review.md`, conventionalcommits.org.
 - Inline comment anchored to the exact line, with a ```suggestion block when the fix is a one-liner. For a multi-line suggestion give the exact new-file line range. A cross-file ask, or one about a file not in the diff, goes in the review body.
 - Review body holds only asks with no line: tests, title, screenshots, rebase. Do not repeat the inline points there.
-- On a re-review, never post an earlier ask again as a new inline comment. An ask that is still open gets one short line in the body, `Still open from the last review: <what>` with the link to that thread, and nothing else. Inline comments are only for findings that are new in this round or where the author's change made the ask worse. If nothing is new and nothing is open, the two-line "No changes requested" body is the whole review.
+- On a re-review, start by running `scripts/pr-threads.sh <owner/repo> <pr>` and reading every unresolved thread whose first comment is yours (`frappe-pr-bot`). For each one, check the code as it stands now:
+  - The change landed, or the author declined with a reason that holds → put that thread's `id` (the `thread=PRRT_…` value the script prints) in `resolve`, and add a one-line `replies` entry saying what closed it. Closing the loop is how the author knows you read their fix.
+  - Still open → leave the thread alone. GitHub already shows it, so never repost it inline and never restate it in the body. Repeating an ask you already made is the single thing that makes a bot feel like spam.
+- Inline comments are only for findings new in this round, or where the author's change made an existing ask worse. If nothing is new and nothing needs resolving, the two-line "No changes requested" body is the whole review.
 - No emoji, no signature, no AI footer in the comment itself. The author's own commit trailers (`Co-Authored-By`, "Generated with") are their business: never ask for them to be removed.
 - Nothing to ask: post anyway, so the trigger always gets an answer. `event` is `COMMENT`, `comments` is empty and `body` is exactly two short lines: `No changes requested.` then `Checked: <root cause, sibling call sites, permissions, tests, …>` naming what was actually verified, with the Reproduced result when there was one.
 
-Emit the comments as JSON the poster can use directly. `event` is `REQUEST_CHANGES` when the verdict is NEEDS CHANGES and `COMMENT` otherwise. Never `APPROVE`; approving is the human's call.
+Emit the comments as JSON the poster can use directly. `event` is always `COMMENT`. Never `REQUEST_CHANGES` and never `APPROVE`: a bot blocking someone's PR is the loudest form of telling them what to do, and the verdict is the maintainer's call. Your NEEDS CHANGES verdict still goes in the section 6 result block, which only the maintainer reads.
 
 ```json
 {
-  "event": "REQUEST_CHANGES",
+  "event": "COMMENT",
   "body": "review body or empty string",
   "comments": [
-    {"path": "frappe/model/delete_doc.py", "line": 205, "side": "RIGHT", "start_line": null, "body": "Could you please …\n```suggestion\n…\n```"}
-  ]
+    {"path": "frappe/model/delete_doc.py", "line": 205, "side": "RIGHT", "start_line": null, "body": "Should we …?\n```suggestion\n…\n```"}
+  ],
+  "replies": [{"in_reply_to": 4039222825, "body": "The new guard covers this, thanks."}],
+  "resolve": ["PRRT_kwDOABxyAs6j9IvN"]
 }
 ```
 
-`line` is the new-file line for `RIGHT`, the old-file line for `LEFT`. Anchor only to lines present in the diff; everything else goes in `body`.
+`line` is the new-file line for `RIGHT`, the old-file line for `LEFT`. Anchor only to lines present in the diff; everything else goes in `body`. `replies` and `resolve` are optional and default to empty. Only your own threads can be resolved; the poster drops any id that is not one.
 
 ## 8. Thread replies
 
 The caller may hand you one thread instead of a whole PR: "Reply in thread <comment id> on <owner/repo>#<PR>". Someone answered an earlier ask from the maintainer or `frappe-pr-bot` there. Run `scripts/pr-threads.sh`, read that thread end to end, then check the current diff and code for what the reply claims; the branch may have moved since the ask.
 
 Decide one of three:
-- Addressed: the diff shows the change. Reply with one short line that closes it, plain, no praise ("Looks good, this covers it.").
-- Declined with a reason that holds: accept it in one line and drop the ask for good ("Fair, that keeps the classic path untouched. Leaving it.").
-- Declined with a reason that does not hold, or "done" that the diff does not show: one or two plain sentences with the fact that decides it, anchored to what you saw (a line, a call site, a repro result). No repeat of the original ask word for word, no lecture.
+- Addressed: the diff shows the change. Reply with one short line that closes it, plain, no praise ("Looks good, this covers it."), and resolve the thread.
+- Declined with a reason that holds: accept it in one line, drop the ask for good ("Fair, that keeps the classic path untouched. Leaving it.") and resolve the thread.
+- Declined with a reason that does not hold, or "done" that the diff does not show: one or two plain sentences with the fact that decides it, anchored to what you saw (a line, a call site, a repro result). Leave the thread open. No repeat of the original ask word for word, no lecture.
 
-Never reply to your own or the maintainer's comments, and never reply twice to the same comment. Output the same JSON as section 7 with `event` `COMMENT`, `body` empty, `comments` empty, and a `replies` array: `[{"in_reply_to": <comment id>, "body": "…"}]`.
+A reply continues a conversation someone else is already in, so it never opens with `Could you please` and never restates the ask. Never reply to your own or the maintainer's comments, and never reply twice to the same comment.
+
+Output the same JSON as section 7 with `event` `COMMENT`, `body` empty, `comments` empty, a `replies` array `[{"in_reply_to": <comment id>, "body": "…"}]`, and `resolve` carrying that thread's `id` in the two cases above.

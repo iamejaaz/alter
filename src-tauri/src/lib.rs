@@ -1335,10 +1335,12 @@ fn install_bundled_skills() {
     };
     let dir = std::path::Path::new(&home).join(".claude/skills/frappe-support-diagnosis");
     let scripts = dir.join("scripts");
-    if std::fs::create_dir_all(&scripts).is_err() {
+    let review = std::path::Path::new(&home).join(".claude/skills/frappe-pr-review");
+    let review_scripts = review.join("scripts");
+    if std::fs::create_dir_all(&scripts).is_err() || std::fs::create_dir_all(&review_scripts).is_err() {
         return;
     }
-    let files: [(std::path::PathBuf, &str, bool); 7] = [
+    let files: [(std::path::PathBuf, &str, bool); 9] = [
         (dir.join("SKILL.md"), include_str!("../../skills/frappe-support-diagnosis/SKILL.md"), false),
         (dir.join("prompts.json"), include_str!("../../skills/frappe-support-diagnosis/prompts.json"), false),
         (scripts.join("context.py"), include_str!("../../skills/frappe-support-diagnosis/scripts/context.py"), true),
@@ -1346,6 +1348,8 @@ fn install_bundled_skills() {
         (scripts.join("across-versions.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/across-versions.sh"), true),
         (scripts.join("repro.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/repro.sh"), true),
         (scripts.join("repro-setup.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/repro-setup.sh"), true),
+        (review.join("SKILL.md"), include_str!("../../skills/frappe-pr-review/SKILL.md"), false),
+        (review_scripts.join("pr-threads.sh"), include_str!("../../skills/frappe-pr-review/scripts/pr-threads.sh"), true),
     ];
     for (path, body, exec) in &files {
         let same = std::fs::read_to_string(path).map(|cur| cur == *body).unwrap_or(false);

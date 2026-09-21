@@ -722,12 +722,20 @@ async function postAsBot(text, btn) {
   if (!session) return;
   const note = document.querySelector("#alter-foot-note");
   const { body, comments } = parseDraft(text);
-  if (!body && !comments.length) {
+  const j = reviewJson(session.review);
+  const replies = (j && Array.isArray(j.replies) ? j.replies : []).filter((x) => x && typeof x.in_reply_to === "number" && (x.body || "").trim());
+  const resolve = window.ALTER.resolveIds(j);
+  if (!body && !comments.length && !replies.length && !resolve.length) {
     if (note) note.innerHTML = `<span class="alter-err">Nothing to post — the comment is empty.</span>`;
     return;
   }
   const dest = `${session.parts.owner}/${session.parts.repo}#${session.parts.num}`;
-  const inline = comments.length ? ` with ${comments.length} inline comment${comments.length > 1 ? "s" : ""}` : "";
+  const extras = [
+    comments.length ? `${comments.length} inline comment${comments.length > 1 ? "s" : ""}` : "",
+    replies.length ? `${replies.length} thread repl${replies.length > 1 ? "ies" : "y"}` : "",
+    resolve.length ? `${resolve.length} thread${resolve.length > 1 ? "s" : ""} resolved` : "",
+  ].filter(Boolean);
+  const inline = extras.length ? ` with ${extras.join(", ")}` : "";
   if (!window.confirm(`Post a comment review${inline} to ${dest} as frappe-pr-bot?\n\nThis is public.`)) return;
   const label = btn.textContent;
   btn.disabled = true;
@@ -736,7 +744,7 @@ async function postAsBot(text, btn) {
     type: "gh-bot",
     repo: `${session.parts.owner}/${session.parts.repo}`,
     num: session.parts.num,
-    review: { event: (reviewJson(session.review) || {}).event || "COMMENT", body, comments: comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })) },
+    review: { event: "COMMENT", body, comments: comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, resolve },
   });
   btn.disabled = false;
   btn.textContent = label;
