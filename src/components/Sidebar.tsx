@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Conversation, Project } from "../lib/store";
+import { Conversation, Project, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
 import { IconClock, IconPlus, IconSearch, IconSettings, IconSparkles } from "./Icons";
@@ -7,6 +7,7 @@ import { IconClock, IconPlus, IconSearch, IconSettings, IconSparkles } from "./I
 interface Props {
   conversations: Conversation[];
   activeId: string | null;
+  routines: Routine[];
   projects: Project[];
   activeProjectId: string | null;
   onSelectProject: (id: string | null) => void;
@@ -25,6 +26,7 @@ interface Props {
 export default function Sidebar({
   conversations,
   activeId,
+  routines,
   projects,
   activeProjectId,
   onSelectProject,
@@ -40,6 +42,7 @@ export default function Sidebar({
   onOpenPalette,
 }: Props) {
   const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const startRename = (c: Conversation) => {
@@ -65,14 +68,63 @@ export default function Sidebar({
       )
     : scoped;
   const filtered = [...matched].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
-  const pinned = filtered.filter((c) => c.pinned);
-  const rest = filtered.filter((c) => !c.pinned);
+  // A routine's runs belong under the routine, not loose in Recent — one row per
+  // routine instead of one per run. Chats made before `routineId` existed are
+  // matched by the "⏱ <name>" title they were given.
+  const routineOf = (c: Conversation) =>
+    routines.find((r) => (c.routineId ? r.id === c.routineId : c.title === `⏱ ${r.name}`)) ?? null;
+  const runsByRoutine = new Map<string, Conversation[]>();
+  const loose: Conversation[] = [];
+  for (const c of filtered) {
+    const r = routineOf(c);
+    if (r) runsByRoutine.set(r.id, [...(runsByRoutine.get(r.id) ?? []), c]);
+    else loose.push(c);
+  }
+  const pinned = loose.filter((c) => c.pinned);
+  const rest = loose.filter((c) => !c.pinned);
   const sections = q
     ? [{ label: `Results (${filtered.length})`, items: filtered }]
     : [
         ...(pinned.length ? [{ label: "Pinned", items: pinned }] : []),
         ...(rest.length ? [{ label: "Recent", items: rest }] : []),
       ];
+  // Every routine shows, even with no run yet, so the sidebar is the routine list.
+  const routineRows = routines.map((r) => ({ routine: r, runs: runsByRoutine.get(r.id) ?? [] }));
+
+  // A run under its routine: the title only repeats the routine name, so show when
+  // it ran instead.
+  const runLabel = (c: Conversation) => {
+    const d = new Date(c.createdAt);
+    const today = new Date();
+    const sameDay = d.toDateString() === today.toDateString();
+    return sameDay
+      ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+      : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+
+  const renderRun = (c: Conversation) => (
+    <div
+      key={c.id}
+      className={`group flex items-center rounded-lg px-2 py-1 text-xs cursor-pointer transition-colors ${
+        c.id === activeId
+          ? "bg-[var(--panel-2)] text-[var(--txt)]"
+          : "text-[var(--txt-faint)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
+      }`}
+      onClick={() => onSelect(c.id)}
+    >
+      <span className="flex-1 truncate">{runLabel(c)}</span>
+      <button
+        onClick={async (e) => {
+          e.stopPropagation();
+          if (await confirmDialog(`Delete this run? This can't be undone.`)) onDelete(c.id);
+        }}
+        className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-1.5 transition-opacity"
+        title="Delete run"
+      >
+        ×
+      </button>
+    </div>
+  );
 
   const renderChat = (c: Conversation) => (
     <div
@@ -193,6 +245,54 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
+        {!q && routineRows.length > 0 && (
+          <div>
+            <p className="px-2 pt-3 pb-1 text-xs text-[var(--txt-faint)]">Routines</p>
+            <div className="space-y-0.5">
+              {routineRows.map(({ routine, runs }) => {
+                const open = expanded.has(routine.id);
+                const activeHere = runs.some((x) => x.id === activeId);
+                return (
+                  <div key={routine.id}>
+                    <div
+                      className={`group flex items-center rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+                        activeHere && !open
+                          ? "bg-[var(--panel-2)] text-[var(--txt)]"
+                          : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
+                      }`}
+                      onClick={() => (runs[0] ? onSelect(runs[0].id) : onOpenRoutines())}
+                      title={runs.length ? `${runs.length} run${runs.length > 1 ? "s" : ""} · newest first` : "No runs yet"}
+                    >
+                      <span
+                        className={`mr-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+                          routine.enabled ? "bg-[var(--txt-dim)]" : "border border-[var(--txt-faint)]"
+                        }`}
+                      />
+                      <span className="flex-1 truncate">{routine.name}</span>
+                      {runs.length > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpanded((prev) => {
+                              const next = new Set(prev);
+                              next.has(routine.id) ? next.delete(routine.id) : next.add(routine.id);
+                              return next;
+                            });
+                          }}
+                          className="ml-1.5 text-[10px] text-[var(--txt-faint)] hover:text-[var(--txt)] transition-colors"
+                          title={open ? "Hide runs" : `Show ${runs.length} run${runs.length > 1 ? "s" : ""}`}
+                        >
+                          {open ? "▾" : `${runs.length} ▸`}
+                        </button>
+                      )}
+                    </div>
+                    {open && <div className="ml-3 border-l border-[var(--bd-soft)] pl-1 space-y-0.5">{runs.map(renderRun)}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {sections.map((s) => (
           <div key={s.label}>
             <p className="px-2 pt-3 pb-1 text-xs text-[var(--txt-faint)]">{s.label}</p>

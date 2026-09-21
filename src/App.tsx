@@ -586,6 +586,7 @@ export default function App() {
     title?: string;
     historyOverride?: Message[];
     targetConvId?: string; // internal: drain a queued message into this conversation
+    routineId?: string; // a manual "Run now": file the chat under that routine
   }) => {
     const text = (opts?.text ?? input).trim();
     const shown = opts?.display ?? text;
@@ -687,6 +688,7 @@ export default function App() {
         model: settings.model,
         effort: settings.effort,
         projectId: activeProjectId ?? undefined,
+        routineId: opts?.routineId,
       };
       setConversations((prev) => [conv, ...prev]);
       setActiveId(convId);
@@ -1270,6 +1272,7 @@ export default function App() {
               createdAt: r.at,
               connectionId: rt?.connectionId,
               model: rt?.model,
+              routineId: rt?.id,
               messages: [
                 { role: "user", content: r.prompt } as Message,
                 { role: "assistant", content: r.content } as Message,
@@ -1547,6 +1550,7 @@ export default function App() {
       <Sidebar
         conversations={conversations}
         activeId={activeId}
+        routines={routines}
         projects={projects}
         activeProjectId={activeProjectId}
         onSelectProject={selectProject}
@@ -1571,7 +1575,7 @@ export default function App() {
             onChange={setRoutines}
             onRunNow={(r) => {
               setView("chat");
-              void send({ text: r.prompt, forceNew: true, title: `⏱ ${r.name}` });
+              void send({ text: r.prompt, forceNew: true, title: `⏱ ${r.name}`, routineId: r.id });
             }}
             onBack={() => setView("chat")}
             parseRoutine={parseRoutine}

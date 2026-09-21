@@ -35,6 +35,7 @@ export interface Conversation {
   costUsd?: number; // cumulative Claude Code spend for this chat
   lastTokens?: number; // context tokens reported on the last turn
   projectId?: string;
+  routineId?: string; // this chat is one run of that routine, grouped under it in the sidebar
 }
 
 export interface Project {
