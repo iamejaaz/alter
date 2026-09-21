@@ -20,6 +20,7 @@ interface Props {
   onTogglePin: (id: string) => void;
   onOpenSettings: () => void;
   onOpenRoutines: () => void;
+  onOpenRuns: (routineId: string) => void;
   onOpenSkills: () => void;
   onOpenPalette?: () => void;
 }
@@ -40,11 +41,11 @@ export default function Sidebar({
   onTogglePin,
   onOpenSettings,
   onOpenRoutines,
+  onOpenRuns,
   onOpenSkills,
   onOpenPalette,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const startRename = (c: Conversation) => {
@@ -92,48 +93,6 @@ export default function Sidebar({
       ];
   // Every routine shows, even with no run yet, so the sidebar is the routine list.
   const routineRows = routines.map((r) => ({ routine: r, runs: runsByRoutine.get(r.id) ?? [] }));
-
-  // A run under its routine: the title only repeats the routine name, so show when
-  // it ran instead — "Today at 10:40 AM", "Yesterday at …", else "Sep 19 at …".
-  const runLabel = (c: Conversation) => {
-    const d = new Date(c.createdAt);
-    const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-    const midnight = new Date();
-    midnight.setHours(0, 0, 0, 0);
-    const days = Math.floor((midnight.getTime() - d.getTime()) / 86400000) + 1;
-    if (days <= 0) return `Today at ${time}`;
-    if (days === 1) return `Yesterday at ${time}`;
-    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} at ${time}`;
-  };
-
-  const renderRun = (c: Conversation) => {
-    const running = streamingIds.includes(c.id);
-    return (
-    <div
-      key={c.id}
-      className={`group flex items-center rounded-lg px-2 py-1 text-xs cursor-pointer transition-colors ${
-        c.id === activeId
-          ? "bg-[var(--panel-2)] text-[var(--txt)]"
-          : "text-[var(--txt-faint)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
-      }`}
-      onClick={() => onSelect(c.id)}
-      title={running ? "Running" : "Completed"}
-    >
-      {running && <span className="mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" />}
-      <span className="flex-1 truncate">{runLabel(c)}</span>
-      <button
-        onClick={async (e) => {
-          e.stopPropagation();
-          if (await confirmDialog(`Delete this run? This can't be undone.`)) onDelete(c.id);
-        }}
-        className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-1.5 transition-opacity"
-        title="Delete run"
-      >
-        ×
-      </button>
-    </div>
-    );
-  };
 
   const renderChat = (c: Conversation) => (
     <div
@@ -259,43 +218,31 @@ export default function Sidebar({
             <p className="px-2 pt-3 pb-1 text-xs text-[var(--txt-faint)]">Routines</p>
             <div className="space-y-0.5">
               {routineRows.map(({ routine, runs }) => {
-                const open = expanded.has(routine.id);
                 const activeHere = runs.some((x) => x.id === activeId);
                 return (
-                  <div key={routine.id}>
-                    <div
-                      className={`group flex items-center rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${
-                        activeHere && !open
-                          ? "bg-[var(--panel-2)] text-[var(--txt)]"
-                          : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
+                  <div
+                    key={routine.id}
+                    className={`group flex items-center rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+                      activeHere
+                        ? "bg-[var(--panel-2)] text-[var(--txt)]"
+                        : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
+                    }`}
+                    onClick={() => onOpenRuns(routine.id)}
+                    title={runs.length ? `${runs.length} run${runs.length > 1 ? "s" : ""}` : "No runs yet"}
+                  >
+                    <span
+                      className={`mr-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+                        runs.some((x) => streamingIds.includes(x.id))
+                          ? "bg-[var(--txt-dim)] animate-pulse"
+                          : routine.enabled
+                            ? "bg-[var(--txt-dim)]"
+                            : "border border-[var(--txt-faint)]"
                       }`}
-                      onClick={() => (runs[0] ? onSelect(runs[0].id) : onOpenRoutines())}
-                      title={runs.length ? `${runs.length} run${runs.length > 1 ? "s" : ""} · newest first` : "No runs yet"}
-                    >
-                      <span
-                        className={`mr-2 h-1.5 w-1.5 shrink-0 rounded-full ${
-                          routine.enabled ? "bg-[var(--txt-dim)]" : "border border-[var(--txt-faint)]"
-                        }`}
-                      />
-                      <span className="flex-1 truncate">{routine.name}</span>
-                      {runs.length > 0 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpanded((prev) => {
-                              const next = new Set(prev);
-                              next.has(routine.id) ? next.delete(routine.id) : next.add(routine.id);
-                              return next;
-                            });
-                          }}
-                          className="ml-1.5 text-[10px] text-[var(--txt-faint)] hover:text-[var(--txt)] transition-colors"
-                          title={open ? "Hide runs" : `Show ${runs.length} run${runs.length > 1 ? "s" : ""}`}
-                        >
-                          {open ? "▾" : `${runs.length} ▸`}
-                        </button>
-                      )}
-                    </div>
-                    {open && <div className="ml-3 border-l border-[var(--bd-soft)] pl-1 space-y-0.5">{runs.map(renderRun)}</div>}
+                    />
+                    <span className="flex-1 truncate">{routine.name}</span>
+                    {runs.length > 0 && (
+                      <span className="ml-1.5 text-[10px] text-[var(--txt-faint)]">{runs.length}</span>
+                    )}
                   </div>
                 );
               })}

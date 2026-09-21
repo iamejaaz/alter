@@ -7,6 +7,7 @@ import AttachmentImage from "./components/AttachmentImage";
 import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
+import RunsPanel from "./components/RunsPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
 import { IconArrowUp, IconChevronRight, IconFolder, IconMic, IconPaperclip } from "./components/Icons";
 
@@ -134,6 +135,7 @@ export default function App() {
   };
   const [input, setInput] = useState("");
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
+  const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
   const INFLIGHT_KEY = "alter.inflight";
   const RESUME_TEXT = "The app was quit while you were working. Please continue from where you left off.";
@@ -1563,6 +1565,7 @@ export default function App() {
         onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}
         onOpenSettings={() => setShowSettings(true)}
         onOpenRoutines={() => setView("routines")}
+        onOpenRuns={(id) => setRunsRoutineId((cur) => (cur === id ? null : id))}
         onOpenSkills={() => setView("skills")}
         onOpenPalette={() => setShowPalette(true)}
       />
@@ -2080,6 +2083,27 @@ export default function App() {
       </main>
 
       {artifact && <ArtifactPanel artifact={artifact} onClose={() => setArtifact(null)} />}
+      {(() => {
+        const routine = routines.find((r) => r.id === runsRoutineId);
+        if (!routine) return null;
+        return (
+          <RunsPanel
+            routine={routine}
+            runs={conversations.filter((c) =>
+              c.routineId ? c.routineId === routine.id : c.title === `⏱ ${routine.name}`
+            )}
+            streamingIds={streamingIds}
+            activeId={activeId}
+            onSelect={openChat}
+            onDelete={deleteConversation}
+            onOpenRoutines={() => {
+              setRunsRoutineId(null);
+              setView("routines");
+            }}
+            onClose={() => setRunsRoutineId(null)}
+          />
+        );
+      })()}
 
       {preview && (
         <div
