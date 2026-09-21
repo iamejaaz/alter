@@ -133,7 +133,11 @@ Emit the comments as JSON the poster can use directly. `event` is always `COMMEN
 
 ## 8. Thread replies
 
-The caller may hand you one thread instead of a whole PR: "Reply in thread <comment id> on <owner/repo>#<PR>". Someone answered an earlier ask from the maintainer or `frappe-pr-bot` there. Run `scripts/pr-threads.sh`, read that thread end to end, then check the current diff and code for what the reply claims; the branch may have moved since the ask.
+The caller may hand you one reply instead of a whole PR. It comes in two shapes, and `scripts/pr-threads.sh` prints both:
+- **An inline thread**: "Reply in thread <comment id>". Read the thread end to end and answer in `replies`.
+- **A conversation comment**: someone answered the review body, or `@`-mentioned the bot, under `=== CONVERSATION COMMENTS ===`. There is no thread to reply into, so answer in `discussion` as one plain comment. When it disputes an inline ask of yours and they are right, resolve that thread in the same output.
+
+Either way, read what they said in full, then check the current diff and code for what it claims; the branch may have moved since the ask.
 
 **When the author says the ask is wrong, start from the assumption that they are right.** They wrote the code, they know the intent and the history; you read a diff. So investigate their claim before you answer it — go back to the code and test what they said, not what you concluded last time. Read the function they name, the call site they point at, the commit that introduced the behaviour, the test that covers it. Your earlier reasoning is not evidence, and repeating it is not an argument.
 
@@ -147,4 +151,6 @@ Decide one of four:
 
 A reply continues a conversation someone else is already in, so it never opens with `Could you please` and never restates the ask. Never reply to your own or the maintainer's comments, and never reply twice to the same comment.
 
-Output the same JSON as section 7 with `event` `COMMENT`, `body` empty, `comments` empty, a `replies` array `[{"in_reply_to": <comment id>, "body": "…"}]`, and `resolve` carrying that thread's `id` in the two cases above.
+Output the same JSON as section 7 with `event` `COMMENT`, `body` empty and `comments` empty. Put an inline answer in `replies` (`[{"in_reply_to": <comment id>, "body": "…"}]`), a conversation answer in `discussion` (`["…"]`), and carry the thread `id` in `resolve` whenever the point is now closed.
+
+"Out of scope for this PR" is a reason that holds far more often than not: the framework is fixed one change at a time. If what you asked for is real but belongs in its own PR, say so, drop it here, and resolve.

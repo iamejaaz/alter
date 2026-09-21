@@ -1192,6 +1192,40 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                         "line": t.get("line").filter(|l| !l.is_null()).or_else(|| t.get("originalLine")),
                     }));
                 }
+                // Pushback also arrives as a plain conversation comment that @-mentions
+                // the bot; those have no review thread, so collect them separately.
+                let convo = std::process::Command::new("gh")
+                    .args(["api", &format!("repos/frappe/frappe/issues/{num}/comments"), "--paginate", "--jq", ".[] | {id, author: .user.login, at: .created_at, url: .html_url, body}"])
+                    .output()
+                    .ok()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                    .unwrap_or_default();
+                let convo: Vec<serde_json::Value> = convo.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+                let bot_last = convo
+                    .iter()
+                    .filter(|c| c.get("author").and_then(|a| a.as_str()) == Some("frappe-pr-bot"))
+                    .filter_map(|c| c.get("at").and_then(|a| a.as_str()))
+                    .max()
+                    .unwrap_or("")
+                    .to_string();
+                for c in &convo {
+                    let author = c.get("author").and_then(|a| a.as_str()).unwrap_or("");
+                    let at = c.get("at").and_then(|a| a.as_str()).unwrap_or("");
+                    let body = c.get("body").and_then(|b| b.as_str()).unwrap_or("");
+                    if author == "frappe-pr-bot" || author == me || author.ends_with("[bot]") || author == "greptile-apps" {
+                        continue;
+                    }
+                    if !body.contains("@frappe-pr-bot") || at <= bot_last.as_str() {
+                        continue;
+                    }
+                    pending.push(serde_json::json!({
+                        "commentId": c.get("id"),
+                        "author": author,
+                        "at": at,
+                        "url": c.get("url"),
+                        "kind": "conversation",
+                    }));
+                }
                 if !pending.is_empty() {
                     out.push(serde_json::json!({ "repo": "frappe/frappe", "num": num, "title": pr.get("title"), "url": pr.get("url"), "threads": pending }));
                 }

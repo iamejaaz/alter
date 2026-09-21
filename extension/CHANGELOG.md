@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Softer bot reviews** — the review skill opens a discussion instead of issuing instructions, varies its opener, and always posts as a comment rather than requesting changes.
+- **Conversation pushback is read too** — a comment that @-mentions the bot outside any review thread now gets an answer, posted back into the conversation.
 - **Pushback gets investigated** — when the author says a finding is wrong, the review re-checks their claim against the code and retracts when it cannot name a fact their reply misses.
 - **Threads close themselves** — a re-review resolves its own threads once the ask is addressed and never restates an ask that is already open.
 - Alter now installs the `frappe-pr-review` skill into `~/.claude/skills` on first run, alongside the support skill.

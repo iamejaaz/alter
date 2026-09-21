@@ -357,9 +357,10 @@ async function autoPollOnce() {
       const { autoReviewPost } = await chrome.storage.local.get("autoReviewPost");
       const j = autoReviewPost !== false ? ALTER.reviewJson(p.text) : null;
       const replies = (j && Array.isArray(j.replies) ? j.replies : []).filter((x) => x && typeof x.in_reply_to === "number" && (x.body || "").trim());
-      if (j && (j.comments.length || (j.body || "").trim() || replies.length || ALTER.resolveIds(j).length)) {
+      const discussion = (j && Array.isArray(j.discussion) ? j.discussion : []).filter((x) => typeof x === "string" && x.trim());
+      if (j && (j.comments.length || (j.body || "").trim() || replies.length || discussion.length || ALTER.resolveIds(j).length)) {
         const [repo, prNum] = key.split("#");
-        const review = { event: "COMMENT", body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, resolve: ALTER.resolveIds(j) };
+        const review = { event: "COMMENT", body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, discussion, resolve: ALTER.resolveIds(j) };
         const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(review))));
         const post = await bridge("/gh-bot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo, num: prNum, review_b64: b64 }) });
         const what = rec.kind === "reply" ? "Replied" : "Posted";
@@ -387,7 +388,10 @@ async function autoReplyTick() {
       const key = `${pr.repo}#${pr.num}#c${t.commentId}`;
       if (store[key]) continue;
       const runId = crypto.randomUUID();
-      const prompt = `Reply in thread ${t.commentId} on ${pr.repo}#${pr.num} (${t.path}:${t.line}, answered by ${t.author}) with section 8 of the frappe-pr-review skill.\n\n`;
+      const where = t.kind === "conversation"
+        ? `conversation comment ${t.commentId} on ${pr.repo}#${pr.num} (by ${t.author}, ${t.url}), which has no review thread — put your answer in \`discussion\` as one plain comment, and if it disputes an inline ask of yours that they are right about, resolve that thread too`
+        : `thread ${t.commentId} on ${pr.repo}#${pr.num} (${t.path}:${t.line}, answered by ${t.author}) — answer in \`replies\``;
+      const prompt = `Reply to ${where}, with section 8 of the frappe-pr-review skill.\n\n`;
       const s = await bridge("/agent-start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -395,7 +399,7 @@ async function autoReplyTick() {
       });
       if (!s.ok) continue;
       store[key] = { runId, url: t.url, title: pr.title, ts: Date.now(), notified: false, kind: "reply" };
-      notify("start-" + runId, `Reading a reply on #${pr.num}`, `${t.author} answered at ${t.path}:${t.line}`, t.url);
+      notify("start-" + runId, `Reading a reply on #${pr.num}`, t.kind === "conversation" ? `${t.author} answered in the conversation` : `${t.author} answered at ${t.path}:${t.line}`, t.url);
       started++;
     }
   }
