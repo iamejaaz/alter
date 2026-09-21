@@ -8,6 +8,7 @@ interface Props {
   conversations: Conversation[];
   activeId: string | null;
   routines: Routine[];
+  streamingIds: string[];
   projects: Project[];
   activeProjectId: string | null;
   onSelectProject: (id: string | null) => void;
@@ -27,6 +28,7 @@ export default function Sidebar({
   conversations,
   activeId,
   routines,
+  streamingIds,
   projects,
   activeProjectId,
   onSelectProject,
@@ -92,17 +94,21 @@ export default function Sidebar({
   const routineRows = routines.map((r) => ({ routine: r, runs: runsByRoutine.get(r.id) ?? [] }));
 
   // A run under its routine: the title only repeats the routine name, so show when
-  // it ran instead.
+  // it ran instead — "Today at 10:40 AM", "Yesterday at …", else "Sep 19 at …".
   const runLabel = (c: Conversation) => {
     const d = new Date(c.createdAt);
-    const today = new Date();
-    const sameDay = d.toDateString() === today.toDateString();
-    return sameDay
-      ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-      : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const days = Math.floor((midnight.getTime() - d.getTime()) / 86400000) + 1;
+    if (days <= 0) return `Today at ${time}`;
+    if (days === 1) return `Yesterday at ${time}`;
+    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} at ${time}`;
   };
 
-  const renderRun = (c: Conversation) => (
+  const renderRun = (c: Conversation) => {
+    const running = streamingIds.includes(c.id);
+    return (
     <div
       key={c.id}
       className={`group flex items-center rounded-lg px-2 py-1 text-xs cursor-pointer transition-colors ${
@@ -111,7 +117,9 @@ export default function Sidebar({
           : "text-[var(--txt-faint)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
       }`}
       onClick={() => onSelect(c.id)}
+      title={running ? "Running" : "Completed"}
     >
+      {running && <span className="mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" />}
       <span className="flex-1 truncate">{runLabel(c)}</span>
       <button
         onClick={async (e) => {
@@ -124,7 +132,8 @@ export default function Sidebar({
         ×
       </button>
     </div>
-  );
+    );
+  };
 
   const renderChat = (c: Conversation) => (
     <div

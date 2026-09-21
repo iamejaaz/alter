@@ -1551,6 +1551,7 @@ export default function App() {
         conversations={conversations}
         activeId={activeId}
         routines={routines}
+        streamingIds={streamingIds}
         projects={projects}
         activeProjectId={activeProjectId}
         onSelectProject={selectProject}
@@ -1949,23 +1950,8 @@ export default function App() {
                 className="relative w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               </div>
-              <div className="flex items-center gap-0.5 px-2 pb-2 text-[13px]">
-                {/* Left: mode + attach + mic */}
-                <ComposerSelect
-                  value={settings.mode ?? "auto"}
-                  onChange={(v) => {
-                    const s = { ...settings, mode: v as typeof settings.mode };
-                    setSettings(s);
-                    storage.saveSettings(s);
-                  }}
-                  options={[
-                    { value: "auto", label: "Auto" },
-                    { value: "ask", label: "Ask first" },
-                    { value: "plan", label: "Plan" },
-                    { value: "chat", label: "Chat only" },
-                  ]}
-                  title="How Alter uses tools / permissions"
-                />
+              <div className="flex items-center gap-1 px-2.5 pb-2.5 text-[13px]">
+                {/* Left: what you put in — attach, dictate, how tools are used */}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-[var(--panel-2)] text-[var(--txt-faint)] hover:text-[var(--txt)] transition-colors"
@@ -1987,8 +1973,25 @@ export default function App() {
                     <IconMic />
                   </button>
                 )}
+                <ComposerSelect
+                  value={settings.mode ?? "auto"}
+                  onChange={(v) => {
+                    const s = { ...settings, mode: v as typeof settings.mode };
+                    setSettings(s);
+                    storage.saveSettings(s);
+                  }}
+                  options={[
+                    { value: "auto", label: "Auto" },
+                    { value: "ask", label: "Ask first" },
+                    { value: "plan", label: "Plan" },
+                    { value: "chat", label: "Chat only" },
+                  ]}
+                  title="How Alter uses tools / permissions"
+                />
 
-                {/* model · (claude model) · effort · tokens — grouped next to the tools */}
+                <div className="flex-1" />
+
+                {/* Right: who answers — connection, model, effort, then send */}
                 <ComposerSelect
                   value={settings.activeConnectionId ?? ""}
                   onChange={switchConnection}
@@ -2026,34 +2029,10 @@ export default function App() {
                     title="Working…"
                   />
                 )}
-                {active && active.messages.length > 0 && (() => {
-                  const used = active.lastTokens || tokenEstimate;
-                  const window = contextWindowFor(active.model ?? settings.model, claudeCodeActive);
-                  const pct = window ? Math.min(100, Math.round((used / window) * 100)) : null;
-                  const hot = pct != null && pct >= 80;
-                  const title = window
-                    ? `${used.toLocaleString()} of ${window.toLocaleString()} context tokens (${pct}%) · session cost`
-                    : "Context tokens · session cost";
-                  return (
-                    <span
-                      className={`text-[11px] tabular-nums mx-1 ${hot ? "text-amber-500" : "text-[var(--txt-faint)]"}`}
-                      title={title}
-                    >
-                      {active.lastTokens ? "" : "~"}
-                      {fmtTokens(used)}
-                      {window && ` / ${fmtTokens(window)}`}
-                      {pct != null && pct >= 50 && ` (${pct}%)`}
-                      {active.costUsd != null && ` · $${active.costUsd.toFixed(active.costUsd < 1 ? 3 : 2)}`}
-                    </span>
-                  );
-                })()}
-
-                <div className="flex-1" />
-
                 {activeStreaming ? (
                   <button
                     onClick={stop}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--bd)] hover:bg-[var(--panel-2)] text-[var(--txt)] transition-colors ml-0.5"
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--bd)] hover:bg-[var(--panel-2)] text-[var(--txt)] transition-colors ml-0.5"
                     title="Stop"
                     aria-label="Stop generating"
                   >
@@ -2063,7 +2042,7 @@ export default function App() {
                   <button
                     onClick={() => send()}
                     disabled={!input.trim() && attachments.length === 0}
-                    className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 text-white transition-colors ml-0.5"
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--bd)] hover:bg-[var(--panel-2)] disabled:opacity-25 disabled:hover:bg-transparent text-[var(--txt)] transition-colors ml-0.5"
                     title="Send"
                     aria-label="Send message"
                   >
@@ -2072,9 +2051,30 @@ export default function App() {
                 )}
               </div>
             </div>
-            <p className="mt-2 text-center text-[11px] text-[var(--txt-faint)]">
-              Alter can read files, browse the web, and remember what matters.
-            </p>
+            {/* One quiet line under the box: the usage of the chat you are in, or
+                what Alter can do when there is nothing to report yet. */}
+            {active && active.messages.length > 0 ? (() => {
+              const used = active.lastTokens || tokenEstimate;
+              const window = contextWindowFor(active.model ?? settings.model, claudeCodeActive);
+              const pct = window ? Math.min(100, Math.round((used / window) * 100)) : null;
+              const hot = pct != null && pct >= 80;
+              return (
+                <p
+                  className={`mt-2 text-center text-[11px] tabular-nums ${hot ? "text-amber-500" : "text-[var(--txt-faint)]"}`}
+                  title={window ? `${used.toLocaleString()} of ${window.toLocaleString()} context tokens` : "Context tokens · session cost"}
+                >
+                  {active.lastTokens ? "" : "~"}
+                  {fmtTokens(used)}
+                  {window && ` / ${fmtTokens(window)}`}
+                  {pct != null && pct >= 50 && ` (${pct}%)`}
+                  {active.costUsd != null && ` · $${active.costUsd.toFixed(active.costUsd < 1 ? 3 : 2)}`}
+                </p>
+              );
+            })() : (
+              <p className="mt-2 text-center text-[11px] text-[var(--txt-faint)]">
+                Alter can read files, browse the web, and remember what matters.
+              </p>
+            )}
           </div>
         </div>
       </main>
