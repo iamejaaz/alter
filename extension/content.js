@@ -38,7 +38,7 @@ let session = null;
 let running = false;
 
 // Ignore re-clicks while a review is in flight: a second run() would clear the
-// panel, detach the live block, and overwrite activeRun so Stop can't reach it.
+// panel and detach the live block.
 async function run() {
   if (running) return;
   running = true;
@@ -256,7 +256,12 @@ function displayText(full) {
   return full;
 }
 
-let activeRun = null; // { runId, stop } while a review/follow-up is in flight
+// Every in-flight run, not just the newest. A second follow-up sent before the
+// first finished used to overwrite a single slot, leaving the first one running
+// with nothing able to reach it, so Stop only killed the last one.
+const activeRuns = new Set(); // { runId, stop, detach }
+const stopAllRuns = () => [...activeRuns].forEach((r) => r.stop());
+const detachAllRuns = () => [...activeRuns].forEach((r) => r.detach());
 
 // Persist a run's runId per PR so a page-tab reload can RECONNECT to the
 // still-running bridge job instead of orphaning it.
@@ -314,8 +319,8 @@ function pollRun(el, runId, opts) {
     const cleanup = () => {
       clearInterval(tick);
       clearInterval(poll);
-      activeRun = null;
-      showStop(false);
+      activeRuns.delete(run);
+      showStop(activeRuns.size > 0);
       if (key) clearActiveRun(key);
     };
     const tick = setInterval(() => {
@@ -336,7 +341,7 @@ function pollRun(el, runId, opts) {
       });
     };
 
-    activeRun = {
+    const run = {
       runId,
       stop: () => {
         if (done) return;
@@ -355,11 +360,12 @@ function pollRun(el, runId, opts) {
         done = true;
         clearInterval(tick);
         clearInterval(poll);
-        activeRun = null;
-        showStop(false);
+        activeRuns.delete(run);
+        showStop(activeRuns.size > 0);
         resolve("");
       },
     };
+    activeRuns.add(run);
     showStop(true);
 
     const fail = (msg) => {
@@ -640,10 +646,10 @@ function openPanel() {
     el.querySelector("#alter-min").title = min ? "Expand" : "Minimize";
   });
   el.querySelector("#alter-stop").addEventListener("click", () => {
-    if (activeRun) activeRun.stop();
+    stopAllRuns();
   });
   el.querySelector("#alter-close").addEventListener("click", () => {
-    if (activeRun) activeRun.stop();
+    stopAllRuns();
     el.remove();
     session = null;
   });
@@ -832,7 +838,7 @@ setInterval(() => {
     lastPrKey = key;
     const panel = document.getElementById("alter-panel");
     if (panel) {
-      if (activeRun) activeRun.detach();
+      detachAllRuns();
       panel.remove();
       session = null;
     }
