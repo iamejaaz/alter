@@ -565,13 +565,50 @@ function openPanel() {
       <div>
         <button id="alter-copy" title="Copy the review (or draft comment)">Copy</button>
         <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
+        <button id="alter-wide" title="Expand / restore">⤢</button>
         <button id="alter-min" title="Minimize">–</button>
         <button id="alter-close" title="Close">×</button>
       </div>
     </div>
     <div id="alter-panel-body"></div>
-    <div id="alter-panel-foot"></div>`;
+    <div id="alter-panel-foot"></div>
+    <div id="alter-resize" title="Drag to resize"></div>`;
   document.body.appendChild(el);
+  // The panel is anchored bottom-right, so it grows up and to the left. Size is
+  // remembered per browser, since a long review is unreadable at the default.
+  const applySize = (w, h) => {
+    el.style.width = Math.min(Math.max(340, w), window.innerWidth - 40) + "px";
+    el.style.height = Math.min(Math.max(220, h), window.innerHeight - 100) + "px";
+    el.style.maxHeight = "none";
+  };
+  const saveSize = () => {
+    try {
+      localStorage.setItem("alter_panel_size", JSON.stringify({ w: el.offsetWidth, h: el.offsetHeight }));
+    } catch (_) {}
+  };
+  try {
+    const s = JSON.parse(localStorage.getItem("alter_panel_size") || "null");
+    if (s && s.w && s.h) applySize(s.w, s.h);
+  } catch (_) {}
+  el.querySelector("#alter-wide").addEventListener("click", () => {
+    const wide = el.offsetWidth > window.innerWidth * 0.6;
+    if (wide) applySize(420, window.innerHeight * 0.7);
+    else applySize(window.innerWidth - 60, window.innerHeight - 120);
+    saveSize();
+  });
+  el.querySelector("#alter-resize").addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const r = el.getBoundingClientRect();
+    const x0 = e.clientX, y0 = e.clientY, w0 = r.width, h0 = r.height;
+    const move = (ev) => applySize(w0 + (x0 - ev.clientX), h0 + (y0 - ev.clientY));
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      saveSize();
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  });
   el.querySelector("#alter-copy").addEventListener("click", () => {
     const b = el.querySelector("#alter-copy");
     const text = session ? session.draft || session.review || "" : "";
@@ -694,6 +731,8 @@ function renderPostPreview(text, suggested) {
       <button data-ev="approve" class="${ev === "approve" ? "" : "alter-ghost"}">🟢 Approve</button>
       <button data-ev="request_changes" class="${ev === "request_changes" ? "" : "alter-ghost"}">🔴 Request changes</button>
       <button data-ev="comment" class="${ev === "comment" ? "" : "alter-ghost"}">💬 Comment</button>
+    </div>
+    <div id="alter-foot-btns2">
       <button id="alter-post-bot" class="alter-ghost">🤖 Post as frappe-pr-bot</button>
       <button id="alter-back" class="alter-ghost">← Back</button>
     </div>
@@ -701,7 +740,17 @@ function renderPostPreview(text, suggested) {
   const ta = foot.querySelector("#alter-post-text");
   ta.value = text || "";
   const noteEl = foot.querySelector("#alter-foot-note");
+  const approveBtn = foot.querySelector('#alter-foot-btns button[data-ev="approve"]');
+  // Approving while the same submission carries asks is a contradiction, so
+  // Approve only exists while there is nothing to ask.
+  const hasAsks = () => {
+    const { body, comments } = parseDraft(ta.value);
+    if (comments.length) return true;
+    const b = body.trim();
+    return !!b && !/^no changes requested\.?/i.test(b);
+  };
   const warnAnchors = () => {
+    approveBtn.hidden = hasAsks();
     if (!ta.value.trim()) noteEl.textContent = "No draft comment in this review — write the comment you want to post.";
     else if (!parseDraft(ta.value).comments.length) noteEl.innerHTML = `<span class="alter-err">No 📍 path:line blocks — the whole text would post as one review body with no inline comments.</span>`;
     else noteEl.textContent = "";

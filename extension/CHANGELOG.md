@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Approve is hidden while the draft carries asks** — only Request changes and Comment show; Approve returns when there is nothing to ask.
+- **The review panel resizes** — drag its top-left corner, or use the expand toggle; the size is remembered.
 - **Softer bot reviews** — the review skill opens a discussion instead of issuing instructions, varies its opener, and always posts as a comment rather than requesting changes.
 - **Conversation pushback is read too** — a comment that @-mentions the bot outside any review thread now gets an answer, posted back into the conversation.
 - **Pushback gets investigated** — when the author says a finding is wrong, the review re-checks their claim against the code and retracts when it cannot name a fact their reply misses.

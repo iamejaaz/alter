@@ -127,12 +127,14 @@
   border-top: 1px solid #26262c;
   padding: 8px 10px 10px;
 }
-#alter-foot-btns {
+#alter-foot-btns,
+#alter-foot-btns2 {
   display: flex;
   gap: 6px;
   margin-bottom: 8px;
 }
-#alter-foot-btns button {
+#alter-foot-btns button,
+#alter-foot-btns2 button {
   flex: 1;
   background: #232329;
   border: 1px solid #34343c;
@@ -142,10 +144,12 @@
   font: 11px/1 inherit;
   cursor: pointer;
 }
-#alter-foot-btns button:hover {
+#alter-foot-btns button:hover,
+#alter-foot-btns2 button:hover {
   background: #2f2f37;
 }
-#alter-foot-btns button:disabled {
+#alter-foot-btns button:disabled,
+#alter-foot-btns2 button:disabled {
   opacity: 0.6;
   cursor: default;
 }
@@ -256,3 +260,27 @@
 #alter-panel.alter-collapsed { height: auto; max-height: none; }
 #alter-panel.alter-collapsed #alter-panel-body,
 #alter-panel.alter-collapsed #alter-panel-foot { display: none; }
+
+#alter-resize {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 2;
+}
+#alter-resize::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  border-left: 2px solid #4a4a54;
+  border-top: 2px solid #4a4a54;
+  border-radius: 2px 0 0 0;
+}
+#alter-panel.alter-collapsed #alter-resize {
+  display: none;
+}
