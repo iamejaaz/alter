@@ -21,7 +21,9 @@ async function bridge(path, opts = {}) {
 // selection (info.selectionText), so this works in any editor GitHub uses,
 // shadow DOM or not, with no selection-detection guesswork.
 const GRAMMAR_SYSTEM =
-  "You are a precise copy editor. Fix spelling, grammar, and punctuation. Preserve meaning, tone, and formatting. Do not add, remove, or rephrase beyond fixing errors. Reply with ONLY the corrected text — no quotes, no commentary.";
+  "You are a precise copy editor. Fix spelling, grammar, and punctuation. Preserve meaning, tone, and formatting. Do not add, remove, or rephrase beyond fixing errors. " +
+  ALTER.NO_DASH +
+  " Reply with ONLY the corrected text, no quotes, no commentary.";
 
 function createMenus() {
   chrome.contextMenus.removeAll(() => {

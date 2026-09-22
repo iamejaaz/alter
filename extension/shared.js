@@ -43,13 +43,19 @@ globalThis.ALTER = globalThis.ALTER || (() => {
   // voice. Voice comes from the user's own standing preferences (memory /
   // ~/.claude/CLAUDE.md, injected as authoritative), so it reads correctly for
   // whoever installs Alter — never hardcode one person's name here.
+  // Dashes are the clearest tell of machine-written text, and the user never uses
+  // them. Every surface that produces text a person will read shares this.
+  const NO_DASH =
+    "Never use a dash as punctuation: no em dash, no en dash, no spaced hyphen joining two clauses. It reads as machine-written. Start a new sentence, or use a comma or a colon instead. A hyphen inside a compound word (well-known, re-run, read-only) is fine, and dashes already in the user's own text stay as they are.";
+
   const REPLY_VOICE = [
     "Write it the way the USER talks to a person — match their standing voice preferences from memory (their ~/.claude/CLAUDE.md is authoritative). Plain, short, direct, human — not a bot or a report.",
     "NO code mechanics in the reply — no file paths, line numbers, function names, commit hashes, or internal jargon. The reader is a person, not a codebase. (You still USE the analysis to be correct; you just don't show your working.)",
     "Lead with the answer. If it's yes/no, say it in the first line, then the ONE thing they need to do. Keep it to a few short sentences — a small paragraph, not a bulleted essay.",
     "No preamble ('Sure, here's a draft...'), no corporate filler, no over-apologising, no sign-off boilerplate unless a greeting/closing is actually needed.",
     "Match the audience: a customer reply is friendly and non-technical; an internal-team note can name the cause in one plain line + the next step, still no code tour.",
-    "Output ONLY the message text, paste-ready — nothing else.",
+    NO_DASH,
+    "Output ONLY the message text, paste-ready, nothing else.",
   ].join(" ");
 
   // Continuing a chat about work you ALREADY produced (a ticket diagnosis or a
@@ -126,5 +132,5 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return (j && Array.isArray(j.resolve) ? j.resolve : []).filter((x) => typeof x === "string" && x.startsWith("PRRT_"));
   }
 
-  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom };
+  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom };
 })();
