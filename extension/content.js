@@ -590,7 +590,7 @@ function openPanel() {
       <div>
         <button id="alter-copy" title="Copy the review (or draft comment)">Copy</button>
         <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
-        <button id="alter-min" title="Minimize">–</button>
+        <button id="alter-min" title="Minimize">▾</button>
         <button id="alter-close" title="Close">×</button>
       </div>
     </div>
@@ -612,10 +612,13 @@ function openPanel() {
       localStorage.setItem("alter_panel_size", JSON.stringify({ w: el.offsetWidth, h: el.offsetHeight }));
     } catch (_) {}
   };
-  try {
-    const s = JSON.parse(localStorage.getItem("alter_panel_size") || "null");
-    if (s && s.w && s.h) applySize(s.w, s.h);
-  } catch (_) {}
+  const restoreSize = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem("alter_panel_size") || "null");
+      if (s && s.w && s.h) applySize(s.w, s.h);
+    } catch (_) {}
+  };
+  restoreSize();
   // Anchored bottom-right, so the left edge widens it and the top edge makes it
   // taller. The corner between them does both.
   el.querySelectorAll(".alter-grip").forEach((grip) =>
@@ -648,7 +651,15 @@ function openPanel() {
   });
   el.querySelector("#alter-min").addEventListener("click", () => {
     const min = el.classList.toggle("alter-collapsed");
-    el.querySelector("#alter-min").textContent = min ? "▢" : "–";
+    // A dragged size lives in the inline style, which outranks the collapsed
+    // rule — so minimising has to drop it, and expanding puts it back.
+    if (min) {
+      el.style.height = "";
+      el.style.maxHeight = "";
+    } else {
+      restoreSize();
+    }
+    el.querySelector("#alter-min").textContent = min ? "▴" : "▾";
     el.querySelector("#alter-min").title = min ? "Expand" : "Minimize";
   });
   el.querySelector("#alter-stop").addEventListener("click", () => {
