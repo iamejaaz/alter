@@ -262,50 +262,31 @@
 #alter-panel.alter-collapsed #alter-panel-foot { display: none; }
 
 /* Resize grips. Anchored bottom-right, so the top and left edges are the ones
-   that grow the panel. Invisible until hovered, generous hit area. */
+   that grow the panel. No decoration at all: the cursor is the only affordance. */
 .alter-grip {
   position: absolute;
   z-index: 3;
 }
 .alter-grip[data-grip="x"] {
   left: 0;
-  top: 14px;
+  top: 18px;
   bottom: 0;
-  width: 7px;
+  width: 8px;
   cursor: ew-resize;
 }
 .alter-grip[data-grip="y"] {
-  left: 14px;
+  left: 18px;
   right: 0;
   top: 0;
-  height: 7px;
+  height: 8px;
   cursor: ns-resize;
 }
 .alter-grip[data-grip="xy"] {
   left: 0;
   top: 0;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   cursor: nwse-resize;
-}
-.alter-grip:hover,
-#alter-panel.alter-resizing .alter-grip {
-  background: #4a4a54;
-}
-.alter-grip[data-grip="xy"]:hover,
-#alter-panel.alter-resizing .alter-grip[data-grip="xy"] {
-  background: none;
-}
-.alter-grip[data-grip="xy"]::before {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 4px;
-  width: 7px;
-  height: 7px;
-  border-left: 2px solid #4a4a54;
-  border-top: 2px solid #4a4a54;
-  border-radius: 2px 0 0 0;
 }
 #alter-panel.alter-resizing {
   user-select: none;
