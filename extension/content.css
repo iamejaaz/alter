@@ -261,16 +261,42 @@
 #alter-panel.alter-collapsed #alter-panel-body,
 #alter-panel.alter-collapsed #alter-panel-foot { display: none; }
 
-#alter-resize {
+/* Resize grips. Anchored bottom-right, so the top and left edges are the ones
+   that grow the panel. Invisible until hovered, generous hit area. */
+.alter-grip {
   position: absolute;
+  z-index: 3;
+}
+.alter-grip[data-grip="x"] {
+  left: 0;
+  top: 14px;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+.alter-grip[data-grip="y"] {
+  left: 14px;
+  right: 0;
+  top: 0;
+  height: 7px;
+  cursor: ns-resize;
+}
+.alter-grip[data-grip="xy"] {
   left: 0;
   top: 0;
   width: 16px;
   height: 16px;
   cursor: nwse-resize;
-  z-index: 2;
 }
-#alter-resize::before {
+.alter-grip:hover,
+#alter-panel.alter-resizing .alter-grip {
+  background: #4a4a54;
+}
+.alter-grip[data-grip="xy"]:hover,
+#alter-panel.alter-resizing .alter-grip[data-grip="xy"] {
+  background: none;
+}
+.alter-grip[data-grip="xy"]::before {
   content: "";
   position: absolute;
   left: 4px;
@@ -281,6 +307,9 @@
   border-top: 2px solid #4a4a54;
   border-radius: 2px 0 0 0;
 }
-#alter-panel.alter-collapsed #alter-resize {
+#alter-panel.alter-resizing {
+  user-select: none;
+}
+#alter-panel.alter-collapsed .alter-grip {
   display: none;
 }

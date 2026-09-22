@@ -578,14 +578,15 @@ function openPanel() {
       <div>
         <button id="alter-copy" title="Copy the review (or draft comment)">Copy</button>
         <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
-        <button id="alter-wide" title="Expand / restore">⤢</button>
         <button id="alter-min" title="Minimize">–</button>
         <button id="alter-close" title="Close">×</button>
       </div>
     </div>
     <div id="alter-panel-body"></div>
     <div id="alter-panel-foot"></div>
-    <div id="alter-resize" title="Drag to resize"></div>`;
+    <div class="alter-grip" data-grip="x" title="Drag to resize"></div>
+    <div class="alter-grip" data-grip="y" title="Drag to resize"></div>
+    <div class="alter-grip" data-grip="xy" title="Drag to resize"></div>`;
   document.body.appendChild(el);
   // The panel is anchored bottom-right, so it grows up and to the left. Size is
   // remembered per browser, since a long review is unreadable at the default.
@@ -603,25 +604,28 @@ function openPanel() {
     const s = JSON.parse(localStorage.getItem("alter_panel_size") || "null");
     if (s && s.w && s.h) applySize(s.w, s.h);
   } catch (_) {}
-  el.querySelector("#alter-wide").addEventListener("click", () => {
-    const wide = el.offsetWidth > window.innerWidth * 0.6;
-    if (wide) applySize(420, window.innerHeight * 0.7);
-    else applySize(window.innerWidth - 60, window.innerHeight - 120);
-    saveSize();
-  });
-  el.querySelector("#alter-resize").addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    const r = el.getBoundingClientRect();
-    const x0 = e.clientX, y0 = e.clientY, w0 = r.width, h0 = r.height;
-    const move = (ev) => applySize(w0 + (x0 - ev.clientX), h0 + (y0 - ev.clientY));
-    const up = () => {
-      document.removeEventListener("pointermove", move);
-      document.removeEventListener("pointerup", up);
-      saveSize();
-    };
-    document.addEventListener("pointermove", move);
-    document.addEventListener("pointerup", up);
-  });
+  // Anchored bottom-right, so the left edge widens it and the top edge makes it
+  // taller. The corner between them does both.
+  el.querySelectorAll(".alter-grip").forEach((grip) =>
+    grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const axis = grip.dataset.grip;
+      const r = el.getBoundingClientRect();
+      const x0 = e.clientX, y0 = e.clientY, w0 = r.width, h0 = r.height;
+      el.classList.add("alter-resizing");
+      const move = (ev) =>
+        applySize(axis === "y" ? w0 : w0 + (x0 - ev.clientX), axis === "x" ? h0 : h0 + (y0 - ev.clientY));
+      const up = () => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        el.classList.remove("alter-resizing");
+        saveSize();
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    })
+  );
+
   el.querySelector("#alter-copy").addEventListener("click", () => {
     const b = el.querySelector("#alter-copy");
     const text = session ? session.draft || session.review || "" : "";
