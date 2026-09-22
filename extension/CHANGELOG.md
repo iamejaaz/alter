@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Grammar fix shows a “Fixing…” badge** over the selection while it runs, so a slow model no longer looks like a dead click.
 - **Only the events that fit the draft are offered** — Approve is hidden while it carries asks, Request changes is hidden when there is nothing to ask, and Comment is disabled only when the draft is empty.
 - **The review panel resizes** — drag its top-left corner, or use the expand toggle; the size is remembered.
 - **Softer bot reviews** — the review skill opens a discussion instead of issuing instructions, varies its opener, and always posts as a comment rather than requesting changes.

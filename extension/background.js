@@ -58,16 +58,47 @@ function replaceSelectionInPage(corrected) {
   return !!ok;
 }
 
+// A small badge pinned to the selection while the fix is in flight. Even a fast
+// model leaves a beat of nothing, which reads as "the click did not register".
+function grammarBadgeInPage(show) {
+  const ID = "alter-grammar-busy";
+  document.getElementById(ID)?.remove();
+  if (!show) return;
+  const sel = window.getSelection();
+  let r = null;
+  try {
+    r = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+  } catch (_) {}
+  const el = document.activeElement;
+  if ((!r || (!r.width && !r.height)) && el) r = el.getBoundingClientRect();
+  if (!r) return;
+  const b = document.createElement("div");
+  b.id = ID;
+  b.textContent = "Fixing…";
+  b.style.cssText = `position:fixed;left:${Math.max(8, r.left)}px;top:${Math.max(8, r.top - 26)}px;z-index:2147483647;
+    background:#16161a;color:#c9c9d1;border:1px solid #34343c;border-radius:6px;padding:2px 7px;
+    font:11px/1.6 -apple-system,system-ui,sans-serif;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.4);
+    opacity:0;transition:opacity .12s ease`;
+  document.body.appendChild(b);
+  requestAnimationFrame(() => (b.style.opacity = "1"));
+}
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "alter-fix-grammar") return;
   const text = (info.selectionText || "").trim();
   if (!text || !tab) return;
+  const badge = (show) =>
+    chrome.scripting
+      .executeScript({ target: { tabId: tab.id }, func: grammarBadgeInPage, args: [show] })
+      .catch(() => {});
+  badge(true);
   // Keep the worker alive through a slow model — MV3 idles it out after ~30s.
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
   setTimeout(() => clearInterval(keepAlive), 190_000);
   const { models } = await chrome.storage.local.get("models");
   const connectionId = models && models.grammar;
   if (!connectionId) {
+    await badge(false);
     chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => alert("Pick a grammar model in the Alter extension settings first.") });
     return;
   }
@@ -81,13 +112,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       body: JSON.stringify({ connectionId, system: GRAMMAR_SYSTEM, prompt: text }),
     });
   } catch {
+    await badge(false);
     tell("Can't reach Alter. Is the app running?");
     return;
   }
   if (!r.ok || !r.body.content) {
+    await badge(false);
     tell(r.body.error ? ALTER.humanizeErr(r.body.error) : hint(r));
     return;
   }
+  await badge(false);
   chrome.scripting.executeScript({ target: { tabId: tab.id }, func: replaceSelectionInPage, args: [r.body.content] });
 });
 
