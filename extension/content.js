@@ -757,13 +757,13 @@ function renderPostPreview(text, suggested) {
     <div class="alter-preview-label">Only this posts. Each 📍 path:line block goes inline on that line, the rest is the review body. Suggested: ${escapeHtml(ev.replace("_", " "))}.</div>
     <textarea id="alter-post-text" class="alter-post-text" rows="6"></textarea>
     <div id="alter-foot-btns">
-      <button data-ev="approve" class="${ev === "approve" ? "" : "alter-ghost"}">🟢 Approve</button>
-      <button data-ev="request_changes" class="${ev === "request_changes" ? "" : "alter-ghost"}">🔴 Request changes</button>
-      <button data-ev="comment" class="${ev === "comment" ? "" : "alter-ghost"}">💬 Comment</button>
+      <button data-ev="approve" class="${ev === "approve" ? "alter-primary" : ""}">Approve</button>
+      <button data-ev="request_changes" class="${ev === "request_changes" ? "alter-primary" : ""}">Request changes</button>
+      <button data-ev="comment" class="${ev === "comment" ? "alter-primary" : ""}">Comment</button>
     </div>
     <div id="alter-foot-btns2">
-      <button id="alter-post-bot" class="alter-ghost">🤖 Post as frappe-pr-bot</button>
-      <button id="alter-back" class="alter-ghost">← Back</button>
+      <button id="alter-post-bot">Post as frappe-pr-bot</button>
+      <button id="alter-back" class="alter-ghost">Back</button>
     </div>
     <div id="alter-foot-note"></div>`;
   const ta = foot.querySelector("#alter-post-text");

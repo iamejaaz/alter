@@ -140,8 +140,8 @@
   border: 1px solid #34343c;
   color: #e4e4e7;
   border-radius: 8px;
-  padding: 6px 4px;
-  font: 11px/1 inherit;
+  padding: 8px 6px;
+  font: 12px/1 inherit;
   cursor: pointer;
 }
 #alter-foot-btns button:hover,
@@ -235,6 +235,18 @@
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid #26262c;
+}
+#alter-foot-btns button.alter-primary {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+  font-weight: 600;
+}
+#alter-foot-btns button.alter-primary:hover {
+  background: #4338ca;
+}
+#alter-back {
+  margin-left: auto;
 }
 .alter-ghost {
   flex: 0 0 auto !important;
