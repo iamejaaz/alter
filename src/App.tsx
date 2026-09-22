@@ -108,6 +108,7 @@ import {
 } from "./lib/store";
 import RoutinesPage from "./components/RoutinesPage";
 import ProjectsPanel from "./components/ProjectsPanel";
+import PrChips from "./components/PrChips";
 import SkillsPage from "./components/SkillsPage";
 import ConfirmHost from "./components/ConfirmHost";
 
@@ -237,6 +238,17 @@ export default function App() {
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const activeStreaming = !!activeId && streamingIds.includes(activeId);
+  // The bar above the composer: PRs this chat opened, plus the working folder's
+  // own open PR, minus the ones dismissed here. Oldest first, newest by the input.
+  const prKeys = (() => {
+    const folderKey = pr?.url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/);
+    const all = [
+      ...(folderKey ? [`${folderKey[1]}#${folderKey[2]}`] : []),
+      ...(active?.prs ?? []),
+    ];
+    const hidden = new Set(active?.prsHidden ?? []);
+    return [...new Set(all)].filter((k) => !hidden.has(k));
+  })();
   const selectProject = (id: string | null) => {
     setActiveProjectId(id);
     if (id) localStorage.setItem("alter.activeProject", id);
@@ -824,7 +836,16 @@ export default function App() {
               return { ...c, messages: msgs };
             }),
           controller.signal,
-          (sid) => updateConversation(convId!, (c) => ({ ...c, claudeSessionId: sid }))
+          (sid) => updateConversation(convId!, (c) => ({ ...c, claudeSessionId: sid })),
+          (url) => {
+            const m = url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/);
+            if (!m) return;
+            const key = `${m[1]}#${m[2]}`;
+            updateConversation(convId!, (c) => ({
+              ...c,
+              prs: (c.prs ?? []).includes(key) ? c.prs : [...(c.prs ?? []), key],
+            }));
+          }
         );
         updateConversation(convId, (c) => ({
           ...c,
@@ -1813,17 +1834,13 @@ export default function App() {
                 {(activeId && convInfos[activeId]) || info}
               </p>
             )}
-            {pr && (
-              <a
-                href={pr.url}
-                className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-1.5 text-xs text-[var(--txt-dim)] hover:text-[var(--txt)] hover:border-zinc-600 transition-colors w-fit"
-                title={pr.url}
-              >
-                <span className="text-green-400">⑃</span>
-                <span className="font-medium">#{pr.number}</span>
-                <span className="truncate max-w-[420px]">{pr.title}</span>
-              </a>
-            )}
+            <PrChips
+              keys={prKeys}
+              onDismiss={(key) =>
+                activeId &&
+                updateConversation(activeId, (c) => ({ ...c, prsHidden: [...(c.prsHidden ?? []), key] }))
+              }
+            />
             <div className="rounded-2xl border border-[var(--bd)] bg-[var(--composer)] shadow-sm transition-colors focus-within:border-[var(--txt-faint)]">
               {attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-3 pt-3">

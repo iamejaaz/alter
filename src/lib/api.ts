@@ -251,7 +251,8 @@ export async function claudeCodeChat(
   onDelta: (text: string) => void,
   onActivity: (label: string) => void,
   signal: AbortSignal,
-  onSession?: (sid: string) => void
+  onSession?: (sid: string) => void,
+  onPr?: (url: string) => void
 ): Promise<{ content: string; sessionId: string | null; costUsd: number | null; tokens: number | null }> {
   let streamed = ""; // text of the current segment (reset at each tool boundary)
   let result = ""; // authoritative final answer from the result event
@@ -259,6 +260,9 @@ export async function claudeCodeChat(
   let costUsd: number | null = null;
   let tokens: number | null = null;
   let pending: { name: string; input: string } | null = null; // tool call being built
+  // A PR the chat OPENED, not one it merely read about: only the output of a
+  // `gh pr create` counts, so reviewing twenty PRs never fills the bar.
+  let sawCreate = false;
   let interrupted = false;
   const smoother = makeSmoother(onDelta);
 
@@ -319,11 +323,31 @@ export async function claudeCodeChat(
         } catch {
           /* partial/empty input */
         }
-        onActivity(toolLabel(pending.name, parsed));
+        const label = toolLabel(pending.name, parsed);
+        if (/\bgh\b[^\n]*\bpr\s+create\b/.test(String(parsed.command ?? ""))) sawCreate = true;
+        onActivity(label);
         pending = null;
         streamed = "";
         smoother.reset();
         return;
+      }
+
+      // What `gh pr create` printed: the URL of the PR that was just opened.
+      if (ev.type === "user" && sawCreate && Array.isArray(ev.message?.content)) {
+        for (const item of ev.message.content) {
+          if (item?.type !== "tool_result") continue;
+          const text =
+            typeof item.content === "string"
+              ? item.content
+              : Array.isArray(item.content)
+                ? item.content.map((c: { text?: string }) => c.text ?? "").join("\n")
+                : "";
+          const m = text.match(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/);
+          if (m) {
+            sawCreate = false;
+            onPr?.(m[0]);
+          }
+        }
       }
 
       // Fallback: a whole assistant message (if partial streaming is unavailable).

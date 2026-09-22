@@ -36,6 +36,8 @@ export interface Conversation {
   lastTokens?: number; // context tokens reported on the last turn
   projectId?: string;
   routineId?: string; // this chat is one run of that routine, grouped under it in the sidebar
+  prs?: string[]; // "owner/repo#123" for every PR this chat opened, shown above the composer
+  prsHidden?: string[]; // ones dismissed from that bar
 }
 
 export interface Project {

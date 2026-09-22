@@ -376,6 +376,71 @@ fn git_pr(cwd: String) -> Result<String, String> {
     }
 }
 
+// Metadata for the PR chips above the composer: one `gh pr view` per ref
+// ("owner/repo#123"), with the check rollup folded into a single word. A ref that
+// gh can't read (deleted, no access, gh missing) is dropped, not reported.
+#[tauri::command]
+fn pr_meta(refs: Vec<String>) -> Vec<serde_json::Value> {
+    use std::process::Command;
+    refs.iter()
+        .take(12)
+        .filter_map(|r| {
+            let (repo, num) = r.split_once('#')?;
+            let out = Command::new("gh")
+                .args([
+                    "pr",
+                    "view",
+                    num,
+                    "-R",
+                    repo,
+                    "--json",
+                    "number,title,headRefName,additions,deletions,state,isDraft,url,statusCheckRollup",
+                ])
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None;
+            }
+            let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+            let (mut pass, mut fail, mut pend) = (0, 0, 0);
+            if let Some(checks) = v["statusCheckRollup"].as_array() {
+                for c in checks {
+                    let verdict = c["conclusion"].as_str().or_else(|| c["state"].as_str()).unwrap_or("");
+                    match verdict {
+                        "SUCCESS" | "NEUTRAL" | "SKIPPED" => pass += 1,
+                        "FAILURE" | "ERROR" | "TIMED_OUT" | "CANCELLED" | "ACTION_REQUIRED" => fail += 1,
+                        _ => pend += 1,
+                    }
+                }
+            }
+            let ci = if fail > 0 {
+                "failing"
+            } else if pend > 0 {
+                "pending"
+            } else if pass > 0 {
+                "passing"
+            } else {
+                "none"
+            };
+            Some(serde_json::json!({
+                "key": r,
+                "repo": repo,
+                "number": v["number"],
+                "title": v["title"],
+                "branch": v["headRefName"],
+                "additions": v["additions"],
+                "deletions": v["deletions"],
+                "state": v["state"],
+                "isDraft": v["isDraft"],
+                "url": v["url"],
+                "ci": ci,
+                "ciPassed": pass,
+                "ciTotal": pass + fail + pend,
+            }))
+        })
+        .collect()
+}
+
 // Generate a short chat title from the first message (HTTP providers).
 #[tauri::command]
 async fn quick_complete(url: String, api_key: String, model: String, prompt: String) -> Result<String, String> {
@@ -1414,6 +1479,7 @@ pub fn run() {
             claude_title,
             complete_once,
             git_pr,
+            pr_meta,
             bridge::bridge_info,
             bridge::bridge_sync,
             bridge::bridge_set_repro_root,
