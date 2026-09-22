@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Approve is hidden while the draft carries asks** — only Request changes and Comment show; Approve returns when there is nothing to ask.
+- **Only the events that fit the draft are offered** — Approve is hidden while it carries asks, Request changes is hidden when there is nothing to ask, and Comment is disabled only when the draft is empty.
 - **The review panel resizes** — drag its top-left corner, or use the expand toggle; the size is remembered.
 - **Softer bot reviews** — the review skill opens a discussion instead of issuing instructions, varies its opener, and always posts as a comment rather than requesting changes.
 - **Conversation pushback is read too** — a comment that @-mentions the bot outside any review thread now gets an answer, posted back into the conversation.

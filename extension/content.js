@@ -740,17 +740,20 @@ function renderPostPreview(text, suggested) {
   const ta = foot.querySelector("#alter-post-text");
   ta.value = text || "";
   const noteEl = foot.querySelector("#alter-foot-note");
-  const approveBtn = foot.querySelector('#alter-foot-btns button[data-ev="approve"]');
-  // Approving while the same submission carries asks is a contradiction, so
-  // Approve only exists while there is nothing to ask.
-  const hasAsks = () => {
+  const btn = (ev) => foot.querySelector(`#alter-foot-btns button[data-ev="${ev}"]`);
+  // Only the events that match the draft are offered: approving while it carries
+  // asks contradicts itself, and requesting changes with nothing to ask is empty.
+  // Comment stays in both, because "No changes requested" is posted as a comment.
+  const syncEvents = () => {
     const { body, comments } = parseDraft(ta.value);
-    if (comments.length) return true;
-    const b = body.trim();
-    return !!b && !/^no changes requested\.?/i.test(b);
+    const empty = !body.trim() && !comments.length;
+    const asks = !empty && (comments.length > 0 || !/^no changes requested\.?/i.test(body.trim()));
+    btn("approve").hidden = asks;
+    btn("request_changes").hidden = !asks;
+    btn("comment").disabled = empty;
   };
   const warnAnchors = () => {
-    approveBtn.hidden = hasAsks();
+    syncEvents();
     if (!ta.value.trim()) noteEl.textContent = "No draft comment in this review — write the comment you want to post.";
     else if (!parseDraft(ta.value).comments.length) noteEl.innerHTML = `<span class="alter-err">No 📍 path:line blocks — the whole text would post as one review body with no inline comments.</span>`;
     else noteEl.textContent = "";
