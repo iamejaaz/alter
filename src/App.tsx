@@ -1756,7 +1756,6 @@ export default function App() {
                           <span className="animate-bounce">●</span>
                           <span className="animate-bounce [animation-delay:150ms]">●</span>
                           <span className="animate-bounce [animation-delay:300ms]">●</span>
-                          {activeStreaming && <span className="ml-2 self-center text-[11px]">esc to interrupt</span>}
                         </span>
                       )}
                       {m.content && (
@@ -2036,7 +2035,7 @@ export default function App() {
                   <button
                     onClick={stop}
                     className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--bd)] hover:bg-[var(--panel-2)] text-[var(--txt)] transition-colors ml-0.5"
-                    title="Stop"
+                    title="Stop (esc)"
                     aria-label="Stop generating"
                   >
                     <span className="h-2.5 w-2.5 rounded-[2px] bg-current" />
