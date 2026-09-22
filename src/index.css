@@ -164,3 +164,35 @@ input {
   animation: fade-up 0.25s ease-out;
 }
 
+
+/* Thinking: the two logo lobes drift apart and back through each other. */
+@keyframes alter-lobe-a {
+  0%,
+  100% {
+    transform: translateX(0) scale(1);
+  }
+  50% {
+    transform: translateX(calc(var(--alter-drift) * -1)) scale(0.9);
+  }
+}
+@keyframes alter-lobe-b {
+  0%,
+  100% {
+    transform: translateX(0) scale(1);
+  }
+  50% {
+    transform: translateX(var(--alter-drift)) scale(0.9);
+  }
+}
+.alter-lobe-a {
+  animation: alter-lobe-a 1.2s ease-in-out infinite;
+}
+.alter-lobe-b {
+  animation: alter-lobe-b 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .alter-lobe-a,
+  .alter-lobe-b {
+    animation: none;
+  }
+}

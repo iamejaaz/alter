@@ -1746,18 +1746,10 @@ export default function App() {
                 ) : (
                   <div key={i} className="group flex gap-3 animate-fade-up">
                     <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--panel)] border border-[var(--bd)]">
-                      <Logo size={15} />
+                      <Logo size={15} busy={!m.content && activeStreaming} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      {m.content ? (
-                        <Markdown text={m.content} />
-                      ) : (
-                        <span className="inline-flex gap-1 text-[var(--txt-faint)] py-1">
-                          <span className="animate-bounce">●</span>
-                          <span className="animate-bounce [animation-delay:150ms]">●</span>
-                          <span className="animate-bounce [animation-delay:300ms]">●</span>
-                        </span>
-                      )}
+                      {m.content ? <Markdown text={m.content} /> : <span className="block py-1" />}
                       {m.content && (
                         <div className="mt-1.5 flex items-center gap-3">
                           <button
