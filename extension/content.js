@@ -346,6 +346,19 @@ function pollRun(el, runId, opts) {
         workEl.textContent = "Stopped.";
         resolve("");
       },
+      // Let go of the run without cancelling it: stop polling and leave the
+      // stored runId alone, so the bridge keeps working and opening the PR again
+      // reconnects. Closing a tab already behaves this way; leaving the page
+      // should not be the one thing that throws a review away.
+      detach: () => {
+        if (done) return;
+        done = true;
+        clearInterval(tick);
+        clearInterval(poll);
+        activeRun = null;
+        showStop(false);
+        resolve("");
+      },
     };
     showStop(true);
 
@@ -811,13 +824,16 @@ setInterval(() => {
   const parts = pageParts();
   const key = parts ? prKey(parts) : null;
   if (key !== lastPrKey) {
+    const left = lastPrKey;
     lastPrKey = key;
     const panel = document.getElementById("alter-panel");
     if (panel) {
-      if (activeRun) activeRun.stop();
+      if (activeRun) activeRun.detach();
       panel.remove();
       session = null;
     }
+    // Coming back to the PR we just left should re-attach to its run.
+    if (left) reconnected.delete(left);
   }
   ensureButton();
   reconnectIfActive();

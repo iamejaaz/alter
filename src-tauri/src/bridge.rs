@@ -1633,6 +1633,23 @@ fn launch_fr_assistant(_task: &str, _repro_env: &str) -> Result<(), String> {
 
 // Signal-terminate the process group led by `pid` (negative pid = the group), so
 // the claude run and any tool it spawned all stop.
+// Agents run in their own process group so a Stop can take their whole tool tree
+// with them. The cost is that they do NOT die when the app does, so they would
+// keep working with nothing able to poll or cancel them. Reap them on the way out.
+pub fn kill_all_agents(app: &AppHandle) {
+    let Some(state) = app.try_state::<BridgeState>() else { return };
+    let pids: Vec<u32> = state
+        .running
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .values()
+        .copied()
+        .collect();
+    for pid in pids {
+        kill_group(pid);
+    }
+}
+
 fn kill_group(pid: u32) {
     #[cfg(unix)]
     {

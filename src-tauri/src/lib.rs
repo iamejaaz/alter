@@ -1479,7 +1479,14 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-    // Warm Claude Code process is killed automatically via kill_on_drop.
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Warm chat processes die with the app through kill_on_drop, but bridge
+            // agents are spawned into their own process group, so they outlive it
+            // unless we take them down here.
+            if matches!(event, tauri::RunEvent::Exit) {
+                bridge::kill_all_agents(app);
+            }
+        });
 }
