@@ -193,12 +193,18 @@
   border-left: 2px solid #34343c;
   margin: 3px 0;
 }
-.alter-step-tool {
+.alter-step-tool,
+.alter-step-out {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: #a1a1aa;
+}
+.alter-step-out {
+  color: #6b6b73;
+  border-left-color: #2a2a31;
+  margin-top: 0;
 }
 .alter-step-say {
   color: #71717a;

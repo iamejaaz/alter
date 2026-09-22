@@ -531,6 +531,15 @@ fn spawn_agent_run(
                             }
                         }
                     }
+                    "user" => {
+                        if let Some(content) = v["message"]["content"].as_array() {
+                            for item in content {
+                                if item["type"].as_str() == Some("tool_result") {
+                                    push_step(&progress, &run_id, format!("\u{21B3} {}", result_label(item)));
+                                }
+                            }
+                        }
+                    }
                     "result" => {
                         let is_err = v["is_error"].as_bool().unwrap_or(false);
                         let r = v["result"].as_str().unwrap_or("").to_string();
@@ -847,6 +856,30 @@ fn serve(mut req: tiny_http::Request, app: AppHandle) {
 
     let response = handle(&app, &method, &path, &body);
     let _ = req.respond(json_response(response.0, response.1));
+}
+
+// One line of what a tool actually returned, so the feed shows execution and not
+// just intent. Long output stays on the agent's side: the panel gets the first
+// line and a count, never the whole blob.
+fn result_label(item: &serde_json::Value) -> String {
+    let raw = match &item["content"] {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(a) => a
+            .iter()
+            .filter_map(|x| x["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    };
+    let lines: Vec<&str> = raw.lines().map(|l| l.trim_end()).filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return "no output".to_string();
+    }
+    let head: String = lines[0].chars().take(120).collect();
+    let more = lines.len() - 1;
+    let tail = if more > 0 { format!(" (+{more} lines)") } else { String::new() };
+    let prefix = if item["is_error"].as_bool().unwrap_or(false) { "error: " } else { "" };
+    format!("{prefix}{head}{tail}")
 }
 
 fn tool_label(name: &str, input: &serde_json::Value) -> String {

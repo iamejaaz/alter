@@ -315,6 +315,9 @@ function pollRun(el, runId, opts) {
     let done = false;
     let poll = null;
     let shown = 0;
+    // A tool call with no result yet means the agent is waiting on execution,
+    // not on the model, and the label should say so.
+    let running = false;
 
     const cleanup = () => {
       clearInterval(tick);
@@ -324,7 +327,7 @@ function pollRun(el, runId, opts) {
       if (key) clearActiveRun(key);
     };
     const tick = setInterval(() => {
-      if (!done) elapsedEl.textContent = `Thinking… ${Math.round((Date.now() - t0) / 1000)}s`;
+      if (!done) elapsedEl.textContent = `${running ? "Running" : "Thinking"}… ${Math.round((Date.now() - t0) / 1000)}s`;
     }, 1000);
 
     const renderSteps = (steps) => {
@@ -333,9 +336,12 @@ function pollRun(el, runId, opts) {
       pinToBottom(document.getElementById("alter-panel-body"), () => {
         for (let i = shown; i < steps.length; i++) {
           const d = document.createElement("div");
-          d.className = "alter-step" + (steps[i].indexOf("▸ ") === 0 ? " alter-step-tool" : " alter-step-say");
+          const tool = steps[i].indexOf("▸ ") === 0;
+          const out = steps[i].indexOf("↳ ") === 0;
+          d.className = "alter-step" + (tool ? " alter-step-tool" : out ? " alter-step-out" : " alter-step-say");
           d.textContent = steps[i];
           stepsEl.appendChild(d);
+          running = tool;
         }
         shown = steps.length;
       });
