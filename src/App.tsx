@@ -25,7 +25,7 @@ function ToolSteps({ lines, live }: { lines: string[]; live: boolean }) {
   if (lines.length === 0) return null;
   const expanded = open ?? live;
   return (
-    <div className="pl-11 animate-fade-up font-mono text-xs text-[var(--txt-faint)]">
+    <div className="animate-fade-up font-mono text-xs text-[var(--txt-faint)]">
       <button
         onClick={() => setOpen(!expanded)}
         className="flex w-full min-w-0 items-center gap-2 text-left hover:text-[var(--txt-dim)] transition-colors"
@@ -1711,7 +1711,7 @@ export default function App() {
               )}
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+            <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
               {groupMessages(active.messages).map((item, idx, items) =>
                 item.kind === "tools" ? (
                   <ToolSteps key={item.key} lines={item.lines} live={activeStreaming && items.slice(idx + 1).every((x) => x.kind === "msg" && x.m.role === "assistant" && !x.m.content)} />
@@ -1765,12 +1765,15 @@ export default function App() {
                     </div>
                   </div>
                 ) : (
-                  <div key={i} className="group flex gap-3 animate-fade-up">
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--panel)] border border-[var(--bd)]">
-                      <Logo size={15} busy={!m.content && activeStreaming} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      {m.content ? <Markdown text={m.content} /> : <span className="block py-1" />}
+                  <div key={i} className="group animate-fade-up">
+                    <div className="min-w-0">
+                      {m.content ? (
+                        <Markdown text={m.content} />
+                      ) : activeStreaming ? (
+                        <Logo size={16} busy />
+                      ) : (
+                        <span className="block py-1" />
+                      )}
                       {m.content && (
                         <div className="mt-1.5 flex items-center gap-3">
                           <button
