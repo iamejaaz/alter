@@ -394,7 +394,7 @@ fn pr_meta(refs: Vec<String>) -> Vec<serde_json::Value> {
                     "-R",
                     repo,
                     "--json",
-                    "number,title,headRefName,additions,deletions,state,isDraft,url,statusCheckRollup",
+                    "number,title,headRefName,headRefOid,additions,deletions,state,isDraft,url,statusCheckRollup,reviewDecision",
                 ])
                 .output()
                 .ok()?;
@@ -453,6 +453,8 @@ fn pr_meta(refs: Vec<String>) -> Vec<serde_json::Value> {
                 "number": v["number"],
                 "title": v["title"],
                 "branch": v["headRefName"],
+                "headSha": v["headRefOid"],
+                "reviewDecision": v["reviewDecision"],
                 "additions": v["additions"],
                 "deletions": v["deletions"],
                 "state": v["state"],
@@ -465,6 +467,27 @@ fn pr_meta(refs: Vec<String>) -> Vec<serde_json::Value> {
             }))
         })
         .collect()
+}
+
+// Turn GitHub's own auto-merge on or off for a PR. Merging stays GitHub's job:
+// it waits for the checks and the approval, so Alter never has to poll to merge.
+#[tauri::command]
+fn pr_auto_merge(pr: String, on: bool) -> Result<String, String> {
+    use std::process::Command;
+    let (repo, num) = pr.split_once('#').ok_or("bad pr ref")?;
+    let mut cmd = Command::new("gh");
+    cmd.args(["pr", "merge", num, "-R", repo]);
+    if on {
+        cmd.args(["--auto", "--squash"]);
+    } else {
+        cmd.arg("--disable-auto");
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
 }
 
 // Generate a short chat title from the first message (HTTP providers).
@@ -1506,6 +1529,7 @@ pub fn run() {
             complete_once,
             git_pr,
             pr_meta,
+            pr_auto_merge,
             bridge::bridge_info,
             bridge::bridge_sync,
             bridge::bridge_set_repro_root,
