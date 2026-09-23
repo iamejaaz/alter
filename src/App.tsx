@@ -25,7 +25,7 @@ function ToolSteps({ lines, live }: { lines: string[]; live: boolean }) {
   if (lines.length === 0) return null;
   const expanded = open ?? live;
   return (
-    <div className="animate-fade-up font-mono text-xs text-[var(--txt-faint)]">
+    <div className="animate-fade-up font-mono text-xs leading-[1.15] text-[var(--txt-faint)]">
       <button
         onClick={() => setOpen(!expanded)}
         className="flex w-full min-w-0 items-center gap-2 text-left hover:text-[var(--txt-dim)] transition-colors"
@@ -1621,7 +1621,7 @@ export default function App() {
         )}
         <header
           data-tauri-drag-region
-          className="flex items-center gap-2 h-12 px-4 shrink-0 border-b border-[var(--bd-soft)]"
+          className="flex items-center gap-2 h-12 px-5 shrink-0 border-b border-[var(--bd-soft)]"
         >
           <span className="truncate text-sm font-medium text-[var(--txt)] pointer-events-none max-w-[40%]">
             {active && active.messages.length > 0 ? active.title : ""}
@@ -1742,7 +1742,7 @@ export default function App() {
                         </div>
                       )}
                       {m.content && (
-                        <div className="rounded-2xl rounded-br-md bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
+                        <div className="rounded-2xl rounded-br-md bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap">
                           {m.content}
                         </div>
                       )}
