@@ -413,6 +413,31 @@ fn pr_meta(refs: Vec<String>) -> Vec<serde_json::Value> {
                     }
                 }
             }
+            // Unresolved review threads: the count that decides whether the chip
+            // offers a fix. GraphQL is the only place they are exposed.
+            let mut threads = 0;
+            let (owner, name) = repo.split_once('/').unwrap_or(("", ""));
+            if let Ok(t) = Command::new("gh")
+                .args([
+                    "api",
+                    "graphql",
+                    "-F",
+                    &format!("o={owner}"),
+                    "-F",
+                    &format!("r={name}"),
+                    "-F",
+                    &format!("n={num}"),
+                    "-f",
+                    "query=query($o:String!,$r:String!,$n:Int!){ repository(owner:$o,name:$r){ pullRequest(number:$n){ reviewThreads(first:100){ nodes{ isResolved isOutdated } } } } }",
+                    "--jq",
+                    "[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false and .isOutdated == false)] | length",
+                ])
+                .output()
+            {
+                if t.status.success() {
+                    threads = String::from_utf8_lossy(&t.stdout).trim().parse::<u32>().unwrap_or(0);
+                }
+            }
             let ci = if fail > 0 {
                 "failing"
             } else if pend > 0 {
@@ -436,6 +461,7 @@ fn pr_meta(refs: Vec<String>) -> Vec<serde_json::Value> {
                 "ci": ci,
                 "ciPassed": pass,
                 "ciTotal": pass + fail + pend,
+                "threads": threads,
             }))
         })
         .collect()

@@ -15,6 +15,7 @@ export interface PrMeta {
   ci: "passing" | "failing" | "pending" | "none";
   ciPassed: number;
   ciTotal: number;
+  threads: number;
 }
 
 const CI_DOT: Record<string, string> = {
@@ -24,7 +25,15 @@ const CI_DOT: Record<string, string> = {
   none: "bg-[var(--txt-faint)]",
 };
 
-export default function PrChips({ keys, onDismiss }: { keys: string[]; onDismiss: (key: string) => void }) {
+export default function PrChips({
+  keys,
+  onDismiss,
+  onFixComments,
+}: {
+  keys: string[];
+  onDismiss: (key: string) => void;
+  onFixComments: (pr: PrMeta) => void;
+}) {
   const [metas, setMetas] = useState<PrMeta[]>([]);
   const [expanded, setExpanded] = useState(false);
 
@@ -71,6 +80,19 @@ export default function PrChips({ keys, onDismiss }: { keys: string[]; onDismiss
             <span className="text-green-400">+{p.additions}</span>{" "}
             <span className="text-red-400">−{p.deletions}</span>
           </span>
+          {/* Open review threads are the whole point of the fix action, so the
+              count is the button. */}
+          {p.threads > 0 && (
+            <button
+              onClick={() => onFixComments(p)}
+              className="flex shrink-0 items-center gap-1.5 rounded bg-[var(--composer)] px-1.5 py-0.5 text-[11px] text-[var(--txt-dim)] hover:bg-[var(--panel-2)] hover:text-[var(--txt)]"
+              title={`${p.threads} open review thread${p.threads > 1 ? "s" : ""} — judge each and fix the valid ones`}
+            >
+              <span className="text-[10px]">💬</span>
+              {p.threads}
+              <span className="text-[var(--txt-faint)]">Fix</span>
+            </button>
+          )}
           {p.ciTotal > 0 && (
             <button
               onClick={() => void invoke("open_external", { url: `${p.url}/checks` }).catch(() => {})}

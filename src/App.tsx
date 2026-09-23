@@ -130,6 +130,22 @@ export default function App() {
     if (v) setSettingsTab(tab ?? "connections");
     setView(v ? "settings" : "chat");
   };
+  // "Fix" on a PR chip: judge every open review thread, change only what the
+  // comment actually gets right, then push and answer each one. Declining with a
+  // reason is a valid outcome — a reviewer can be wrong about the code.
+  const fixCommentsPrompt = (pr: { repo: string; number: number; branch: string; url: string }) => `
+Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}).
+
+1. Find the local checkout of ${pr.repo} and confirm it with \`git remote -v\` before touching anything. If you cannot find it, say so and stop.
+2. Check out the PR branch, then read every unresolved review thread:
+   gh api graphql -F o=${pr.repo.split("/")[0]} -F r=${pr.repo.split("/")[1]} -F n=${pr.number} -f 'query=query($o:String!,$r:String!,$n:Int!){ repository(owner:$o,name:$r){ pullRequest(number:$n){ reviewThreads(first:100){ nodes{ id isResolved isOutdated comments(first:20){ nodes{ author{login} body path line } } } } } } }'
+3. Judge each thread on its own merits against the code as it stands now. A reviewer can be wrong: if the comment does not hold, do not change the code.
+4. Apply only the changes the valid comments call for. Keep each fix minimal and in the style of the surrounding code. Run whatever check that file already has.
+5. Commit with a short type-prefixed message, one commit per concern, and push to the PR branch. No AI attribution in the message.
+6. Reply on each thread: what you changed, or why the ask does not hold. Short, plain, no preamble. Resolve the threads you addressed.
+7. Finish with one line per thread: fixed / declined (reason) / needs me.
+`.trim();
+
   const openProjectSettings = (projectId?: string | null) => {
     setSettingsProjectId(projectId ?? activeProjectId);
     setShowSettings(true, "projects");
@@ -1888,6 +1904,14 @@ export default function App() {
               </p>
             )}
             <PrChips
+              onFixComments={(pr) =>
+                send({
+                  forceNew: true,
+                  title: `Fix review comments on #${pr.number}`,
+                  display: `Fix the review comments on ${pr.repo}#${pr.number}`,
+                  text: fixCommentsPrompt(pr),
+                })
+              }
               keys={prKeys}
               onDismiss={(key) =>
                 activeId &&
