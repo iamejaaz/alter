@@ -2,22 +2,28 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
-import { isClaudeCodeUrl, MemoryItem, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
+import { isClaudeCodeUrl, MemoryItem, Project, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
 import { testConnection } from "../lib/api";
 import { Chevron } from "./Icons";
+import ProjectsEditor from "./ProjectsEditor";
+
+type SettingsTab = "connections" | "projects" | "memory" | "agents" | "bridge";
 
 interface Props {
   settings: Settings;
   memories: MemoryItem[];
+  projects: Project[];
+  onProjectsChange: (projects: Project[]) => void;
   onSave: (s: Settings) => void;
   onDeleteMemory: (id: string) => void;
   onClose: () => void;
-  initialTab?: "connections" | "memory" | "agents" | "bridge";
+  initialTab?: SettingsTab;
+  projectsInitialId?: string | null;
 }
 
-export default function SettingsPanel({ settings, memories, onSave, onDeleteMemory, onClose, initialTab }: Props) {
+export default function SettingsPanel({ settings, memories, projects, onProjectsChange, onSave, onDeleteMemory, onClose, initialTab, projectsInitialId }: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
-  const [tab, setTab] = useState<"connections" | "memory" | "agents" | "bridge">(initialTab ?? "connections");
+  const [tab, setTab] = useState<SettingsTab>(initialTab ?? "connections");
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
   const [testing, setTesting] = useState(false);
@@ -173,6 +179,7 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
           {(
             [
               ["connections", "Connections"],
+              ["projects", "Projects"],
               ["memory", "Memory"],
               ["agents", "Agents"],
               ["bridge", "Browser bridge"],
@@ -189,6 +196,12 @@ export default function SettingsPanel({ settings, memories, onSave, onDeleteMemo
             </button>
           ))}
         </div>
+
+        {tab === "projects" && (
+          <div className="h-[60vh]">
+            <ProjectsEditor projects={projects} onChange={onProjectsChange} initialSelectedId={projectsInitialId} />
+          </div>
+        )}
 
         {tab === "connections" && (
           <div className="space-y-4">

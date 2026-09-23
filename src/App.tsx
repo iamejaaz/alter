@@ -107,7 +107,6 @@ import {
   storage,
 } from "./lib/store";
 import RoutinesPage from "./components/RoutinesPage";
-import ProjectsPanel from "./components/ProjectsPanel";
 import PrChips from "./components/PrChips";
 import SkillsPage from "./components/SkillsPage";
 import ConfirmHost from "./components/ConfirmHost";
@@ -121,15 +120,24 @@ export default function App() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(
     () => localStorage.getItem("alter.activeProject")
   );
-  const [showProjects, setShowProjects] = useState(false);
   const [skills, setSkills] = useState<Skill[]>(() => storage.loadSkills());
   const [view, setView] = useState<"chat" | "routines" | "skills" | "settings">(
     storage.loadSettings().apiKey ? "chat" : "settings"
   );
-  const [settingsTab, setSettingsTab] = useState<"connections" | "memory" | "agents" | "bridge">("connections");
-  const setShowSettings = (v: boolean, tab?: "connections" | "memory" | "agents" | "bridge") => {
+  const [settingsTab, setSettingsTab] = useState<"connections" | "projects" | "memory" | "agents" | "bridge">("connections");
+  const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
+  const setShowSettings = (v: boolean, tab?: "connections" | "projects" | "memory" | "agents" | "bridge") => {
     if (v) setSettingsTab(tab ?? "connections");
     setView(v ? "settings" : "chat");
+  };
+  const openProjectSettings = (projectId?: string | null) => {
+    setSettingsProjectId(projectId ?? activeProjectId);
+    setShowSettings(true, "projects");
+  };
+  const newProject = () => {
+    const p: Project = { id: newId(), name: "New project" };
+    setProjects((prev) => [...prev, p]);
+    openProjectSettings(p.id);
   };
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
   // Selecting or starting a chat must also leave whatever page (routines/settings/
@@ -1520,7 +1528,7 @@ export default function App() {
     { id: "extension", label: "Browser extension", section: "Actions", run: () => setShowSettings(true, "bridge") },
     { id: "routines", label: "Open routines", section: "Actions", run: () => setView("routines") },
     { id: "skills", label: "Open skills", section: "Actions", run: () => setView("skills") },
-    { id: "projects", label: "Manage projects", section: "Actions", run: () => setShowProjects(true) },
+    { id: "projects", label: "Manage projects", section: "Actions", run: () => openProjectSettings() },
     { id: "proj-all", label: "Project: All chats", section: "Projects", run: () => selectProject(null) },
     ...projects.map((p) => ({
       id: `proj-${p.id}`,
@@ -1583,7 +1591,9 @@ export default function App() {
         projects={projects}
         activeProjectId={activeProjectId}
         onSelectProject={selectProject}
-        onManageProjects={() => setShowProjects(true)}
+        onManageProjects={() => openProjectSettings()}
+        onNewProject={newProject}
+        onMoveToProject={(id, projectId) => updateConversation(id, (c) => ({ ...c, projectId: projectId ?? undefined }))}
         onSelect={openChat}
         onNew={() => openChat(null)}
         onDelete={deleteConversation}
@@ -1617,6 +1627,11 @@ export default function App() {
           <SettingsPanel
             settings={settings}
             memories={memories}
+            projects={projects}
+            onProjectsChange={(p) => {
+              setProjects(p);
+              if (activeProjectId && !p.some((x) => x.id === activeProjectId)) selectProject(null);
+            }}
             onSave={(s) => {
               setSettings(s);
               storage.saveSettings(s);
@@ -1624,6 +1639,7 @@ export default function App() {
             onDeleteMemory={(id) => setMemories((prev) => prev.filter((m) => m.id !== id))}
             onClose={() => setView("chat")}
             initialTab={settingsTab}
+            projectsInitialId={settingsProjectId}
           />
         )}
         <header
@@ -2147,17 +2163,6 @@ export default function App() {
       {showPalette && <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />}
 
       <ConfirmHost />
-
-      {showProjects && (
-        <ProjectsPanel
-          projects={projects}
-          onChange={(p) => {
-            setProjects(p);
-            if (activeProjectId && !p.some((x) => x.id === activeProjectId)) selectProject(null);
-          }}
-          onClose={() => setShowProjects(false)}
-        />
-      )}
 
     </div>
   );

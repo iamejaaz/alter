@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Conversation, Project, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
-import { IconClock, IconPlus, IconPuzzle, IconSearch, IconSettings, IconSparkles } from "./Icons";
+import { IconClock, IconFolder, IconPlus, IconPuzzle, IconSearch, IconSettings, IconSparkles } from "./Icons";
 
 interface Props {
   conversations: Conversation[];
@@ -13,6 +13,8 @@ interface Props {
   activeProjectId: string | null;
   onSelectProject: (id: string | null) => void;
   onManageProjects: () => void;
+  onNewProject: () => void;
+  onMoveToProject: (id: string, projectId: string | null) => void;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
@@ -35,6 +37,8 @@ export default function Sidebar({
   activeProjectId,
   onSelectProject,
   onManageProjects,
+  onNewProject,
+  onMoveToProject,
   onSelect,
   onNew,
   onDelete,
@@ -50,6 +54,7 @@ export default function Sidebar({
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const startRename = (c: Conversation) => {
     setEditingId(c.id);
     setDraftTitle(c.title);
@@ -99,7 +104,7 @@ export default function Sidebar({
   const renderChat = (c: Conversation) => (
     <div
       key={c.id}
-      className={`group flex h-7 items-center rounded-lg px-2 text-[13px] cursor-pointer transition-colors ${
+      className={`group relative flex h-7 items-center rounded-lg px-2 text-[13px] cursor-pointer transition-colors ${
         c.id === activeId
           ? "bg-[var(--panel-2)] text-[var(--txt)]"
           : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
@@ -134,9 +139,54 @@ export default function Sidebar({
       <button
         onClick={(e) => {
           e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          setMenu((cur) => (cur?.id === c.id ? null : { id: c.id, x: r.right, y: r.bottom }));
+        }}
+        className={`ml-2 text-[var(--txt-faint)] hover:text-[var(--txt)] transition-opacity ${
+          menu?.id === c.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        }`}
+        title="Move to project"
+      >
+        <IconFolder />
+      </button>
+      {menu?.id === c.id && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={(e) => { e.stopPropagation(); setMenu(null); }} />
+          <div
+            className="fixed z-40 w-44 -translate-x-full rounded-lg border border-[var(--bd)] bg-[var(--modal)] py-1 shadow-2xl"
+            style={{ left: menu.x, top: menu.y + 4 }}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); onMoveToProject(c.id, null); setMenu(null); }}
+              className={`block w-full truncate px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--panel-2)] ${
+                c.projectId ? "text-[var(--txt-dim)]" : "text-[var(--txt)]"
+              }`}
+            >
+              No project
+            </button>
+            {projects.map((p) => (
+              <button
+                key={p.id}
+                onClick={(e) => { e.stopPropagation(); onMoveToProject(c.id, p.id); setMenu(null); }}
+                className={`block w-full truncate px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--panel-2)] ${
+                  c.projectId === p.id ? "text-[var(--txt)]" : "text-[var(--txt-dim)]"
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+            {projects.length === 0 && (
+              <p className="px-3 py-1.5 text-xs text-[var(--txt-faint)]">No projects yet</p>
+            )}
+          </div>
+        </>
+      )}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
           onTogglePin(c.id);
         }}
-        className="ml-2 text-[11px] opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] transition-opacity"
+        className="ml-1.5 text-[11px] opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] transition-opacity"
         title={c.pinned ? "Unpin" : "Pin to top"}
       >
         {c.pinned ? "unpin" : "☆"}
@@ -178,7 +228,10 @@ export default function Sidebar({
           <div className="relative flex-1">
             <select
               value={activeProjectId ?? ""}
-              onChange={(e) => onSelectProject(e.target.value || null)}
+              onChange={(e) => {
+                if (e.target.value === "__new__") onNewProject();
+                else onSelectProject(e.target.value || null);
+              }}
               className="h-7 w-full appearance-none rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-2 pr-6 text-[13px] text-[var(--txt)] focus:outline-none cursor-pointer"
               title="Project"
             >
@@ -188,6 +241,7 @@ export default function Sidebar({
                   {p.name}
                 </option>
               ))}
+              <option value="__new__" className="bg-[var(--modal)]">＋ New project…</option>
             </select>
             <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--txt-faint)]">▾</span>
           </div>
