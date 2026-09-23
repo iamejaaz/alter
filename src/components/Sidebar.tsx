@@ -12,7 +12,6 @@ interface Props {
   projects: Project[];
   activeProjectId: string | null;
   onSelectProject: (id: string | null) => void;
-  onManageProjects: () => void;
   onNewProject: () => void;
   onMoveToProject: (id: string, projectId: string | null) => void;
   onSelect: (id: string) => void;
@@ -36,7 +35,6 @@ export default function Sidebar({
   projects,
   activeProjectId,
   onSelectProject,
-  onManageProjects,
   onNewProject,
   onMoveToProject,
   onSelect,
@@ -245,13 +243,6 @@ export default function Sidebar({
             </select>
             <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--txt-faint)]">▾</span>
           </div>
-          <button
-            onClick={onManageProjects}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--txt-faint)] hover:bg-[var(--panel-2)] hover:text-[var(--txt)] transition-colors"
-            title="Manage projects"
-          >
-            <IconSettings />
-          </button>
         </div>
         <button
           onClick={onNew}

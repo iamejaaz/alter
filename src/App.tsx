@@ -1591,7 +1591,6 @@ export default function App() {
         projects={projects}
         activeProjectId={activeProjectId}
         onSelectProject={selectProject}
-        onManageProjects={() => openProjectSettings()}
         onNewProject={newProject}
         onMoveToProject={(id, projectId) => updateConversation(id, (c) => ({ ...c, projectId: projectId ?? undefined }))}
         onSelect={openChat}
