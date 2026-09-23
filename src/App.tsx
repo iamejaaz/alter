@@ -2037,6 +2037,24 @@ export default function App() {
                   ]}
                   title="Reasoning effort"
                 />
+                {active && active.messages.length > 0 && (() => {
+                  const used = active.lastTokens || tokenEstimate;
+                  const window = contextWindowFor(active.model ?? settings.model, claudeCodeActive);
+                  const pct = window ? Math.min(100, Math.round((used / window) * 100)) : null;
+                  const hot = pct != null && pct >= 80;
+                  return (
+                    <span
+                      className={`ml-1 shrink-0 text-[11px] tabular-nums ${hot ? "text-amber-500" : "text-[var(--txt-faint)]"}`}
+                      title={window ? `${used.toLocaleString()} of ${window.toLocaleString()} context tokens` : "Context tokens · session cost"}
+                    >
+                      {active.lastTokens ? "" : "~"}
+                      {fmtTokens(used)}
+                      {window && ` / ${fmtTokens(window)}`}
+                      {pct != null && pct >= 50 && ` (${pct}%)`}
+                      {active.costUsd != null && ` · $${active.costUsd.toFixed(active.costUsd < 1 ? 3 : 2)}`}
+                    </span>
+                  );
+                })()}
                 {activeStreaming && (
                   <span
                     className="mx-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[var(--txt-faint)] border-t-transparent animate-spin"
@@ -2065,26 +2083,9 @@ export default function App() {
                 )}
               </div>
             </div>
-            {/* One quiet line under the box: the usage of the chat you are in, or
-                what Alter can do when there is nothing to report yet. */}
-            {active && active.messages.length > 0 ? (() => {
-              const used = active.lastTokens || tokenEstimate;
-              const window = contextWindowFor(active.model ?? settings.model, claudeCodeActive);
-              const pct = window ? Math.min(100, Math.round((used / window) * 100)) : null;
-              const hot = pct != null && pct >= 80;
-              return (
-                <p
-                  className={`mt-2 text-center text-[11px] tabular-nums ${hot ? "text-amber-500" : "text-[var(--txt-faint)]"}`}
-                  title={window ? `${used.toLocaleString()} of ${window.toLocaleString()} context tokens` : "Context tokens · session cost"}
-                >
-                  {active.lastTokens ? "" : "~"}
-                  {fmtTokens(used)}
-                  {window && ` / ${fmtTokens(window)}`}
-                  {pct != null && pct >= 50 && ` (${pct}%)`}
-                  {active.costUsd != null && ` · $${active.costUsd.toFixed(active.costUsd < 1 ? 3 : 2)}`}
-                </p>
-              );
-            })() : (
+            {/* Usage sits inside the composer row; only an empty chat gets a line
+                under the box. */}
+            {(!active || active.messages.length === 0) && (
               <p className="mt-2 text-center text-[11px] text-[var(--txt-faint)]">
                 Alter can read files, browse the web, and remember what matters.
               </p>
