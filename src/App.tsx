@@ -1971,7 +1971,7 @@ export default function App() {
                 className="relative w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               </div>
-              <div className="flex items-center gap-1 px-2.5 pb-2.5 text-[13px]">
+              <div className="flex items-center gap-1 px-2.5 pb-2.5 text-sm">
                 {/* Left: what you put in — attach, dictate, how tools are used */}
                 <button
                   onClick={() => fileInputRef.current?.click()}

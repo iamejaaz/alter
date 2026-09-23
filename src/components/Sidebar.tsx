@@ -99,7 +99,7 @@ export default function Sidebar({
   const renderChat = (c: Conversation) => (
     <div
       key={c.id}
-      className={`group flex items-center rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+      className={`group flex h-7 items-center rounded-lg px-2 text-[13px] cursor-pointer transition-colors ${
         c.id === activeId
           ? "bg-[var(--panel-2)] text-[var(--txt)]"
           : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
@@ -169,7 +169,7 @@ export default function Sidebar({
       <div data-tauri-drag-region className="h-12 flex items-end px-4 pb-1 pl-20">
         <div className="flex items-center gap-2 pointer-events-none">
           <Logo size={18} />
-          <span className="text-[15px] font-semibold tracking-tight text-[var(--txt)]">Alter</span>
+          <span className="text-base font-semibold tracking-tight text-[var(--txt)]">Alter</span>
         </div>
       </div>
 
@@ -179,7 +179,7 @@ export default function Sidebar({
             <select
               value={activeProjectId ?? ""}
               onChange={(e) => onSelectProject(e.target.value || null)}
-              className="w-full appearance-none rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-2.5 py-1.5 pr-6 text-sm text-[var(--txt)] focus:outline-none cursor-pointer"
+              className="h-7 w-full appearance-none rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-2 pr-6 text-[13px] text-[var(--txt)] focus:outline-none cursor-pointer"
               title="Project"
             >
               <option value="">All chats</option>
@@ -201,7 +201,7 @@ export default function Sidebar({
         </div>
         <button
           onClick={onNew}
-          className="w-full flex items-center justify-center gap-2 rounded-lg bg-[var(--panel)] hover:bg-[var(--panel-2)] border border-[var(--bd)] px-3 py-1.5 text-sm text-[var(--txt)] transition-colors"
+          className="flex h-7 w-full items-center justify-center gap-2 rounded-lg bg-[var(--panel)] hover:bg-[var(--panel-2)] border border-[var(--bd)] px-3 text-[13px] text-[var(--txt)] transition-colors"
         >
           <IconPlus />
           New chat
@@ -214,7 +214,7 @@ export default function Sidebar({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search chats…"
-            className="w-full rounded-lg bg-[var(--panel)] border border-[var(--bd)] pl-8 pr-3 py-1.5 text-sm text-[var(--txt)] placeholder:text-[var(--txt-faint)] focus:outline-none focus:border-[var(--txt-faint)]"
+            className="h-7 w-full rounded-lg bg-[var(--panel)] border border-[var(--bd)] pl-8 pr-2 text-[13px] text-[var(--txt)] placeholder:text-[var(--txt-faint)] focus:outline-none focus:border-[var(--txt-faint)]"
           />
         </div>
       </div>
@@ -222,7 +222,7 @@ export default function Sidebar({
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
         {!q && routineRows.length > 0 && (
           <div>
-            <p className="px-2 pt-3 pb-1 text-xs text-[var(--txt-faint)]">Routines</p>
+            <p className="px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">Routines</p>
             <div className="space-y-0.5">
               {routineRows.map(({ routine, runs }) => {
                 const activeHere = runs.some((x) => x.id === activeId);
@@ -230,7 +230,7 @@ export default function Sidebar({
                 return (
                   <div
                     key={routine.id}
-                    className={`group flex items-center rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+                    className={`group flex h-7 items-center rounded-lg px-2 text-[13px] cursor-pointer transition-colors ${
                       activeHere
                         ? "bg-[var(--panel-2)] text-[var(--txt)]"
                         : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
@@ -253,7 +253,7 @@ export default function Sidebar({
         )}
         {sections.map((s) => (
           <div key={s.label}>
-            <p className="px-2 pt-3 pb-1 text-xs text-[var(--txt-faint)]">{s.label}</p>
+            <p className="px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">{s.label}</p>
             <div className="space-y-0.5">{s.items.map(renderChat)}</div>
           </div>
         ))}
@@ -274,7 +274,7 @@ export default function Sidebar({
             <button
               key={it.label}
               onClick={it.run}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-[var(--txt-dim)] hover:bg-[var(--panel-2)] hover:text-[var(--txt)] transition-colors"
+              className="flex h-7 w-full items-center gap-2 rounded-lg px-2 text-[13px] text-[var(--txt-dim)] hover:bg-[var(--panel-2)] hover:text-[var(--txt)] transition-colors"
             >
               <span className="text-[var(--txt-faint)]">{it.icon}</span>
               {it.label}
