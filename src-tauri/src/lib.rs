@@ -361,11 +361,14 @@ fn open_external(url: String) -> Result<(), String> {
 // If the working folder is a git repo with an open PR for the current branch,
 // return its {number,title,url} JSON (empty string otherwise) via `gh`.
 #[tauri::command]
-fn git_pr(cwd: String) -> Result<String, String> {
+async fn git_pr(cwd: String) -> Result<String, String> {
     use std::process::Command;
     if cwd.is_empty() {
         return Ok(String::new());
     }
+    // `gh` is a network call. A sync command runs on the main thread, which
+    // freezes the window until it answers, so the work goes to a blocking task.
+    tauri::async_runtime::spawn_blocking(move || {
     let out = Command::new("gh")
         .args(["pr", "view", "--json", "number,title,url"])
         .current_dir(&cwd)
@@ -374,14 +377,20 @@ fn git_pr(cwd: String) -> Result<String, String> {
         Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).trim().to_string()),
         _ => Ok(String::new()), // no PR, not a repo, or gh unavailable
     }
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 // Metadata for the PR chips above the composer: one `gh pr view` per ref
 // ("owner/repo#123"), with the check rollup folded into a single word. A ref that
 // gh can't read (deleted, no access, gh missing) is dropped, not reported.
 #[tauri::command]
-fn pr_meta(refs: Vec<String>) -> Vec<serde_json::Value> {
+async fn pr_meta(refs: Vec<String>) -> Vec<serde_json::Value> {
     use std::process::Command;
+    // Two `gh` calls per PR: off the main thread, or the window stops painting
+    // for as long as GitHub takes to answer.
+    tauri::async_runtime::spawn_blocking(move || {
     refs.iter()
         .take(12)
         .filter_map(|r| {
@@ -467,13 +476,17 @@ fn pr_meta(refs: Vec<String>) -> Vec<serde_json::Value> {
             }))
         })
         .collect()
+    })
+    .await
+    .unwrap_or_default()
 }
 
 // Turn GitHub's own auto-merge on or off for a PR. Merging stays GitHub's job:
 // it waits for the checks and the approval, so Alter never has to poll to merge.
 #[tauri::command]
-fn pr_auto_merge(pr: String, on: bool) -> Result<String, String> {
+async fn pr_auto_merge(pr: String, on: bool) -> Result<String, String> {
     use std::process::Command;
+    tauri::async_runtime::spawn_blocking(move || {
     let (repo, num) = pr.split_once('#').ok_or("bad pr ref")?;
     let mut cmd = Command::new("gh");
     cmd.args(["pr", "merge", num, "-R", repo]);
@@ -488,6 +501,9 @@ fn pr_auto_merge(pr: String, on: bool) -> Result<String, String> {
     } else {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 // Generate a short chat title from the first message (HTTP providers).

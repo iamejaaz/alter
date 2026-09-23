@@ -124,7 +124,7 @@ export default function PrChips({
         return (
           <div
             key={p.key}
-            className="group relative flex items-center gap-3 rounded-[10px] border border-[var(--bd-soft)] bg-[var(--panel)] px-3 py-2 text-xs"
+            className="group relative flex items-center gap-2.5 rounded-[10px] border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1.5 text-[11px]"
           >
             <button
               onClick={() => void invoke("open_external", { url: p.url }).catch(() => {})}
@@ -138,7 +138,7 @@ export default function PrChips({
               <span className="text-[var(--txt-faint)]">{p.repo.split("/")[1]}</span>
               <span className="truncate text-[var(--txt-dim)]">{p.branch}</span>
             </button>
-            <span className="shrink-0 rounded bg-[var(--composer)] px-1.5 py-0.5 font-mono text-[11px] tabular-nums">
+            <span className="shrink-0 rounded bg-[var(--composer)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
               <span className="text-green-400">+{p.additions}</span>{" "}
               <span className="text-red-400">−{p.deletions}</span>
             </span>
@@ -147,7 +147,7 @@ export default function PrChips({
                 e.stopPropagation();
                 setOpen(open === p.key ? null : p.key);
               }}
-              className="flex shrink-0 items-center gap-1.5 rounded bg-[var(--composer)] px-1.5 py-0.5 text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]"
+              className="flex shrink-0 items-center gap-1.5 rounded bg-[var(--composer)] px-1.5 py-0.5 text-[10px] text-[var(--txt-dim)] hover:text-[var(--txt)]"
               title={`${p.ciPassed}/${p.ciTotal} checks passed`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${CI_DOT[p.ci]}`} />

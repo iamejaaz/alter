@@ -1618,7 +1618,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         onOpenSettings={() => setShowSettings(true)}
         onOpenExtension={() => setShowSettings(true, "bridge")}
         onOpenRoutines={() => setView("routines")}
-        onOpenRuns={(id) => setRunsRoutineId((cur) => (cur === id ? null : id))}
+        onOpenRuns={(id) => {
+          if (runsRoutineId === id) return setRunsRoutineId(null);
+          setRunsRoutineId(id);
+          // Opening a routine also opens its latest run, so the panel and the
+          // page agree: the list on the right is what you are reading.
+          const name = routines.find((r) => r.id === id)?.name;
+          const runs = conversations.filter((c) => (c.routineId ? c.routineId === id : c.title === `⏱ ${name}`));
+          if (runs.length && !runs.some((c) => c.id === activeId)) openChat(runs[0].id);
+        }}
         onOpenSkills={() => setView("skills")}
         onOpenPalette={() => setShowPalette(true)}
       />
@@ -2035,10 +2043,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 }}
                 rows={1}
                 placeholder="Type / for commands"
-                className="relative w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm leading-relaxed focus:outline-none placeholder:text-[var(--txt-faint)]"
+                className="relative w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[13px] leading-[1.5] focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               </div>
-              <div className="flex items-center gap-1 px-2.5 pb-2.5 text-sm">
+              <div className="flex items-center gap-1 px-2.5 pb-2.5 text-[13px]">
                 {/* Left: what you put in — attach, dictate, how tools are used */}
                 <button
                   onClick={() => fileInputRef.current?.click()}
