@@ -52,7 +52,12 @@ function renderContextCard(id, data, err) {
   }
   const t = data.ticket || {};
   const apps = (data.apps || []).map((a) => `${a.app} ${a.version || a.branch}${a.commit ? " @" + a.commit : ""}`);
-  const sim = (data.similar || []).map((s) => `<a href="/helpdesk/tickets/${s.name}" target="_blank">#${s.name}</a>`).join(" ");
+  const sim = (data.similar || [])
+    .map(
+      (s) =>
+        `<a href="/helpdesk/tickets/${s.name}" target="_blank" title="${escapeHtml(s.subject || "")}">#${s.name}</a>`
+    )
+    .join(" ");
   card.innerHTML =
     `<div class="sup-ctx-row"><b>Site</b> ${escapeHtml(t.custom_site_name || "not set")}${t.custom_plan ? " · " + escapeHtml(t.custom_plan) : ""} · queue ${escapeHtml(t.custom_app || "?")} · ${escapeHtml(t.ticket_type || "?")}</div>` +
     `<div class="sup-ctx-row"><b>Apps</b> ${apps.length ? escapeHtml(apps.join(", ")) : "none"} <span class="sup-ctx-src">(${escapeHtml(data.apps_source || "")})</span></div>` +
