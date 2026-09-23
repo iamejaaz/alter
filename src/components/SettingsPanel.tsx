@@ -12,11 +12,12 @@ interface Props {
   onSave: (s: Settings) => void;
   onDeleteMemory: (id: string) => void;
   onClose: () => void;
+  initialTab?: "connections" | "memory" | "agents" | "bridge";
 }
 
-export default function SettingsPanel({ settings, memories, onSave, onDeleteMemory, onClose }: Props) {
+export default function SettingsPanel({ settings, memories, onSave, onDeleteMemory, onClose, initialTab }: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
-  const [tab, setTab] = useState<"connections" | "memory" | "agents" | "bridge">("connections");
+  const [tab, setTab] = useState<"connections" | "memory" | "agents" | "bridge">(initialTab ?? "connections");
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
   const [testing, setTesting] = useState(false);

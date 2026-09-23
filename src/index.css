@@ -5,20 +5,22 @@
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
 
-  --bg: #0c0c0e;
-  --sidebar: rgba(0, 0, 0, 0.2);
-  --panel: rgba(255, 255, 255, 0.04);
-  --panel-2: rgba(255, 255, 255, 0.08);
+  /* Near-black behind bright text makes the glyphs halate, which is what tires
+     the eye. Same ladder as the sketch: a lifted page, softer meta ink. */
+  --bg: #131316;
+  --sidebar: rgba(0, 0, 0, 0.18);
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel-2: rgba(255, 255, 255, 0.09);
   --bd: rgba(255, 255, 255, 0.1);
   --bd-soft: rgba(255, 255, 255, 0.06);
-  --txt: #e4e4e7;
-  --txt-dim: #a1a1aa;
-  --txt-faint: #71717a;
-  --user-bubble: rgba(39, 39, 42, 0.8);
-  --composer: rgba(24, 24, 27, 0.7);
-  --modal: #18181b;
+  --txt: #ededf0;
+  --txt-dim: #9a9aa3;
+  --txt-faint: #7a7a83;
+  --user-bubble: #292a2e;
+  --composer: rgba(255, 255, 255, 0.035);
+  --modal: #1b1b1f;
   --input: #27272a;
-  --code-bg: #09090b;
+  --code-bg: #0e0e11;
   --code-txt: #e6edf3;
   --hl-comment: #8b949e;
   --hl-keyword: #ff7b72;

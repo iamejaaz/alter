@@ -126,7 +126,11 @@ export default function App() {
   const [view, setView] = useState<"chat" | "routines" | "skills" | "settings">(
     storage.loadSettings().apiKey ? "chat" : "settings"
   );
-  const setShowSettings = (v: boolean) => setView(v ? "settings" : "chat");
+  const [settingsTab, setSettingsTab] = useState<"connections" | "memory" | "agents" | "bridge">("connections");
+  const setShowSettings = (v: boolean, tab?: "connections" | "memory" | "agents" | "bridge") => {
+    if (v) setSettingsTab(tab ?? "connections");
+    setView(v ? "settings" : "chat");
+  };
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
   // Selecting or starting a chat must also leave whatever page (routines/settings/
   // skills) is open — otherwise the chat changes underneath a hidden main view.
@@ -1513,6 +1517,7 @@ export default function App() {
   const paletteCommands: Command[] = [
     { id: "new", label: "New chat", hint: "⌘N", section: "Actions", run: () => openChat(null) },
     { id: "settings", label: "Open settings", section: "Actions", run: () => setShowSettings(true) },
+    { id: "extension", label: "Browser extension", section: "Actions", run: () => setShowSettings(true, "bridge") },
     { id: "routines", label: "Open routines", section: "Actions", run: () => setView("routines") },
     { id: "skills", label: "Open skills", section: "Actions", run: () => setView("skills") },
     { id: "projects", label: "Manage projects", section: "Actions", run: () => setShowProjects(true) },
@@ -1585,6 +1590,7 @@ export default function App() {
         onRename={(id, title) => updateConversation(id, (c) => ({ ...c, title }))}
         onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenExtension={() => setShowSettings(true, "bridge")}
         onOpenRoutines={() => setView("routines")}
         onOpenRuns={(id) => setRunsRoutineId((cur) => (cur === id ? null : id))}
         onOpenSkills={() => setView("skills")}
@@ -1617,6 +1623,7 @@ export default function App() {
             }}
             onDeleteMemory={(id) => setMemories((prev) => prev.filter((m) => m.id !== id))}
             onClose={() => setView("chat")}
+            initialTab={settingsTab}
           />
         )}
         <header

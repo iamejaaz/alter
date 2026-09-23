@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Conversation, Project, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
-import { IconClock, IconPlus, IconSearch, IconSettings, IconSparkles } from "./Icons";
+import { IconClock, IconPlus, IconPuzzle, IconSearch, IconSettings, IconSparkles } from "./Icons";
 
 interface Props {
   conversations: Conversation[];
@@ -20,6 +20,7 @@ interface Props {
   onTogglePin: (id: string) => void;
   onOpenSettings: () => void;
   onOpenRoutines: () => void;
+  onOpenExtension: () => void;
   onOpenRuns: (routineId: string) => void;
   onOpenSkills: () => void;
   onOpenPalette?: () => void;
@@ -41,6 +42,7 @@ export default function Sidebar({
   onTogglePin,
   onOpenSettings,
   onOpenRoutines,
+  onOpenExtension,
   onOpenRuns,
   onOpenSkills,
   onOpenPalette,
@@ -266,6 +268,7 @@ export default function Sidebar({
           {[
             { label: "Skills", icon: <IconSparkles />, run: onOpenSkills },
             { label: "Routines", icon: <IconClock />, run: onOpenRoutines },
+            { label: "Browser extension", icon: <IconPuzzle />, run: onOpenExtension },
             { label: "Settings", icon: <IconSettings />, run: onOpenSettings },
           ].map((it) => (
             <button
