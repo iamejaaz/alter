@@ -134,9 +134,10 @@ export default function App() {
     setSettingsProjectId(projectId ?? activeProjectId);
     setShowSettings(true, "projects");
   };
-  const newProject = () => {
+  const newProject = (fileChatId?: string) => {
     const p: Project = { id: newId(), name: "New project" };
     setProjects((prev) => [...prev, p]);
+    if (fileChatId) updateConversation(fileChatId, (c) => ({ ...c, projectId: p.id }));
     openProjectSettings(p.id);
   };
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
@@ -1650,7 +1651,7 @@ export default function App() {
           </span>
           {/* Working folder lives here (like Claude Code shows the cwd after the title). */}
           {folder ? (
-            <div className="flex items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 py-1 text-xs text-[var(--txt-dim)] max-w-[240px]">
+            <div className="flex h-[22px] items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 text-xs text-[var(--txt-dim)] max-w-[240px]">
               <IconFolder />
               <span className="font-mono truncate">{folder.split("/").pop()}</span>
               <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)] px-0.5" title="Detach folder">
@@ -1660,12 +1661,39 @@ export default function App() {
           ) : (
             <button
               onClick={chooseFolder}
-              className="flex items-center gap-1.5 rounded-lg hover:bg-[var(--panel-2)] px-2 py-1 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)] transition-colors"
+              className="flex h-[22px] items-center gap-1.5 rounded-lg hover:bg-[var(--panel-2)] px-2 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)] transition-colors"
               title="Attach a working folder"
             >
               <IconFolder />
               <span>Add folder</span>
             </button>
+          )}
+          {/* The chat's own project, so it can be filed without hunting for the
+              row menu or switching the sidebar first. */}
+          {active && (
+            <div className="relative">
+              <select
+                value={active.projectId ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "__new__") return newProject(active.id);
+                  updateConversation(active.id, (c) => ({ ...c, projectId: v || undefined }));
+                }}
+                className="h-[22px] cursor-pointer appearance-none rounded-lg bg-transparent hover:bg-[var(--panel-2)] pl-2 pr-5 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)] focus:outline-none transition-colors"
+                title="Project for this chat"
+              >
+                <option value="" className="bg-[var(--modal)]">
+                  {active.projectId ? "No project" : "Add to project"}
+                </option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-[var(--modal)]">
+                    {p.name}
+                  </option>
+                ))}
+                <option value="__new__" className="bg-[var(--modal)]">＋ New project…</option>
+              </select>
+              <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-[var(--txt-faint)]">▾</span>
+            </div>
           )}
           <div className="flex-1" />
           {active && active.messages.length > 0 && (
@@ -1764,7 +1792,7 @@ export default function App() {
                         </div>
                       )}
                       {m.content && (
-                        <div className="rounded-2xl rounded-br-md bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap">
+                        <div className="rounded-xl bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap">
                           {m.content}
                         </div>
                       )}
@@ -1822,7 +1850,7 @@ export default function App() {
               {activeId &&
                 (queued[activeId] || []).map((q, k) => (
                   <div key={`q${k}`} className="flex justify-end animate-fade-up">
-                    <div className="max-w-[80%] rounded-2xl rounded-br-md border border-dashed border-[var(--bd)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--txt-dim)]">
+                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--txt-dim)]">
                       <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
                         Sending at the next step
                         <button
