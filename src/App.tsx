@@ -2045,13 +2045,12 @@ export default function App() {
                   return (
                     <span
                       className={`ml-1 shrink-0 text-[11px] tabular-nums ${hot ? "text-amber-500" : "text-[var(--txt-faint)]"}`}
-                      title={window ? `${used.toLocaleString()} of ${window.toLocaleString()} context tokens` : "Context tokens · session cost"}
+                      title={window ? `${used.toLocaleString()} of ${window.toLocaleString()} context tokens` : "Context tokens"}
                     >
                       {active.lastTokens ? "" : "~"}
                       {fmtTokens(used)}
                       {window && ` / ${fmtTokens(window)}`}
                       {pct != null && pct >= 50 && ` (${pct}%)`}
-                      {active.costUsd != null && ` · $${active.costUsd.toFixed(active.costUsd < 1 ? 3 : 2)}`}
                     </span>
                   );
                 })()}
