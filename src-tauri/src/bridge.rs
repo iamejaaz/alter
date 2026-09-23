@@ -1066,7 +1066,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
             let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", transcript), ("question", &req.question), ("skill", &skill), ("issue", &req.issue)];
             let (system, mut prompt, mode): (String, String, Option<String>) = match req.verb.as_str() {
-                "summarize" | "diagnose" | "draft" | "deepen" => (
+                "summarize" | "diagnose" | "draft" | "deepen" | "followup" | "pr_reply" => (
                     fill(&join_lines(&prompts["system"]), &vars),
                     fill(prompts["verbs"][req.verb.as_str()].as_str().unwrap_or(""), &vars),
                     None,
