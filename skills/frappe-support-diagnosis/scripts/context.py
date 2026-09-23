@@ -119,11 +119,24 @@ def fetch_attachments(base, ticket, rows):
     return result
 
 
-def keywords(subject):
-    stop = {"the", "and", "for", "with", "not", "from", "this", "that", "when", "after", "issue", "error", "problem",
-            "frappe", "erpnext", "site", "help", "please", "urgent", "re:", "fwd:"}
-    words = re.findall(r"[a-zA-Z][a-zA-Z_]{3,}", (subject or "").lower())
-    return [w for w in words if w not in stop][:3]
+STOP = {"the", "and", "for", "with", "not", "from", "this", "that", "when", "after", "issue", "error", "problem",
+        "frappe", "erpnext", "site", "help", "please", "urgent", "have", "has", "there", "their", "been", "being",
+        "unable", "able", "want", "need", "getting", "give", "gives", "show", "shows", "showing", "doing", "does",
+        "hello", "team", "dear", "kindly", "regards", "thanks", "thank", "support", "ticket", "customer", "client",
+        "using", "used", "user", "users", "would", "could", "should", "also", "some", "same", "here", "were",
+        "https", "http", "www", "com", "screenshot", "attached", "please", "re:", "fwd:"}
+
+
+def keywords(text, limit=8):
+    seen, out = set(), []
+    for w in re.findall(r"[a-zA-Z][a-zA-Z_]{3,}", (text or "").lower()):
+        if w in STOP or w in seen:
+            continue
+        seen.add(w)
+        out.append(w)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def main():
@@ -170,20 +183,73 @@ def main():
         apps, apps_source = parse_apps(doc["custom_installed_apps"]), "ticket snapshot (at creation)"
     live_err = (live_msg or {}).get("error") if isinstance(live_msg, dict) else None
 
-    # similar resolved tickets: same sub-module first, else subject keywords
+    # Similar resolved tickets. The old query ORed the sub-module in, so any recent
+    # closed ticket in the module matched and the list was usually unrelated. Now a
+    # candidate must share wording with THIS ticket, and the module only ranks it.
     sub = doc.get("custom_sub_reference_module") or ""
-    kws = keywords(doc.get("subject"))
-    cond = f"custom_sub_reference_module='{sub}'" if sub else ""
-    if kws:
-        like = " and ".join(f"subject like '%{k}%'" for k in kws)
-        cond = f"({cond} or ({like}))" if cond else f"({like})"
+    app = doc.get("custom_app") or ""
+    subj_kws = keywords(doc.get("subject"), 6)
+    body_kws = [k for k in keywords(clean(doc.get("description")), 12) if k not in subj_kws]
     similar, best = [], {}
-    if cond:
-        q_sim = ("select name, subject, ticket_type, custom_app from `tabHD Ticket` where status in ('Closed','Resolved') "
-                 f"and name<>'{ticket}' and ticket_type not in ('Invalid','Duplicate','Spam') and {cond} "
-                 "and creation > date_sub(now(), interval 180 day) order by creation desc limit 5")
-        similar, _ = run(base, "query", q_sim, "--json")
-        similar = similar or []
+    if subj_kws or body_kws:
+        def q_sim(cond, limit):
+            return ("select name, subject, ticket_type, custom_app, custom_sub_reference_module, creation "
+                    "from `tabHD Ticket` where status in ('Closed','Resolved') "
+                    f"and name<>'{ticket}' and ticket_type not in ('Invalid','Duplicate','Spam') and ({cond}) "
+                    f"and creation > date_sub(now(), interval 365 day) order by creation desc limit {limit}")
+
+        # Three passes, because one broad OR capped at N rows fills up with the
+        # commonest word ("backup") and never reaches the ticket that shares the
+        # rare one. The narrow passes go first and the broad one only adds recall.
+        queries = []
+        if len(subj_kws) >= 3:
+            queries.append(q_sim(" and ".join(f"subject like '%{k}%'" for k in subj_kws[:3]), 15))
+        if len(subj_kws) >= 2:
+            queries.append(q_sim(" and ".join(f"subject like '%{k}%'" for k in subj_kws[:2]), 15))
+        queries.append(q_sim(" or ".join(f"subject like '%{k}%'" for k in subj_kws + body_kws), 50))
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            passes = list(ex.map(lambda q: run(base, "query", q, "--json")[0] or [], queries))
+        rows, seen_ids = [], set()
+        for got in passes:
+            for r in got:
+                if r["name"] not in seen_ids:
+                    seen_ids.add(r["name"])
+                    rows.append(r)
+        # A word that half the candidates share ("backup", "error") says nothing;
+        # a rare one ("pypika", "wait_timeout") says a lot. Weight by how rare the
+        # word is inside this candidate set, which needs no corpus and no model.
+        import math
+
+        subjects = [(r.get("subject") or "").lower() for r in rows]
+        df = {k: sum(1 for t in subjects if k in t) or 1 for k in subj_kws + body_kws}
+        idf = {k: math.log(1 + len(rows) / df[k]) for k in df}
+        # Two words that sit together in this subject are a phrase worth matching.
+        pairs = [f"{a} {b}" for a, b in zip(subj_kws, subj_kws[1:])
+                 if f"{a} {b}" in (doc.get("subject") or "").lower()]
+
+        def rank(r):
+            subject = (r.get("subject") or "").lower()
+            hits = [k for k in subj_kws if k in subject]
+            weak = [k for k in body_kws if k in subject]
+            score = sum(3 * idf[k] for k in hits) + sum(idf[k] for k in weak)
+            score += 4 * sum(1 for p in pairs if p in subject)
+            if sub and r.get("custom_sub_reference_module") == sub:
+                score += 2
+            if app and r.get("custom_app") == app:
+                score += 1
+            return score, len(hits) + len(weak), hits + weak
+
+        scored = []
+        for r in rows:
+            score, n, words = rank(r)
+            # One shared word is a coincidence unless the module agrees too.
+            if n >= 2 or (n == 1 and sub and r.get("custom_sub_reference_module") == sub):
+                r["matched"] = words
+                scored.append((score, r))
+        # rows already arrive newest first, so a stable sort by score keeps recency
+        # as the tie-break
+        scored.sort(key=lambda x: -x[0])
+        similar = [r for _, r in scored[:5]]
         if similar:
             ids = ",".join(f"'{r['name']}'" for r in similar)
             q_best = ("select reference_name, content from `tabCommunication` where reference_doctype='HD Ticket' "
@@ -277,7 +343,9 @@ def main():
     if similar:
         for r in similar:
             reply = best.get(r["name"])
-            out.append(f"- #{r['name']} · {r.get('ticket_type') or '?'} · {r.get('custom_app') or '?'} · {r.get('subject')}")
+            matched = ", ".join(r.get("matched") or [])
+            out.append(f"- #{r['name']} · {r.get('ticket_type') or '?'} · {r.get('custom_app') or '?'} · {r.get('subject')}"
+                       + (f" (matched: {matched})" if matched else ""))
             if reply:
                 out.append(f"  staff reply: {reply}")
     else:
@@ -294,7 +362,8 @@ def main():
                                         "custom_plan", "custom_pull_request", "custom_is_awaiting_release")}
         print(json.dumps({"ticket": slim, "apps": apps, "apps_source": apps_source, "hypotheses": len(hypotheses),
                           "attachments": [{"name": n, "path": p} for n, p in attachments],
-                          "similar": [{"name": r["name"], "subject": r.get("subject"), "type": r.get("ticket_type")} for r in similar],
+                          "similar": [{"name": r["name"], "subject": r.get("subject"), "type": r.get("ticket_type"),
+                                     "matched": r.get("matched") or []} for r in similar],
                           "gaps": gaps, "markdown": text}, default=str))
         return
     print(text)
