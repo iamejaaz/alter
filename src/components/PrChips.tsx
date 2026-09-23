@@ -156,7 +156,7 @@ export default function PrChips({
             </button>
             <button
               onClick={() => onDismiss(p.key)}
-              className="shrink-0 text-[var(--txt-faint)] opacity-0 transition-opacity hover:text-[var(--txt)] group-hover:opacity-100"
+              className="shrink-0 text-[var(--txt-faint)] transition-colors hover:text-[var(--txt)]"
               title="Hide"
             >
               ×
