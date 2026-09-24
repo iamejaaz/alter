@@ -409,15 +409,13 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   );
                 })}
               </div>
-              <label className="mt-3 block text-[11px] text-[var(--txt-faint)]">
-                MariaDB root password <span className="text-[var(--txt-faint)]">(optional — lets the agent auto-create a missing repro site; stored locally)</span>
-              </label>
+              <label className="mt-3 block text-[11px] text-[var(--txt-dim)]">MariaDB root password</label>
+              <p className="text-[11px] text-[var(--txt-faint)]">Optional. Lets the agent create a missing repro site itself. Stored on this device.</p>
               <input
                 type="password"
                 value={draft.mariadbRootPassword ?? ""}
                 onChange={(e) => setDraft({ ...draft, mariadbRootPassword: e.target.value })}
-                placeholder="leave blank to create sites yourself"
-                className="mt-1 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                className="mt-1 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-[13px] focus:outline-none focus:border-zinc-500"
               />
             </div>
 
@@ -433,29 +431,30 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 </button>
               </div>
               <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
-                Set these so the support agent's <code>fr</code> reads credentials from the environment instead of the macOS keychain (which prompts for a password every run). Stored locally. <b>Import from fr</b> pulls the token <code>fr</code> already stored — no rotation, reuses your existing key.
+                How the support agent signs in to your helpdesk. Without these, <code>fr</code> asks the macOS keychain on every run. Import reuses the key <code>fr</code> already has.
               </p>
               {importMsg && (
                 <p className={`mb-2 text-[11px] ${importMsg.ok ? "text-emerald-500" : "text-red-400"}`}>{importMsg.text}</p>
               )}
+              <label className="block text-[11px] text-[var(--txt-dim)]">Site</label>
               <input
                 value={draft.frappeSite ?? ""}
                 onChange={(e) => setDraft({ ...draft, frappeSite: e.target.value })}
-                placeholder="Site URL (e.g. https://support.frappe.io)"
-                className="w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                placeholder="https://support.frappe.io"
+                className="mt-1 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-[13px] focus:outline-none focus:border-zinc-500"
               />
+              <label className="mt-2 block text-[11px] text-[var(--txt-dim)]">API key</label>
               <input
                 value={draft.frappeApiKey ?? ""}
                 onChange={(e) => setDraft({ ...draft, frappeApiKey: e.target.value })}
-                placeholder="API key"
-                className="mt-1.5 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                className="mt-1 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-[13px] font-mono focus:outline-none focus:border-zinc-500"
               />
+              <label className="mt-2 block text-[11px] text-[var(--txt-dim)]">API secret</label>
               <input
                 type="password"
                 value={draft.frappeApiSecret ?? ""}
                 onChange={(e) => setDraft({ ...draft, frappeApiSecret: e.target.value })}
-                placeholder="API secret"
-                className="mt-1.5 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                className="mt-1 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-[13px] font-mono focus:outline-none focus:border-zinc-500"
               />
             </div>
           </div>
