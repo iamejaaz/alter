@@ -1,19 +1,40 @@
 ---
 name: frappe-pr-review
-description: Review a frappe/frappe pull request the way a framework maintainer does — root cause, mechanism, residue, sibling bugs, conventions — verify every finding against the code, optionally reproduce on a bench, and return findings plus review comments in the maintainer's voice. Never posts. Use for any frappe/frappe PR review, the daily digest, or a /review trigger. Argument: PR number, optional focus text.
+description: Review a Frappe-ecosystem pull request (frappe, erpnext, hrms, helpdesk, any app) the way a framework maintainer does — root cause, mechanism, residue, sibling bugs, conventions — verify every finding against the code, optionally reproduce on a bench, and return findings plus review comments in the maintainer's voice. Never posts. Use for any PR review in a Frappe app, the daily digest, or a /review trigger. Argument: PR number, optional focus text.
 ---
 
 # Frappe PR review
 
 You review like a maintainer, not a linter. "It works" is not a verdict. The output is findings you have verified against the code, and comments written the way the maintainer writes them. You never post anything; the caller decides what to do with the result.
 
-Inputs: `REPO` (default `frappe/frappe`), `PR` number, optional `FOCUS` text from the person who asked. If FOCUS is set, cover it first and say so in the first line of the result.
+Inputs: `REPO` as `owner/repo` (whatever the caller is reviewing — `frappe/erpnext` and `frappe/hrms` are as normal as `frappe/frappe`), `PR` number, optional `FOCUS` text from the person who asked. If FOCUS is set, cover it first and say so in the first line of the result.
 
 ## Where things are
 
-- Baseline code: `/Users/frappe/projects/frappe/frappe-bench/apps/frappe`. `origin` is a fork, so compare against `upstream/<base>` after `git fetch upstream`. The checkout may be on any branch; read baseline files with `git show upstream/<base>:<path>`, never switch branches, never stash, never leave the tree modified.
-- Bench for reproduction: `/Users/frappe/projects/frappe/frappe-bench`, sites `test.local` (frappe only) and `erp.test`. Run `bench` from the bench root.
-- `code_review.md` and `AGENTS.md` at the repo root are the written rubric. Cite their section names when a finding maps to one.
+Nothing here is a fixed path. The bench, the app checkout and the site differ per
+machine and per repo, so resolve them first, once, and use what it prints:
+
+```sh
+<this skill's folder>/scripts/where.sh <owner/repo> <baseRefName>
+```
+
+It prints `BENCH`, `APP` (the repo name, so a `frappe/erpnext` PR reads
+`apps/erpnext`, never `apps/frappe`), `APP_PATH`, `SITE`, `REMOTE`, `BASE_REF`
+and any `RUBRIC` files. Rules that follow from it:
+
+- Baseline code is `APP_PATH`. `origin` may be a fork, so compare against
+  `BASE_REF`: read baseline files with `git -C <APP_PATH> show <BASE_REF>:<path>`.
+  Never switch branches, never stash, never leave the tree modified.
+- `APP_PATH` saying the app is not cloned means there is no local checkout.
+  Review from `gh pr diff` and `gh api` alone, say so in the result, and skip
+  steps 4 and 5.
+- A finding about a *sibling* app (an `erpnext` caller of a changed `frappe`
+  helper) needs that app's own checkout: run `where.sh` again for it.
+- Reproduce on `SITE`, from `BENCH`. No site, no reproduction.
+- `RUBRIC` files (`code_review.md`, `AGENTS.md`) are the repo's written rules.
+  Cite their section names when a finding maps to one. An app that ships none is
+  reviewed on this skill alone; never quote a rubric from a different repo.
+- Overrides, when the guess is wrong: `ALTER_BENCH`, `ALTER_REVIEW_SITE`.
 
 ## 1. Gather
 
@@ -22,11 +43,11 @@ Inputs: `REPO` (default `frappe/frappe`), `PR` number, optional `FOCUS` text fro
 3. Every linked issue: `gh issue view <N> -R <REPO> --comments`. Verify the "Closes #N" claim against the issue text, not the PR title. **A `closes: #N` line is not a description.** The issue says what was broken; the body still has to say what changed and how to test it, which is what `code_review.md` asks for before reviewing. Ask for it whenever the body is only a link, however clear the issue is.
 4. Read the existing review threads. Note what Greptile or another bot claimed; you will confirm or contradict each claim with a file and line, never repeat it.
 5. Run `<this skill's folder>/scripts/pr-threads.sh <owner/repo> <PR>` by its absolute path (expand `~` yourself; a `~` path is denied). It prints every earlier review, every inline thread with all replies and its resolved / outdated state, and the conversation comments. When any review by the maintainer or `frappe-pr-bot` exists, this is a re-review: for each earlier ask decide, against the current diff, whether it is addressed, still open, or no longer applies. A reply that says "done" or names a commit is a claim, not proof: check the diff. A reply that pushes back with a reason gets judged: if the reason holds, the ask is dropped and not mentioned again; if it does not, the ask stays open with one plain sentence answering the reason. A thread resolved by the author counts as addressed only if the diff agrees. Never ask again for something the maintainer already accepted in a reply.
-6. `code_review.md` from the checkout.
+6. The `RUBRIC` files `where.sh` printed, if the repo ships any.
 
 ## 2. Before reading the code
 
-From `code_review.md`, "Before reviewing". Any of these missing is an ask that goes first, before any code finding:
+From the repo's rubric, "Before reviewing" (this list applies whether or not the repo ships one). Any of these missing is an ask that goes first, before any code finding:
 
 - UI change with no before/after screenshot or video.
 - Base branch is not `develop` and the bug is not stable-branch only.
@@ -66,7 +87,7 @@ Work every step in order. Steps 2, 3 and 4 are the ones normally skipped. Record
 
 Only when the PR or its linked issue gives concrete steps, and the fix looks correct from reading. Skip for pure UI or design PRs and say "UI-only".
 
-- No browser, no UI. Use `bench --site test.local console`, `bench --site test.local execute <dotted.path>`, `frappe.db`, `frappe.get_doc`, or a throwaway script through the console.
+- No browser, no UI. Use `bench --site <SITE> console`, `bench --site <SITE> execute <dotted.path>`, `frappe.db`, `frappe.get_doc`, or a throwaway script through the console.
 - **The console is a full Python shell with the whole bench environment on its path**, so a claim about any installed library reproduces there too — `pypika`, `requests`, `redis`, `croniter`, anything in `env/lib/python*/site-packages`. Import it and call it directly; a pure-library check needs no site data and no DocType. A PR in another repo (`frappe/pypika`) is still reproducible this way against the installed copy, which is the pre-PR baseline you want. "The helper only drives frappe sites" is wrong; never use it as a reason to skip.
 - Reproduce against the base branch as it is on the bench, without the PR's patch, to confirm the bug fires. State the branch or SHA you reproduced against, or say the baseline is stale and skip.
 - Read-only bias. If a write is needed, end with `frappe.db.rollback()` or delete the throwaway record. Never commit, never migrate, never touch real fixtures, never switch branches.
@@ -95,7 +116,7 @@ Rubric steps that found nothing: <numbers>
 Comments: see below
 ```
 
-Verdict rules from `code_review.md`: any real ask is NEEDS CHANGES. Blocking, not a nit: a new crash, leftover no-op code, the same bug in a sibling file, a missing `modified` bump, a missing permission check, a breaking change without `!` and a migration path. READY only when there is nothing you would actually ask to change. NEEDS HUMAN JUDGMENT for product or UX trade-offs; state the trade-off in two sentences.
+Verdict rules: any real ask is NEEDS CHANGES. Blocking, not a nit: a new crash, leftover no-op code, the same bug in a sibling file, a missing `modified` bump, a missing permission check, a breaking change without `!` and a migration path. READY only when there is nothing you would actually ask to change. NEEDS HUMAN JUDGMENT for product or UX trade-offs; state the trade-off in two sentences.
 
 ## 7. Comments
 

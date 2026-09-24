@@ -1470,7 +1470,7 @@ fn install_bundled_skills() {
     if std::fs::create_dir_all(&scripts).is_err() || std::fs::create_dir_all(&review_scripts).is_err() {
         return;
     }
-    let files: [(std::path::PathBuf, &str, bool); 9] = [
+    let files: [(std::path::PathBuf, &str, bool); 10] = [
         (dir.join("SKILL.md"), include_str!("../../skills/frappe-support-diagnosis/SKILL.md"), false),
         (dir.join("prompts.json"), include_str!("../../skills/frappe-support-diagnosis/prompts.json"), false),
         (scripts.join("context.py"), include_str!("../../skills/frappe-support-diagnosis/scripts/context.py"), true),
@@ -1480,6 +1480,7 @@ fn install_bundled_skills() {
         (scripts.join("repro-setup.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/repro-setup.sh"), true),
         (review.join("SKILL.md"), include_str!("../../skills/frappe-pr-review/SKILL.md"), false),
         (review_scripts.join("pr-threads.sh"), include_str!("../../skills/frappe-pr-review/scripts/pr-threads.sh"), true),
+        (review_scripts.join("where.sh"), include_str!("../../skills/frappe-pr-review/scripts/where.sh"), true),
     ];
     for (path, body, exec) in &files {
         let same = std::fs::read_to_string(path).map(|cur| cur == *body).unwrap_or(false);
