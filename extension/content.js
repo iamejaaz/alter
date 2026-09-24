@@ -262,6 +262,29 @@ function displayText(full) {
   return full;
 }
 
+// The verdict is one line somewhere in a long review, and the JSON fence at the
+// end is for the poster, not the reader. Pull the verdict up into a header and
+// keep the fence out of the rendered text.
+function reviewHeader(text) {
+  const v = (text || "").match(/Verdict:\s*\**\s*(READY|NEEDS CHANGES|NEEDS HUMAN JUDGMENT)/i);
+  if (!v) return "";
+  const verdict = v[1].toUpperCase();
+  const cls = verdict === "READY" ? "ok" : verdict === "NEEDS CHANGES" ? "warn" : "hold";
+  const blocking = (text.match(/severity:\s*blocking/gi) || []).length;
+  const nits = (text.match(/severity:\s*nit/gi) || []).length;
+  const repro = (text.match(/Reproduced:\s*\**\s*(yes|no|skipped)/i) || [])[1];
+  const bits = [];
+  if (blocking) bits.push(`${blocking} blocking`);
+  if (nits) bits.push(`${nits} nit${nits > 1 ? "s" : ""}`);
+  if (!blocking && !nits) bits.push("nothing to ask");
+  if (repro) bits.push(`reproduced: ${repro.toLowerCase()}`);
+  return `<div class="alter-verdict"><span class="alter-verdict-pill alter-verdict-${cls}">${escapeHtml(verdict.toLowerCase())}</span><span>${escapeHtml(bits.join(" · "))}</span></div>`;
+}
+
+function withoutJsonFence(text) {
+  return (text || "").replace(/\n*```json[\s\S]*```\s*$/i, "").trim();
+}
+
 // Every in-flight run, not just the newest. A second follow-up sent before the
 // first finished used to overwrite a single slot, leaving the first one running
 // with nothing able to reach it, so Stop only killed the last one.
@@ -420,7 +443,7 @@ function pollRun(el, runId, opts) {
         const clean = displayText(p.text || "") ?? (p.text || "");
         const body = document.getElementById("alter-panel-body");
         const wasAtBottom = nearBottom(body);
-        ans.innerHTML = mini(clean);
+        ans.innerHTML = opts.label === "review" ? reviewHeader(clean) + mini(withoutJsonFence(clean)) : mini(clean);
         el.appendChild(ans);
         // Only reposition if the user was following along at the bottom.
         if (wasAtBottom && body) {
@@ -460,6 +483,7 @@ function streamAgent(el, params) {
       label: params.label || "review",
     });
   return pollRun(el, runId, {
+    label: params.label,
     start: (rid) =>
       params.support
         ? send({ type: "support-start", ...params.support, connectionId: params.connectionId, includeMemory: params.includeMemory, model: params.model, runId: rid })
@@ -501,7 +525,7 @@ async function reconnectIfActive() {
   note.textContent = "Reconnected to a review in progress…";
   document.querySelector("#alter-panel-body").appendChild(note);
   const block = appendBlock("assistant");
-  const a = await pollRun(block, rec.runId, {});
+  const a = await pollRun(block, rec.runId, { label: rec.label });
   if (rec.label === "draft") {
     session.draft = a;
     renderPostPreview(a);
