@@ -18,13 +18,16 @@ interface Props {
   onProjectsChange: (projects: Project[]) => void;
   onSave: (s: Settings) => void;
   onDeleteMemory: (id: string) => void;
+  onAddMemory: (text: string) => void;
+  onEditMemory: (id: string, text: string) => void;
   onClose: () => void;
   initialTab?: SettingsTab;
   projectsInitialId?: string | null;
 }
 
-export default function SettingsPanel({ settings, memories, projects, onProjectsChange, onSave, onDeleteMemory, onClose, initialTab, projectsInitialId }: Props) {
+export default function SettingsPanel({ settings, memories, projects, onProjectsChange, onSave, onDeleteMemory, onAddMemory, onEditMemory, onClose, initialTab, projectsInitialId }: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
+  const [newMemory, setNewMemory] = useState("");
   const [tab, setTab] = useState<SettingsTab>(initialTab ?? "connections");
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
@@ -528,15 +531,49 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
             <p className="mb-3 text-[13px] text-[var(--txt-faint)]">
               Facts Alter picked up from your chats. They are carried into every new conversation and appended to <code className="rounded bg-[var(--input)] px-1 text-xs">~/.claude/CLAUDE.md</code>, so Claude Code learns them too.
             </p>
+            <div className="flex gap-2">
+              <input
+                value={newMemory}
+                onChange={(e) => setNewMemory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newMemory.trim()) {
+                    onAddMemory(newMemory.trim());
+                    setNewMemory("");
+                  }
+                }}
+                placeholder="Something Alter should always know"
+                className="min-w-0 flex-1 rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2.5 py-1.5 text-[13px] focus:outline-none focus:border-zinc-500"
+              />
+              <button
+                onClick={() => {
+                  if (!newMemory.trim()) return;
+                  onAddMemory(newMemory.trim());
+                  setNewMemory("");
+                }}
+                disabled={!newMemory.trim()}
+                className="shrink-0 rounded-lg border border-[var(--bd)] px-3 text-[13px] text-[var(--txt)] hover:bg-[var(--panel-2)] disabled:opacity-40 transition-colors"
+              >
+                Remember
+              </button>
+            </div>
             {memories.length === 0 && (
-              <p className="py-10 text-center text-sm text-[var(--txt-faint)]">Nothing remembered yet. Tell Alter something that should stick.</p>
+              <p className="py-10 text-center text-[13px] text-[var(--txt-faint)]">Nothing remembered yet. Add one above, or tell Alter something in a chat that should stick.</p>
             )}
             {memories.map((m) => (
-              <div key={m.id} className="group flex items-center gap-3 rounded-lg border border-[var(--bd-soft)] px-3 py-2.5">
-                <p className="min-w-0 flex-1 text-sm text-[var(--txt)]">{m.text}</p>
+              <div key={m.id} className="flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] px-2.5 py-1.5">
+                <input
+                  defaultValue={m.text}
+                  onBlur={(e) => {
+                    const t = e.target.value.trim();
+                    if (t && t !== m.text) onEditMemory(m.id, t);
+                    else e.target.value = m.text;
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                  className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--txt)] focus:outline-none"
+                />
                 <button
                   onClick={() => onDeleteMemory(m.id)}
-                  className="rounded-md px-2 py-0.5 text-xs text-[var(--txt-faint)] opacity-0 transition-opacity hover:bg-[var(--panel-2)] hover:text-[var(--txt)] group-hover:opacity-100"
+                  className="shrink-0 rounded-md px-2 py-0.5 text-[11px] text-[var(--txt-faint)] hover:bg-[var(--panel-2)] hover:text-[var(--txt)]"
                   title="Forget"
                 >
                   Forget

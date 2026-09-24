@@ -68,6 +68,8 @@ export default function ProjectsEditor({ projects, onChange, initialSelectedId }
         <label className="mb-1 block text-[11px] text-[var(--txt-dim)]">Name</label>
         <input
           value={editing.name}
+          autoFocus
+          onFocus={(e) => editing.name === "New project" && e.target.select()}
           onChange={(e) => upsert({ ...editing, name: e.target.value })}
           className="w-full rounded-lg border border-[var(--bd)] bg-[var(--input)] px-2.5 py-1.5 text-[13px] text-[var(--txt)] focus:outline-none focus:border-zinc-500"
         />

@@ -1745,6 +1745,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               storage.saveSettings(s);
             }}
             onDeleteMemory={(id) => setMemories((prev) => prev.filter((m) => m.id !== id))}
+            onAddMemory={(text) => setMemories((prev) => [...prev, { id: newId(), text, createdAt: Date.now() }])}
+            onEditMemory={(id, text) => setMemories((prev) => prev.map((m) => (m.id === id ? { ...m, text } : m)))}
             onClose={() => setView("chat")}
             initialTab={settingsTab}
             projectsInitialId={settingsProjectId}
