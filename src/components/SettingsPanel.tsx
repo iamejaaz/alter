@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -162,16 +162,23 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     }
     setTestResult(null);
   };
-  const save = () => {
+  // Every change lands as it is made: there is no Save to forget and nothing
+  // is lost to Esc or a tab switch.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
     onSave({ ...draft, connections: syncedConnections() });
-    onClose();
-  };
+  }, [draft]);
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col bg-[var(--bg)]">
       <header className="flex min-h-12 items-center gap-3 px-5 border-b border-[var(--bd-soft)]">
         <button onClick={onClose} className="text-[var(--txt-faint)] hover:text-[var(--txt)] text-sm" title="Back (Esc)">←</button>
-        <h1 className="text-base font-semibold text-[var(--txt)]">Settings</h1>
+        <h1 className="text-[13px] font-semibold text-[var(--txt)]">Settings</h1>
+        <span className="ml-auto text-[11px] text-[var(--txt-faint)]">Changes save as you make them</span>
       </header>
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-6 py-6">
@@ -333,17 +340,6 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 </div>
               </div>
             )}
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)]">
-                Cancel
-              </button>
-              <button
-                onClick={save}
-                className="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium"
-              >
-                Save
-              </button>
-            </div>
           </div>
         )}
 
@@ -464,17 +460,6 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 placeholder="API secret"
                 className="mt-1.5 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
               />
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)]">
-                Cancel
-              </button>
-              <button
-                onClick={save}
-                className="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium"
-              >
-                Save
-              </button>
             </div>
           </div>
         )}
