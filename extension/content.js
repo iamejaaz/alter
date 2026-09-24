@@ -36,9 +36,12 @@ async function getChecks(parts) {
 
 let session = null;
 let running = false;
-// Who the review gets posted as — whatever account Alter is set up with, not a
-// fixed one. The bridge answers with it; until then, assume the common default.
-let botLogin = "frappe-pr-bot";
+// Who the review gets posted as. Empty until Alter names a bot account, and an
+// install with no bot posts only as you, so the bot button never appears.
+let botLogin = "";
+send({ type: "repro-info" }).then((r) => {
+  if (r && r.ok && r.data && r.data.bot) botLogin = r.data.bot;
+});
 
 // Ignore re-clicks while a review is in flight: a second run() would clear the
 // panel and detach the live block.
@@ -742,11 +745,7 @@ function renderFooter() {
   });
   // Gate Verify on bench: disable it until a repro bench is configured in Alter.
   send({ type: "repro-info" }).then((r) => {
-    if (r && r.ok && r.data && r.data.bot) {
-      botLogin = r.data.bot;
-      const b = foot.querySelector("#alter-post-bot");
-      if (b) b.textContent = `Post as ${botLogin}`;
-    }
+    if (r && r.ok && r.data) botLogin = r.data.bot || "";
     if (!(r && r.ok && r.data && r.data.configured)) {
       verifyBtn.disabled = true;
       verifyBtn.title = "Set up a repro bench in Alter → Settings → Repro benches first";
@@ -781,7 +780,7 @@ function renderPostPreview(text, suggested) {
       <button data-ev="comment" class="${ev === "comment" ? "alter-primary" : ""}">Comment</button>
     </div>
     <div id="alter-foot-btns2">
-      <button id="alter-post-bot">Post as ${botLogin}</button>
+      ${botLogin ? `<button id="alter-post-bot">Post as ${botLogin}</button>` : ""}
       <button id="alter-back" class="alter-ghost">Back</button>
     </div>
     <div id="alter-foot-note"></div>`;
@@ -813,13 +812,13 @@ function renderPostPreview(text, suggested) {
     b.addEventListener("click", () => postToGh(b.dataset.ev, ta.value, b))
   );
   const bot = foot.querySelector("#alter-post-bot");
-  bot.addEventListener("click", () => postAsBot(ta.value, bot));
+  if (bot) bot.addEventListener("click", () => postAsBot(ta.value, bot));
 }
 
 // Same text, posted by the bot: the bridge dispatches the repo's post-review
 // workflow, which posts a COMMENT review under the bot account. Never as you.
 async function postAsBot(text, btn) {
-  if (!session) return;
+  if (!session || !botLogin) return;
   const note = document.querySelector("#alter-foot-note");
   const { body, comments } = parseDraft(text);
   const j = reviewJson(session.review);

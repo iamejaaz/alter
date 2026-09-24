@@ -256,9 +256,10 @@ fn pr_push_allowed_tools() -> String {
 // Where browser-triggered agents run: Alter → Settings → Agent working folder
 // (exported as ALTER_AGENT_WORKDIR), else the home directory.
 // Who posts the reviews, and where to look for replies. Both are settings, not
-// constants: another user runs a different bot account on different repos.
+// constants: another user runs a different bot account on different repos, and
+// an empty bot means this install only ever posts as the signed-in user.
 fn pr_bot() -> String {
-    std::env::var("ALTER_PR_BOT").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "frappe-pr-bot".into())
+    std::env::var("ALTER_PR_BOT").unwrap_or_default().trim().to_string()
 }
 
 fn followup_repos() -> Vec<String> {
@@ -1223,6 +1224,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             // human's, not the bot's or mine: each is a reply the bot still owes.
             // The search spans every repo the bot reviewed unless Settings names some.
             let bot = pr_bot();
+            if bot.is_empty() {
+                return (200, "[]".into());
+            }
             let me = std::process::Command::new("gh")
                 .args(["api", "user", "--jq", ".login"])
                 .output()
@@ -1349,7 +1353,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                             rs.iter()
                                 .filter(|r| {
                                     let a = r.get("a").and_then(|x| x.as_str()).unwrap_or("");
-                                    a == me || a == pr_bot()
+                                    a == me || (!pr_bot().is_empty() && a == pr_bot())
                                 })
                                 .filter_map(|r| r.get("at").and_then(|x| x.as_str()).map(str::to_string))
                                 .max()
@@ -1498,6 +1502,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             };
             if !req.num.chars().all(|c| c.is_ascii_digit()) || req.repo.split('/').count() != 2 {
                 return (400, "{\"error\":\"bad repo or number\"}".into());
+            }
+            if pr_bot().is_empty() {
+                return (400, "{\"error\":\"no review bot configured — set one in Alter → Settings → Agents\"}".into());
             }
             if req.review_b64.len() > 60_000 {
                 return (400, "{\"error\":\"review too large for workflow_dispatch; shorten it\"}".into());

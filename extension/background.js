@@ -391,7 +391,11 @@ async function autoPollOnce() {
     else {
       const verdict = ((p.text || "").split("\n").find((l) => l.trim()) || "Review ready").replace(/[*_`#]/g, "").slice(0, 120);
       const { autoReviewPost } = await chrome.storage.local.get("autoReviewPost");
-      const j = autoReviewPost !== false ? ALTER.reviewJson(p.text) : null;
+      // Auto-posting needs a bot account; with none set the review is yours to
+      // post by hand, so don't dispatch a workflow that would just fail.
+      const info = await bridge("/repro-info");
+      const hasBot = !!(info.ok && info.body && info.body.bot);
+      const j = autoReviewPost !== false && hasBot ? ALTER.reviewJson(p.text) : null;
       const replies = (j && Array.isArray(j.replies) ? j.replies : []).filter((x) => x && typeof x.in_reply_to === "number" && (x.body || "").trim());
       const discussion = (j && Array.isArray(j.discussion) ? j.discussion : []).filter((x) => typeof x === "string" && x.trim());
       if (j && (j.comments.length || (j.body || "").trim() || replies.length || discussion.length || ALTER.resolveIds(j).length)) {

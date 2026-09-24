@@ -384,7 +384,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
             <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
               <p className="text-sm text-[var(--txt)]">Review bot</p>
               <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
-                The GitHub account reviews are posted as, and the repos to watch for replies. Leave the repos empty to watch every repo that account reviewed.
+                The GitHub account reviews are posted as, and the repos to watch for replies. Leave the account empty to post only as yourself: the extension then drops its "Post as bot" button. Leave the repos empty to watch every repo that account reviewed.
               </p>
               <div className="space-y-1.5">
                 <input
