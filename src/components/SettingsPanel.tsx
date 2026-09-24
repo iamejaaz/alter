@@ -7,6 +7,7 @@ import { testConnection } from "../lib/api";
 import { Chevron } from "./Icons";
 import ProjectsEditor from "./ProjectsEditor";
 import Switch from "./Switch";
+import { confirmDialog } from "../lib/confirm";
 
 export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension";
 
@@ -134,9 +135,10 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     setDraft({ ...draft, connections: [...synced, conn], activeConnectionId: conn.id, baseUrl: "", apiKey: "", model: "" });
     setTestResult(null);
   };
-  const deleteConnection = (id: string) => {
+  const deleteConnection = async (id: string) => {
     const remaining = conns.filter((c) => c.id !== id);
     if (remaining.length === 0) return;
+    if (!(await confirmDialog(`Delete the connection "${conns.find((c) => c.id === id)?.name ?? ""}"?`))) return;
     const next = remaining[0];
     setDraft({ ...draft, connections: remaining, activeConnectionId: next.id, baseUrl: next.baseUrl, apiKey: next.apiKey, model: next.model });
   };
@@ -279,7 +281,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 </button>
                 {conns.length > 1 && (
                   <button
-                    onClick={() => deleteConnection(activeId)}
+                    onClick={() => void deleteConnection(activeId)}
                     className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] px-3 text-sm text-red-400"
                     title="Delete this connection"
                   >
@@ -287,15 +289,15 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   </button>
                 )}
               </div>
+              <label className="mt-3 block text-xs text-[var(--txt-dim)] mb-1.5">Name</label>
               <input
                 value={activeConn?.name ?? ""}
                 onChange={(e) => renameConnection(e.target.value)}
-                placeholder="Connection name"
-                className="mt-2 w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+                className="w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
               />
             </div>
             <div>
-              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Quick-fill from a provider</label>
+              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Add a connection from a provider</label>
               <div className="flex flex-wrap gap-2">
                 {Object.keys(PROVIDER_PRESETS).map((name) => (
                   <button
@@ -309,12 +311,14 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
               </div>
             </div>
             {isClaudeCodeUrl(draft.baseUrl) && (
-              <p className="rounded-lg border border-indigo-900/40 bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-300">
-                Uses your local Claude Code (your subscription) — no API key or model needed. Make sure{" "}
-                <span className="font-mono">claude</span> is installed and you're logged in. Attach a folder to let it work in that project.
-              </p>
+              <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+                <p className="text-[13px] text-[var(--txt)]">Claude Code on this Mac</p>
+                <p className="text-[11px] text-[var(--txt-faint)]">
+                  Runs the <span className="font-mono">claude</span> CLI with your subscription. No key, no URL, no model to pick here: choose the model per chat from the composer. If a chat says you are signed out, run <span className="font-mono">claude</span> in a terminal and sign in.
+                </p>
+              </div>
             )}
-            <div>
+            <div className={isClaudeCodeUrl(draft.baseUrl) ? "hidden" : undefined}>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Base URL</label>
               <input
                 value={draft.baseUrl}
@@ -322,7 +326,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 className="w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
               />
             </div>
-            <div>
+            <div className={isClaudeCodeUrl(draft.baseUrl) ? "hidden" : undefined}>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Model</label>
               <input
                 value={draft.model}
@@ -338,7 +342,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   ))}
               </datalist>
             </div>
-            <div>
+            <div className={isClaudeCodeUrl(draft.baseUrl) ? "hidden" : undefined}>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">API key</label>
               <input
                 type="password"
@@ -357,6 +361,9 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
               >
                 {testing ? "Testing…" : "Test connection"}
               </button>
+              {!draft.apiKey && !isClaudeCodeUrl(draft.baseUrl) && (
+                <span className="ml-2 text-[11px] text-[var(--txt-faint)]">Enter an API key first.</span>
+              )}
               {testResult && (
                 <p
                   className={`mt-2 text-[11px] rounded-lg px-3 py-2 break-words ${
