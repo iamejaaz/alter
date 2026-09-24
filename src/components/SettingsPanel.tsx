@@ -8,7 +8,7 @@ import { Chevron } from "./Icons";
 import ProjectsEditor from "./ProjectsEditor";
 import Switch from "./Switch";
 
-type SettingsTab = "connections" | "projects" | "memory" | "agents" | "bridge";
+export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension";
 
 interface Props {
   settings: Settings;
@@ -186,17 +186,18 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
         <div className="mb-5 flex gap-1 border-b border-[var(--bd-soft)] pb-3">
           {(
             [
+              ["general", "General"],
               ["connections", "Connections"],
               ["projects", "Projects"],
               ["memory", "Memory"],
-              ["agents", "Agents"],
-              ["bridge", "Browser bridge"],
+              ["support", "Support agent"],
+              ["extension", "Browser extension"],
             ] as const
           ).map(([id, label]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+              className={`rounded-lg px-2.5 py-1 text-[13px] transition-colors ${
                 tab === id ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
               }`}
             >
@@ -204,6 +205,47 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
             </button>
           ))}
         </div>
+
+        {tab === "general" && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+              <Switch on={light} onChange={toggleTheme} />
+              <p className="text-[13px] text-[var(--txt)]">Light theme</p>
+            </div>
+            {autostart !== null && (
+              <div className="flex items-center gap-3 rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+                <Switch on={!!autostart} onChange={() => void toggleAutostart()} />
+                <div>
+                  <p className="text-[13px] text-[var(--txt)]">Launch at login</p>
+                  <p className="text-[11px] text-[var(--txt-faint)]">Start Alter in the background so routines keep running.</p>
+                </div>
+              </div>
+            )}
+            <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+              <p className="text-[13px] text-[var(--txt)]">Working folder for browser agents</p>
+              <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
+                Where PR review, support and fix runs start, usually your bench. Empty falls back to the develop repro bench, then your home folder.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={draft.agentWorkdir ?? ""}
+                  onChange={(e) => setDraft({ ...draft, agentWorkdir: e.target.value })}
+                  placeholder="/path/to/frappe-bench"
+                  className="min-w-0 flex-1 rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-[13px] font-mono focus:outline-none focus:border-zinc-500"
+                />
+                <button
+                  onClick={async () => {
+                    const picked = await open({ directory: true, title: "Select the working folder" });
+                    if (typeof picked === "string") setDraft({ ...draft, agentWorkdir: picked });
+                  }}
+                  className="shrink-0 rounded-md border border-[var(--bd)] px-3 text-[13px] text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
+                >
+                  Choose…
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {tab === "projects" && (
           <ProjectsEditor projects={projects} onChange={onProjectsChange} initialSelectedId={projectsInitialId} />
@@ -327,59 +369,14 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-              <Switch on={light} onChange={toggleTheme} />
-              <p className="text-sm text-[var(--txt)]">Light theme</p>
-            </div>
-            {autostart !== null && (
-              <div className="flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-                <Switch on={!!autostart} onChange={() => void toggleAutostart()} />
-                <div>
-                  <p className="text-sm text-[var(--txt)]">Launch at login</p>
-                  <p className="text-[11px] text-[var(--txt-faint)]">Start Alter in the background so routines keep running.</p>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {tab === "agents" && (
-          <div className="space-y-4">
-            <p className="text-[13px] text-[var(--txt-faint)]">Where browser-triggered agents run and what the support agent can reach.</p>
+        {tab === "support" && (
+          <div className="space-y-3">
+            <p className="text-[13px] text-[var(--txt-faint)]">What the support agent can reach when it diagnoses a helpdesk ticket.</p>
             <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-              <p className="text-sm text-[var(--txt)]">Agent working folder</p>
-              <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
-                Where browser-triggered agents run (PR review, support, prepare fix) — usually your bench folder. Empty falls back to the develop repro bench below, then your home folder.
-              </p>
-              <input
-                value={draft.agentWorkdir ?? ""}
-                onChange={(e) => setDraft({ ...draft, agentWorkdir: e.target.value })}
-                placeholder="/path/to/frappe-bench"
-                className="w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-            <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-              <p className="text-sm text-[var(--txt)]">Review bot</p>
-              <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
-                The GitHub account reviews are posted as, and the repos to watch for replies. Leave the account empty to post only as yourself: the extension then drops its "Post as bot" button. Leave the repos empty to watch every repo that account reviewed.
-              </p>
-              <div className="space-y-1.5">
-                <input
-                  value={draft.prBot ?? ""}
-                  onChange={(e) => setDraft({ ...draft, prBot: e.target.value })}
-                  placeholder="frappe-pr-bot"
-                  className="w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-indigo-500"
-                />
-                <input
-                  value={draft.prRepos ?? ""}
-                  onChange={(e) => setDraft({ ...draft, prRepos: e.target.value })}
-                  placeholder="frappe/frappe, frappe/erpnext"
-                  className="w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-            </div>
-            <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-              <p className="text-sm text-[var(--txt)]">Repro benches</p>
+              <p className="text-[13px] text-[var(--txt)]">Repro benches</p>
               <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
                 Point each version at an existing bench folder. The support agent reproduces bugs there — develop first, then the customer's version.
               </p>
@@ -464,17 +461,21 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
           </div>
         )}
 
-        {tab === "bridge" && (
-          <div className="space-y-4">
-            <p className="text-[13px] text-[var(--txt-faint)]">A token-gated bridge on 127.0.0.1 lets the browser extension reuse your connections. No keys in the browser, only this pairing token.</p>
-            {bridge && (
+        {tab === "extension" && (
+          <div className="space-y-3">
+            <p className="text-[13px] text-[var(--txt-faint)]">
+              The extension adds Review with Alter on GitHub and the support panel on Helpdesk. It talks to this app over 127.0.0.1 with a pairing token, so no keys ever reach the browser.
+            </p>
+            {bridge ? (
               <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-                <p className="text-sm text-[var(--txt)]">Browser bridge</p>
-                <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
-                  Pair the Alter browser extension so it can use your models. Runs on localhost:{bridge.port}.
-                </p>
+                <p className="text-[13px] text-[var(--txt)]">Pair the extension</p>
+                <ol className="mb-2 mt-1 list-decimal space-y-0.5 pl-4 text-[11px] text-[var(--txt-faint)]">
+                  <li>Load the <code>extension</code> folder in Chrome at chrome://extensions with Developer mode on.</li>
+                  <li>Open the extension's settings from its toolbar icon.</li>
+                  <li>Paste this token and save. The extension shows "Connected" once it can reach the app.</li>
+                </ol>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-xs text-[var(--txt-dim)]">
+                  <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-[11px] text-[var(--txt-dim)]">
                     {bridge.token}
                   </code>
                   <button
@@ -483,14 +484,36 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                       setCopied(true);
                       setTimeout(() => setCopied(false), 1500);
                     }}
-                    className="rounded-md border border-[var(--bd)] px-3 py-1.5 text-xs text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
+                    className="rounded-md border border-[var(--bd)] px-3 py-1.5 text-[11px] text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
                   >
                     {copied ? "Copied" : "Copy"}
                   </button>
                 </div>
+                <p className="mt-1.5 text-[11px] text-[var(--txt-faint)]">Bridge on localhost:{bridge.port}.</p>
               </div>
+            ) : (
+              <p className="text-[13px] text-[var(--txt-faint)]">The bridge only runs inside the desktop app.</p>
             )}
-            {!bridge && <p className="text-sm text-[var(--txt-faint)]">The bridge only runs inside the desktop app.</p>}
+            <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+              <p className="text-[13px] text-[var(--txt)]">Review bot</p>
+              <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
+                Reviews can also be posted by a bot account through the repo's post-review workflow. Leave it empty to post only as yourself.
+              </p>
+              <label className="block text-[11px] text-[var(--txt-dim)]">GitHub account</label>
+              <input
+                value={draft.prBot ?? ""}
+                onChange={(e) => setDraft({ ...draft, prBot: e.target.value })}
+                placeholder="frappe-pr-bot"
+                className="mt-1 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-[13px] font-mono focus:outline-none focus:border-zinc-500"
+              />
+              <label className="mt-2 block text-[11px] text-[var(--txt-dim)]">Repos to watch for replies to the bot</label>
+              <input
+                value={draft.prRepos ?? ""}
+                onChange={(e) => setDraft({ ...draft, prRepos: e.target.value })}
+                placeholder="empty = every repo the bot reviewed"
+                className="mt-1 w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-[13px] font-mono focus:outline-none focus:border-zinc-500"
+              />
+            </div>
           </div>
         )}
 

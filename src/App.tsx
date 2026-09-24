@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
-import SettingsPanel from "./components/SettingsPanel";
+import SettingsPanel, { SettingsTab } from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
 import ComposerSelect from "./components/ComposerSelect";
 import AttachmentImage from "./components/AttachmentImage";
@@ -132,10 +132,10 @@ export default function App() {
   const [view, setView] = useState<"chat" | "routines" | "skills" | "settings">(
     storage.loadSettings().apiKey ? "chat" : "settings"
   );
-  const [settingsTab, setSettingsTab] = useState<"connections" | "projects" | "memory" | "agents" | "bridge">("connections");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
-  const setShowSettings = (v: boolean, tab?: "connections" | "projects" | "memory" | "agents" | "bridge") => {
-    if (v) setSettingsTab(tab ?? "connections");
+  const setShowSettings = (v: boolean, tab?: SettingsTab) => {
+    if (v) setSettingsTab(tab ?? "general");
     setView(v ? "settings" : "chat");
   };
   // "Fix" on a PR chip: judge every open review thread, change only what the
@@ -1626,7 +1626,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const paletteCommands: Command[] = [
     { id: "new", label: "New chat", hint: "⌘N", section: "Actions", run: () => openChat(null) },
     { id: "settings", label: "Open settings", section: "Actions", run: () => setShowSettings(true) },
-    { id: "extension", label: "Browser extension", section: "Actions", run: () => setShowSettings(true, "bridge") },
+    { id: "extension", label: "Browser extension", section: "Actions", run: () => setShowSettings(true, "extension") },
     { id: "routines", label: "Open routines", section: "Actions", run: () => setView("routines") },
     { id: "skills", label: "Open skills", section: "Actions", run: () => setView("skills") },
     { id: "projects", label: "Manage projects", section: "Actions", run: () => openProjectSettings() },
@@ -1700,7 +1700,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         onRename={(id, title) => updateConversation(id, (c) => ({ ...c, title }))}
         onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}
         onOpenSettings={() => setShowSettings(true)}
-        onOpenExtension={() => setShowSettings(true, "bridge")}
+        onOpenExtension={() => setShowSettings(true, "extension")}
         onOpenRoutines={() => setView("routines")}
         onOpenRuns={(id) => {
           if (runsRoutineId === id) return setRunsRoutineId(null);
