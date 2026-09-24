@@ -23,6 +23,14 @@
 .alter-action-btn:hover {
   background: #6366f1;
 }
+#alter-badge:not(:empty) {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-weight: 500;
+  font-size: 11px;
+}
 
 #alter-panel {
   position: fixed;

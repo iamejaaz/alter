@@ -86,6 +86,7 @@ async function runInner() {
   });
   session.review = raw;
   renderFooter();
+  refreshBadge();
 }
 
 async function followUp(q) {
@@ -544,6 +545,24 @@ function showStop(on) {
   if (b) b.style.display = on ? "" : "none";
 }
 
+// The button answers the first question a reviewer has: has this PR been
+// reviewed already, and when. Asked once per PR page, and again after a run.
+function ago(iso) {
+  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+  if (s < 90) return "just now";
+  if (s < 5400) return `${Math.round(s / 60)}m ago`;
+  if (s < 129600) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+async function refreshBadge() {
+  const parts = prParts();
+  const badge = document.getElementById("alter-badge");
+  if (!parts || !badge) return;
+  const r = await send({ type: "pr-reviewed", repo: `${parts.owner}/${parts.repo}`, num: parts.num });
+  const d = r && r.ok ? r.data : null;
+  badge.textContent = !d ? "" : !d.open ? "closed" : d.lastReview ? `reviewed ${ago(d.lastReview)}` : "not reviewed yet";
+}
+
 function ensureButton() {
   const isIssue = !!issueParts();
   if (!prParts() && !isIssue) return;
@@ -552,10 +571,11 @@ function ensureButton() {
   wrap.id = "alter-actions";
   const b = document.createElement("button");
   b.className = "alter-action-btn";
-  b.textContent = isIssue ? "Fix with Alter" : "Review with Alter";
+  b.innerHTML = `${isIssue ? "Fix with Alter" : "Review with Alter"}${isIssue ? "" : '<span id="alter-badge"></span>'}`;
   b.addEventListener("click", () => (isIssue ? runIssueFix() : run()));
   wrap.appendChild(b);
   document.body.appendChild(wrap);
+  refreshBadge();
 }
 
 async function runIssueFix() {

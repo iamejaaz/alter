@@ -155,6 +155,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       } else if (msg.type === "ticket-context") {
         const r = await bridge("/ticket-context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticket: msg.ticket }) });
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: r.body && r.body.error ? r.body.error : hint(r) });
+      } else if (msg.type === "pr-reviewed") {
+        const r = await bridge("/pr-reviewed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo: msg.repo, num: String(msg.num) }) });
+        sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: hint(r) });
       } else if (msg.type === "open-options") {
         chrome.runtime.openOptionsPage();
         sendResponse({ ok: true });
