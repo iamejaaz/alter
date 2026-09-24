@@ -36,6 +36,7 @@ fn list_dir(path: String) -> Result<Vec<String>, String> {
 
 mod bridge;
 mod browser;
+mod peers;
 
 pub(crate) fn html_to_text(html: &str) -> String {
     let mut out = String::with_capacity(html.len() / 2);
@@ -1516,6 +1517,8 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            peers::peers_list,
+            peers::peer_send,
             read_file,
             write_file,
             save_attachment,
@@ -1568,6 +1571,7 @@ pub fn run() {
                 });
             }
             bridge::start(app.handle().clone());
+            peers::start(app.handle().clone());
 
             let show = MenuItem::with_id(app, "show", "Show Alter", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -1620,6 +1624,7 @@ pub fn run() {
             // unless we take them down here.
             if matches!(event, tauri::RunEvent::Exit) {
                 bridge::kill_all_agents(app);
+                peers::stop();
             }
         });
 }

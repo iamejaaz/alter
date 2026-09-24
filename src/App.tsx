@@ -106,6 +106,14 @@ import {
   scheduleLabel,
   storage,
 } from "./lib/store";
+
+interface Peer {
+  pid: number;
+  name: string;
+  cwd: string;
+  status: string;
+  sessionId: string;
+}
 import RoutinesPage from "./components/RoutinesPage";
 import PrChips from "./components/PrChips";
 import SkillsPage from "./components/SkillsPage";
@@ -207,6 +215,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [artifact, setArtifact] = useState<ArtifactType | null>(null);
   const [listening, setListening] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
+  const [peers, setPeers] = useState<Peer[]>([]);
+  const [peerIdx, setPeerIdx] = useState(0);
   const [showPalette, setShowPalette] = useState(false);
   const [theme, setTheme] = useState<"system" | "light" | "dark">(
     () => (localStorage.getItem("alter.theme") as "system" | "light" | "dark") || "system"
@@ -475,6 +485,36 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       un?.();
     };
   }, []);
+  // Inbound text from a paired session lands in the chat paired with it, or in
+  // a new chat titled after it. Delivery receipts update the sent message's tick.
+  useEffect(() => {
+    const uns: (() => void)[] = [];
+    let gone = false;
+    void listen<{ from: string; fromPid: number | null; fromName: string; msgId: string; content: string }>("alter://peer-message", (e) => {
+      const { fromPid, fromName, msgId, content } = e.payload;
+      const msg: Message = { role: "assistant", content, peer: { name: fromName, dir: "in", msgId } };
+      setConversations((prev) => {
+        const hit = prev.find((c) => c.peer && (fromPid ? c.peer.pid === fromPid : c.peer.name === fromName));
+        if (hit) return prev.map((c) => (c.id === hit.id ? { ...c, peer: { pid: fromPid ?? c.peer!.pid, name: fromName }, messages: [...c.messages, msg] } : c));
+        return [{ id: newId(), title: fromName, messages: [msg], createdAt: Date.now(), peer: { pid: fromPid ?? 0, name: fromName } }, ...prev];
+      });
+      setInfo(`Message from ${fromName}`);
+    }).then((u) => (gone ? u() : uns.push(u)));
+    void listen<{ origMsgId: string; status: string }>("alter://peer-status", (e) => {
+      const { origMsgId, status } = e.payload;
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.messages.some((m) => m.peer?.msgId === origMsgId)
+            ? { ...c, messages: c.messages.map((m) => (m.peer?.msgId === origMsgId ? { ...m, peer: { ...m.peer!, status } } : m)) }
+            : c
+        )
+      );
+    }).then((u) => (gone ? u() : uns.push(u)));
+    return () => {
+      gone = true;
+      uns.forEach((u) => u());
+    };
+  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
@@ -639,6 +679,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const shown = opts?.display ?? text;
     const atts = opts?.text ? [] : attachments;
     if (!text && atts.length === 0) return;
+
+    // A paired chat delivers what was typed to its session and skips the model.
+    const paired = !opts?.text && activeId ? conversations.find((c) => c.id === activeId)?.peer : undefined;
+    if (paired && activeId) {
+      setInput("");
+      return sendToPeer(activeId, paired, text);
+    }
 
     // "/skill args" runs one of Alter's saved skills: its instructions ride along,
     // the bubble shows what was typed. Claude Code's own skills pass through as-is.
@@ -1514,6 +1561,39 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }))
       : []),
   ];
+  // "@" lists the Claude Code sessions running on this Mac; picking one binds
+  // the chat to it, so what you type next goes to that session.
+  const showPeers = input.startsWith("@") && !input.includes("\n");
+  useEffect(() => {
+    if (!showPeers) return;
+    void invoke<Peer[]>("peers_list").then(setPeers).catch(() => setPeers([]));
+  }, [showPeers]);
+  const peerMatches = showPeers ? peers.filter((p) => p.name.toLowerCase().includes(input.slice(1).trim().toLowerCase())) : [];
+  const bindPeer = (p: Peer) => {
+    setInput("");
+    setPeerIdx(0);
+    const peer = { pid: p.pid, name: p.name };
+    if (activeId && view === "chat") return updateConversation(activeId, (c) => ({ ...c, peer }));
+    const id = newId();
+    setConversations((prev) => [{ id, title: p.name, messages: [], createdAt: Date.now(), peer }, ...prev]);
+    openChat(id);
+  };
+  const sendToPeer = async (convId: string, peer: { pid: number; name: string }, text: string) => {
+    const msgId = newId();
+    updateConversation(convId, (c) => ({ ...c, messages: [...c.messages, { role: "user", content: text, peer: { name: peer.name, dir: "out", status: "sending", msgId } }] }));
+    const title = conversations.find((c) => c.id === convId)?.title ?? "";
+    const patch = (status: string, realId?: string) =>
+      updateConversation(convId, (c) => ({
+        ...c,
+        messages: c.messages.map((m) => (m.peer?.msgId === msgId ? { ...m, peer: { ...m.peer!, status, msgId: realId ?? msgId } } : m)),
+      }));
+    try {
+      const realId = await invoke<string>("peer_send", { pid: peer.pid, text, fromName: `Alter · ${title}` });
+      patch("sent", realId);
+    } catch (e) {
+      patch(`failed · ${String(e)}`);
+    }
+  };
   // Ghost-text autocomplete: complete from a recent message that starts with the current input.
   const ghost = (() => {
     const val = input;
@@ -1824,6 +1904,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                           {m.content}
                         </div>
                       )}
+                      {m.peer && (
+                        <p className="mt-1 text-right text-[11px] text-[var(--txt-faint)]">
+                          → {m.peer.name}{m.peer.status ? ` · ${m.peer.status}` : ""}
+                        </p>
+                      )}
                       <div className="flex justify-end gap-3">
                         <button
                           onClick={() => branchFrom(i)}
@@ -1845,6 +1930,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 ) : (
                   <div key={i} className="group animate-fade-up">
                     <div className="min-w-0">
+                      {m.peer && <p className="mb-1 text-[11px] text-[var(--txt-faint)]">From {m.peer.name}</p>}
                       {m.content ? (
                         <Markdown text={m.content} />
                       ) : activeStreaming ? (
@@ -1915,6 +2001,18 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 {(activeId && convInfos[activeId]) || info}
               </p>
             )}
+            {active?.peer && (
+              <div className="mb-2 flex w-fit items-center gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1 text-[11px] text-[var(--txt-dim)]">
+                <span>→ {active.peer.name}</span>
+                <button
+                  onClick={() => updateConversation(active.id, (c) => ({ ...c, peer: undefined }))}
+                  className="text-[var(--txt-faint)] hover:text-[var(--txt)]"
+                  title="Stop sending to this session and talk to the model again"
+                >
+                  ×
+                </button>
+              </div>
+            )}
             <PrChips
               onFixComments={(pr) =>
                 send({
@@ -1970,6 +2068,27 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   e.target.value = "";
                 }}
               />
+              {showPeers && (
+                <div className="mx-2 mt-2 rounded-xl border border-[var(--bd)] bg-[var(--modal)] shadow-xl overflow-hidden">
+                  {peerMatches.map((p, k) => (
+                    <button
+                      key={p.pid}
+                      onMouseEnter={() => setPeerIdx(k)}
+                      onClick={() => bindPeer(p)}
+                      className={`flex w-full items-center gap-3 px-3 py-1.5 text-left transition-colors ${
+                        k === peerIdx % peerMatches.length ? "bg-[var(--panel-2)]" : "hover:bg-[var(--panel)]"
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.status === "busy" ? "bg-amber-400" : "bg-green-500"}`} />
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--txt)]">{p.name || `session ${p.pid}`}</span>
+                      <span className="truncate font-mono text-[11px] text-[var(--txt-faint)]">{p.cwd.replace(/^\/Users\/[^/]+/, "~")}</span>
+                    </button>
+                  ))}
+                  {!peerMatches.length && (
+                    <p className="px-3 py-2 text-[13px] text-[var(--txt-faint)]">No running Claude Code session matches.</p>
+                  )}
+                </div>
+              )}
               {slashMatches.length > 0 && (
                 <div className="mx-2 mt-2 rounded-xl border border-[var(--bd)] bg-[var(--modal)] shadow-xl overflow-hidden">
                   {slashMatches.map((c, k) => (
@@ -2008,6 +2127,24 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 }}
                 onPaste={handlePaste}
                 onKeyDown={(e) => {
+                  if (showPeers) {
+                    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                      e.preventDefault();
+                      const n = Math.max(peerMatches.length, 1);
+                      setPeerIdx((i) => (e.key === "ArrowDown" ? i + 1 : i - 1 + n) % n);
+                      return;
+                    }
+                    if ((e.key === "Enter" || e.key === "Tab") && peerMatches.length) {
+                      e.preventDefault();
+                      bindPeer(peerMatches[peerIdx % peerMatches.length]);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setInput("");
+                      return;
+                    }
+                  }
                   if (ghost && e.key === "Tab" && slashMatches.length === 0) {
                     e.preventDefault();
                     setInput((v) => v + ghost);
@@ -2046,7 +2183,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   }
                 }}
                 rows={1}
-                placeholder="Type / for commands"
+                placeholder={active?.peer ? `Message ${active.peer.name}` : "Type / for commands, @ for a Claude Code session"}
                 className="relative w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[13px] leading-[1.5] focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               </div>

@@ -697,7 +697,7 @@ fn agent_scratchpad(session_id: &str) -> Option<std::path::PathBuf> {
     Some(dir)
 }
 
-fn gen_token() -> String {
+pub fn gen_token() -> String {
     let mut buf = [0u8; 16];
     let ok = std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut buf))
