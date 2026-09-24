@@ -6,6 +6,7 @@ import { isClaudeCodeUrl, MemoryItem, Project, PROVIDER_PRESETS, Settings, newId
 import { testConnection } from "../lib/api";
 import { Chevron } from "./Icons";
 import ProjectsEditor from "./ProjectsEditor";
+import Switch from "./Switch";
 
 type SettingsTab = "connections" | "projects" | "memory" | "agents" | "bridge";
 
@@ -320,30 +321,12 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
               )}
             </div>
             <div className="flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-              <button
-                onClick={toggleTheme}
-                className={`h-4 w-8 rounded-full transition-colors ${light ? "bg-indigo-600" : "bg-zinc-700"}`}
-              >
-                <span
-                  className={`block h-3 w-3 rounded-full bg-white transition-transform mt-0.5 ${
-                    light ? "translate-x-4" : "translate-x-1"
-                  }`}
-                />
-              </button>
+              <Switch on={light} onChange={toggleTheme} />
               <p className="text-sm text-[var(--txt)]">Light theme</p>
             </div>
             {autostart !== null && (
               <div className="flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-                <button
-                  onClick={toggleAutostart}
-                  className={`h-4 w-8 rounded-full transition-colors ${autostart ? "bg-indigo-600" : "bg-zinc-700"}`}
-                >
-                  <span
-                    className={`block h-3 w-3 rounded-full bg-white transition-transform mt-0.5 ${
-                      autostart ? "translate-x-4" : "translate-x-1"
-                    }`}
-                  />
-                </button>
+                <Switch on={!!autostart} onChange={() => void toggleAutostart()} />
                 <div>
                   <p className="text-sm text-[var(--txt)]">Launch at login</p>
                   <p className="text-[11px] text-[var(--txt-faint)]">Start Alter in the background so routines keep running.</p>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Routine, Schedule, Connection, newId, scheduleLabel } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import { Chevron } from "./Icons";
+import Switch from "./Switch";
 
 interface Props {
   routines: Routine[];
@@ -163,13 +164,7 @@ export default function RoutinesPage({
               {routines.map((r) => (
                 <div key={r.id} className="rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-3 py-2.5">
                   <div className="flex items-center gap-2.5">
-                    <button
-                      onClick={() => toggle(r.id)}
-                      className={`h-4 w-8 rounded-full transition-colors flex-none ${r.enabled ? "bg-indigo-600" : "bg-zinc-700"}`}
-                      title={r.enabled ? "Enabled" : "Paused"}
-                    >
-                      <span className={`block h-3 w-3 rounded-full bg-white transition-transform mt-0.5 ${r.enabled ? "translate-x-4" : "translate-x-1"}`} />
-                    </button>
+                    <Switch on={r.enabled} onChange={() => toggle(r.id)} title={r.enabled ? "Enabled" : "Paused"} />
                     <span className="text-[13px] font-medium flex-1 truncate">{r.name}</span>
                     <span className="text-[11px] text-[var(--txt-faint)]">{scheduleLabel(r)}</span>
                     <button onClick={() => onRunNow(r)} className="text-[11px] text-indigo-400 hover:text-indigo-300">Run now</button>
