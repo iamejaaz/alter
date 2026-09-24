@@ -817,51 +817,85 @@ function renderFooter() {
 
 // Show the exact text that will be posted, editable, with the post actions — so
 // clicking Post/Request always shows what goes to the PR first.
+// The 📍/💬 markup stays internal: the preview is one card per inline comment,
+// headed by its path:line, plus one card for the review body. Posting serialises
+// the cards back into the markup the poster already understands.
+function serializeDraft(d) {
+  const parts = d.comments.map((c) => `📍 ${c.path}:${c.line}\n${(c.body || "").trim()}`);
+  if ((d.body || "").trim()) parts.push(`💬\n${d.body.trim()}`);
+  return parts.join("\n\n");
+}
+
 function renderPostPreview(text, suggested) {
   const foot = document.querySelector("#alter-panel-foot");
   const ev = suggested || (session && extractEvent(session.review)) || "comment";
+  const d = parseDraft(text);
   foot.innerHTML = `
-    <div class="alter-preview-label">Only this posts. Each 📍 path:line block goes inline on that line, the rest is the review body. Suggested: ${escapeHtml(ev.replace("_", " "))}.</div>
-    <textarea id="alter-post-text" class="alter-post-text" rows="6"></textarea>
+    <div id="alter-cards"></div>
     <div id="alter-foot-btns">
       <button data-ev="approve" class="${ev === "approve" ? "alter-primary" : ""}">Approve</button>
       <button data-ev="request_changes" class="${ev === "request_changes" ? "alter-primary" : ""}">Request changes</button>
       <button data-ev="comment" class="${ev === "comment" ? "alter-primary" : ""}">Comment</button>
     </div>
     <div id="alter-foot-btns2">
-      ${botLogin ? `<button id="alter-post-bot">Post as ${botLogin}</button>` : ""}
+      ${botLogin ? `<button id="alter-post-bot">Post as ${escapeHtml(botLogin)}</button>` : ""}
       <button id="alter-back" class="alter-ghost">Back</button>
     </div>
     <div id="alter-foot-note"></div>`;
-  const ta = foot.querySelector("#alter-post-text");
-  ta.value = text || "";
+  const cards = foot.querySelector("#alter-cards");
   const noteEl = foot.querySelector("#alter-foot-note");
   const btn = (ev) => foot.querySelector(`#alter-foot-btns button[data-ev="${ev}"]`);
+  const current = () => serializeDraft(d);
   // Only the events that match the draft are offered: approving while it carries
   // asks contradicts itself, and requesting changes with nothing to ask is empty.
   // Comment stays in both, because "No changes requested" is posted as a comment.
   const syncEvents = () => {
-    const { body, comments } = parseDraft(ta.value);
-    const empty = !body.trim() && !comments.length;
-    const asks = !empty && (comments.length > 0 || !/^no changes requested\.?/i.test(body.trim()));
+    const body = (d.body || "").trim();
+    const empty = !body && !d.comments.length;
+    const asks = !empty && (d.comments.length > 0 || !/^no changes requested\.?/i.test(body));
     btn("approve").hidden = asks;
     btn("request_changes").hidden = !asks;
     btn("comment").disabled = empty;
+    if (session) session.draft = current();
+    noteEl.textContent = empty ? "Nothing to post yet. Write the review body below, or ask for a draft comment." : "";
   };
-  const warnAnchors = () => {
+  const draw = () => {
+    cards.innerHTML = "";
+    d.comments.forEach((c, i) => {
+      const card = document.createElement("div");
+      card.className = "alter-card";
+      card.innerHTML = `<div class="alter-card-head"><span class="alter-card-anchor">${escapeHtml(c.path)}:${c.line}</span><span class="alter-card-hint">inline</span><button class="alter-card-x" title="Drop this comment">×</button></div><textarea class="alter-post-text" rows="3"></textarea>`;
+      const ta = card.querySelector("textarea");
+      ta.value = c.body || "";
+      ta.addEventListener("input", () => {
+        c.body = ta.value;
+        syncEvents();
+      });
+      card.querySelector(".alter-card-x").addEventListener("click", () => {
+        d.comments.splice(i, 1);
+        draw();
+      });
+      cards.appendChild(card);
+    });
+    const bodyCard = document.createElement("div");
+    bodyCard.className = "alter-card";
+    bodyCard.innerHTML = `<div class="alter-card-head"><span class="alter-card-anchor">Review body</span><span class="alter-card-hint">${d.comments.length ? "posted with the inline comments" : "the whole review"}</span></div><textarea class="alter-post-text" rows="4"></textarea>`;
+    const bta = bodyCard.querySelector("textarea");
+    bta.value = d.body || "";
+    bta.addEventListener("input", () => {
+      d.body = bta.value;
+      syncEvents();
+    });
+    cards.appendChild(bodyCard);
     syncEvents();
-    if (!ta.value.trim()) noteEl.textContent = "No draft comment in this review — write the comment you want to post.";
-    else if (!parseDraft(ta.value).comments.length) noteEl.innerHTML = `<span class="alter-err">No 📍 path:line blocks — the whole text would post as one review body with no inline comments.</span>`;
-    else noteEl.textContent = "";
   };
-  warnAnchors();
-  ta.addEventListener("input", warnAnchors);
+  draw();
   foot.querySelector("#alter-back").addEventListener("click", renderFooter);
   foot.querySelectorAll("#alter-foot-btns button[data-ev]").forEach((b) =>
-    b.addEventListener("click", () => postToGh(b.dataset.ev, ta.value, b))
+    b.addEventListener("click", () => postToGh(b.dataset.ev, current(), b))
   );
   const bot = foot.querySelector("#alter-post-bot");
-  if (bot) bot.addEventListener("click", () => postAsBot(ta.value, bot));
+  if (bot) bot.addEventListener("click", () => postAsBot(current(), bot));
 }
 
 // Same text, posted by the bot: the bridge dispatches the repo's post-review

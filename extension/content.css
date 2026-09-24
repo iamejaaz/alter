@@ -271,10 +271,43 @@
   border-color: transparent !important;
   color: #a1a1aa !important;
 }
-.alter-preview-label {
+.alter-card {
+  border: 1px solid #26262c;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.alter-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: #1c1c22;
   font-size: 11px;
-  color: #a1a1aa;
-  margin-bottom: 6px;
+}
+.alter-card-anchor {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #e4e4e7;
+}
+.alter-card-hint {
+  color: #71717a;
+  margin-left: auto;
+}
+.alter-card-x {
+  background: transparent;
+  border: 0;
+  color: #71717a;
+  cursor: pointer;
+  font: inherit;
+  padding: 0 2px;
+}
+.alter-card-x:hover {
+  color: #e4e4e7;
+}
+.alter-card .alter-post-text {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
 }
 .alter-post-text {
   width: 100%;
