@@ -500,7 +500,22 @@ fn spawn_agent_run(
                 }
                 let v: serde_json::Value = match serde_json::from_str(&line) {
                     Ok(v) => v,
-                    Err(_) => continue,
+                    Err(_) => {
+                        // Claude Code prints its auth failures as plain text and then
+                        // exits 0 with no result event, which would otherwise show up
+                        // as a mystery empty reply.
+                        let l = line.to_lowercase();
+                        if l.contains("failed to authenticate") || l.contains("oauth session expired") || l.contains("please run /login") {
+                            finish_progress(
+                                &progress,
+                                &run_id,
+                                None,
+                                Some("Claude Code is signed out — run `claude` in a terminal and sign in, then try again.".to_string()),
+                            );
+                            break;
+                        }
+                        continue;
+                    }
                 };
                 if let Some(sid) = v["session_id"].as_str() {
                     let mut map = progress.lock().unwrap_or_else(|e| e.into_inner());

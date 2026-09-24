@@ -41,6 +41,23 @@ const CI_LABEL: Record<string, string> = {
   none: "No checks",
 };
 
+// A closed PR has no checks left to watch and nothing to fix, so the chip
+// switches to a single state word on a tinted row, the way Claude shows it.
+const CLOSED_STYLE: Record<string, { row: string; ink: string; dim: string; label: string }> = {
+  MERGED: {
+    row: "border-violet-500/25 bg-violet-500/12",
+    ink: "text-violet-300",
+    dim: "text-violet-300/60",
+    label: "Merged",
+  },
+  CLOSED: {
+    row: "border-red-500/25 bg-red-500/10",
+    ink: "text-red-300",
+    dim: "text-red-300/60",
+    label: "Closed",
+  },
+};
+
 const loadWatch = (): Record<string, Watch> => {
   try {
     return JSON.parse(localStorage.getItem("alter.prWatch") || "{}");
@@ -121,28 +138,33 @@ export default function PrChips({
     <div className="mb-2 flex flex-col gap-1.5">
       {visible.map((p) => {
         const w = watch[p.key] ?? {};
+        const done = CLOSED_STYLE[p.state];
         return (
           <div
             key={p.key}
-            className="group relative flex items-center gap-2.5 rounded-[10px] border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1.5 text-[11px]"
+            className={`group relative flex items-center gap-2.5 rounded-[10px] border px-2.5 py-1.5 text-[11px] ${
+              done ? done.row : "border-[var(--bd-soft)] bg-[var(--panel)]"
+            }`}
           >
             <button
               onClick={() => void invoke("open_external", { url: p.url }).catch(() => {})}
               className="flex min-w-0 flex-1 items-center gap-3 text-left"
               title={p.title}
             >
-              <span className={p.state === "MERGED" ? "text-violet-400" : p.isDraft ? "text-[var(--txt-faint)]" : "text-green-400"}>
-                ⑃
-              </span>
-              <span className="font-semibold tabular-nums text-[var(--txt)]">#{p.number}</span>
-              <span className="text-[var(--txt-faint)]">{p.repo.split("/")[1]}</span>
-              <span className="truncate text-[var(--txt-dim)]">{p.branch}</span>
+              <span className={done ? done.ink : p.isDraft ? "text-[var(--txt-faint)]" : "text-green-400"}>⑃</span>
+              <span className={`font-semibold tabular-nums ${done ? done.ink : "text-[var(--txt)]"}`}>#{p.number}</span>
+              <span className={done ? done.dim : "text-[var(--txt-faint)]"}>{p.repo.split("/")[1]}</span>
+              <span className={`truncate ${done ? done.ink : "text-[var(--txt-dim)]"}`}>{p.branch}</span>
             </button>
-            <span className="shrink-0 rounded bg-[var(--composer)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
-              <span className="text-green-400">+{p.additions}</span>{" "}
-              <span className="text-red-400">−{p.deletions}</span>
-            </span>
-            <button
+            {done ? (
+              <span className={`shrink-0 ${done.ink}`}>{done.label}</span>
+            ) : (
+              <span className="shrink-0 rounded bg-[var(--composer)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
+                <span className="text-green-400">+{p.additions}</span>{" "}
+                <span className="text-red-400">−{p.deletions}</span>
+              </span>
+            )}
+            {!done && <button
               onClick={(e) => {
                 e.stopPropagation();
                 setOpen(open === p.key ? null : p.key);
@@ -153,10 +175,10 @@ export default function PrChips({
               <span className={`h-1.5 w-1.5 rounded-full ${CI_DOT[p.ci]}`} />
               CI
               <span className="text-[9px] text-[var(--txt-faint)]">▾</span>
-            </button>
+            </button>}
             <button
               onClick={() => onDismiss(p.key)}
-              className="shrink-0 text-[var(--txt-faint)] transition-colors hover:text-[var(--txt)]"
+              className={`shrink-0 transition-colors ${done ? `${done.dim} hover:${done.ink}` : "text-[var(--txt-faint)] hover:text-[var(--txt)]"}`}
               title="Hide"
             >
               ×
