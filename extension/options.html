@@ -50,7 +50,7 @@
 
       <div class="card">
         <h2>Connection</h2>
-        <label>Pairing token <span class="hint">(Alter → Settings → Browser bridge)</span></label>
+        <label>Pairing token <span class="hint">(Alter → Settings → Browser extension)</span></label>
         <div class="row">
           <input id="token" type="password" placeholder="paste token" />
           <button id="save" class="ghost">Save</button>
@@ -77,20 +77,28 @@
       </div>
 
       <div class="card">
-        <h2>Sites</h2>
+        <h2>GitHub</h2>
+        <label class="check">
+          <input id="auto-review" type="checkbox" />
+          <span>Auto-review when someone requests my review or assigns me a PR <span class="hint">(watches your GitHub notifications every minute; skips PRs already reviewed by you or the bot)</span></span>
+        </label>
+        <label class="check">
+          <input id="auto-review-post" type="checkbox" checked />
+          <span>Post the finished review as the bot automatically <span class="hint">(needs a bot account in Alter → Settings → Browser extension; off = only notify, you post from the PR page)</span></span>
+        </label>
+      </div>
+
+      <div class="card">
+        <h2>Helpdesk</h2>
         <label>Helpdesk site <span class="hint">(Frappe Helpdesk URL; default support.frappe.io)</span></label>
         <div class="row">
           <input id="helpdesk-site" placeholder="https://support.example.com" />
           <button id="helpdesk-save" class="ghost">Enable</button>
         </div>
-        <label class="check">
-          <input id="auto-review" type="checkbox" />
-          <span>Auto-review when someone requests my review or assigns me a PR <span class="hint">(watches your GitHub notifications every minute; skips PRs you or frappe-pr-bot already reviewed)</span></span>
-        </label>
-        <label class="check">
-          <input id="auto-review-post" type="checkbox" checked />
-          <span>Post the finished review as the bot automatically <span class="hint">(needs a bot account in Alter → Settings → Agents; off = only notify, you post from the PR page)</span></span>
-        </label>
+      </div>
+
+      <div class="card">
+        <h2>Grammar</h2>
         <label class="check">
           <input id="grammar-everywhere" type="checkbox" checked />
           <span>Show the grammar pill on every site <span class="hint">(off = GitHub + helpdesk only; right-click works everywhere)</span></span>
