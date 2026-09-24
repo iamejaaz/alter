@@ -135,18 +135,19 @@ export default function RoutinesPage({
   const toggleDay = (day: number) =>
     setDraft((d) => ({ ...d, days: d.days.includes(day) ? d.days.filter((x) => x !== day) : [...d.days, day] }));
 
-  const input = "w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500";
+  const input = "w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2.5 py-1.5 text-[13px] focus:outline-none focus:border-indigo-500";
+  const label = "text-[11px] text-[var(--txt-dim)]";
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col bg-[var(--bg)]">
-      <header className="flex items-center gap-2 px-6 py-4 border-b border-[var(--bd-soft)]">
+      <header className="flex min-h-12 items-center gap-3 px-5 border-b border-[var(--bd-soft)]">
         <button onClick={creating ? () => setCreating(false) : onBack} className="text-[var(--txt-faint)] hover:text-[var(--txt)] text-sm">
           ←
         </button>
-        <h1 className="text-sm font-semibold">Routines{creating ? " / " : ""}</h1>
-        {creating && <span className="text-sm text-[var(--txt-dim)]">{draft.id ? "Edit" : "New routine"}</span>}
+        <h1 className="text-[13px] font-semibold">Routines{creating ? " / " : ""}</h1>
+        {creating && <span className="text-[13px] text-[var(--txt-dim)]">{draft.id ? "Edit" : "New routine"}</span>}
         {!creating && (
-          <button onClick={openNew} className="ml-auto rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm font-medium">
+          <button onClick={openNew} className="ml-auto rounded-lg bg-indigo-600 hover:bg-indigo-500 px-2.5 py-1 text-[13px] font-medium">
             New routine
           </button>
         )}
@@ -157,11 +158,11 @@ export default function RoutinesPage({
           {!creating ? (
             <div className="space-y-2">
               {routines.length === 0 && (
-                <p className="text-sm text-[var(--txt-faint)]">No routines yet. Create one — or just tell Alter in chat, e.g. “every weekday at 9am, summarize my open support tickets.”</p>
+                <p className="text-[13px] text-[var(--txt-faint)]">No routines yet. Create one — or just tell Alter in chat, e.g. “every weekday at 9am, summarize my open support tickets.”</p>
               )}
               {routines.map((r) => (
-                <div key={r.id} className="rounded-xl border border-[var(--bd-soft)] bg-[var(--panel)] px-4 py-3">
-                  <div className="flex items-center gap-3">
+                <div key={r.id} className="rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-3 py-2.5">
+                  <div className="flex items-center gap-2.5">
                     <button
                       onClick={() => toggle(r.id)}
                       className={`h-4 w-8 rounded-full transition-colors flex-none ${r.enabled ? "bg-indigo-600" : "bg-zinc-700"}`}
@@ -169,22 +170,22 @@ export default function RoutinesPage({
                     >
                       <span className={`block h-3 w-3 rounded-full bg-white transition-transform mt-0.5 ${r.enabled ? "translate-x-4" : "translate-x-1"}`} />
                     </button>
-                    <span className="text-sm font-medium flex-1 truncate">{r.name}</span>
+                    <span className="text-[13px] font-medium flex-1 truncate">{r.name}</span>
                     <span className="text-[11px] text-[var(--txt-faint)]">{scheduleLabel(r)}</span>
                     <button onClick={() => onRunNow(r)} className="text-[11px] text-indigo-400 hover:text-indigo-300">Run now</button>
                     <button onClick={() => openEdit(r)} className="text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]">Edit</button>
-                    <button onClick={() => remove(r)} className="text-[var(--txt-faint)] hover:text-[var(--txt)]">×</button>
+                    <button onClick={() => remove(r)} className="text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)]">×</button>
                   </div>
-                  <p className="mt-1.5 text-xs text-[var(--txt-dim)] line-clamp-2">{r.prompt}</p>
-                  {r.lastRun && <p className="mt-1 text-[10px] text-[var(--txt-faint)]">last run {new Date(r.lastRun).toLocaleString()}</p>}
+                  <p className="mt-1 text-[12px] text-[var(--txt-dim)] line-clamp-2">{r.prompt}</p>
+                  {r.lastRun && <p className="mt-0.5 text-[10px] text-[var(--txt-faint)]">last run {new Date(r.lastRun).toLocaleString()}</p>}
                 </div>
               ))}
             </div>
           ) : (
-            <div className="space-y-5">
-              <div className="rounded-xl border border-dashed border-[var(--bd)] p-4">
-                <label className="text-xs text-[var(--txt-dim)]">Describe it in plain English</label>
-                <div className="flex gap-2 mt-2">
+            <div className="space-y-4">
+              <div className="rounded-lg border border-dashed border-[var(--bd)] p-3">
+                <label className={label}>Describe it in plain English</label>
+                <div className="flex gap-2 mt-1.5">
                   <input
                     value={desc}
                     onChange={(e) => setDesc(e.target.value)}
@@ -195,20 +196,20 @@ export default function RoutinesPage({
                   <button
                     onClick={generate}
                     disabled={generating || !desc.trim()}
-                    className="rounded-lg bg-[var(--panel)] border border-[var(--bd)] px-4 text-sm font-medium hover:bg-[var(--input)] disabled:opacity-50 whitespace-nowrap"
+                    className="rounded-lg bg-[var(--panel)] border border-[var(--bd)] px-3 text-[13px] font-medium hover:bg-[var(--input)] disabled:opacity-50 whitespace-nowrap"
                   >
                     {generating ? "Generating…" : "Generate"}
                   </button>
                 </div>
-                {genError && <p className="mt-2 text-xs text-red-400">{genError}</p>}
+                {genError && <p className="mt-2 text-[11px] text-red-400">{genError}</p>}
               </div>
 
               <div>
-                <label className="text-xs text-[var(--txt-dim)]">Name</label>
+                <label className={label}>Name</label>
                 <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Daily ticket digest" className={`${input} mt-1`} />
               </div>
               <div>
-                <label className="text-xs text-[var(--txt-dim)]">Instructions</label>
+                <label className={label}>Instructions</label>
                 <textarea
                   value={draft.prompt}
                   onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
@@ -219,40 +220,40 @@ export default function RoutinesPage({
               </div>
 
               <div>
-                <label className="text-xs text-[var(--txt-dim)]">Schedule</label>
-                <div className="mt-1 flex gap-1 rounded-lg bg-[var(--panel)] p-1 w-fit">
+                <label className={label}>Schedule</label>
+                <div className="mt-1 flex gap-1 rounded-lg bg-[var(--panel)] p-0.5 w-fit">
                   {(["interval", "daily", "weekly"] as const).map((k) => (
                     <button
                       key={k}
                       onClick={() => setDraft({ ...draft, kind: k })}
-                      className={`rounded-md px-3 py-1 text-xs capitalize ${draft.kind === k ? "bg-indigo-600 text-white" : "text-[var(--txt-dim)] hover:text-[var(--txt)]"}`}
+                      className={`rounded-md px-2.5 py-1 text-[12px] capitalize ${draft.kind === k ? "bg-indigo-600 text-white" : "text-[var(--txt-dim)] hover:text-[var(--txt)]"}`}
                     >
                       {k}
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 flex items-center gap-2 text-sm">
+                <div className="mt-2 flex items-center gap-2 text-[13px]">
                   {draft.kind === "interval" && (
                     <>
-                      <span className="text-[var(--txt-dim)] text-xs">Every</span>
+                      <span className={label}>Every</span>
                       <input
                         type="number"
                         min={1}
                         value={draft.everyMinutes}
                         onChange={(e) => setDraft({ ...draft, everyMinutes: Math.max(1, Number(e.target.value)) })}
-                        className="w-20 rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5"
+                        className="w-20 rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2 py-1"
                       />
-                      <span className="text-[var(--txt-dim)] text-xs">minutes</span>
+                      <span className={label}>minutes</span>
                     </>
                   )}
                   {draft.kind !== "interval" && (
                     <>
-                      <span className="text-[var(--txt-dim)] text-xs">At</span>
+                      <span className={label}>At</span>
                       <input
                         type="time"
                         value={draft.time}
                         onChange={(e) => setDraft({ ...draft, time: e.target.value })}
-                        className="rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5"
+                        className="rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2 py-1"
                       />
                     </>
                   )}
@@ -263,7 +264,7 @@ export default function RoutinesPage({
                       <button
                         key={i}
                         onClick={() => toggleDay(i)}
-                        className={`rounded-md px-2 py-1 text-xs ${draft.days.includes(i) ? "bg-indigo-600 text-white" : "bg-[var(--panel)] text-[var(--txt-dim)] hover:text-[var(--txt)]"}`}
+                        className={`rounded-md px-2 py-0.5 text-[12px] ${draft.days.includes(i) ? "bg-indigo-600 text-white" : "bg-[var(--panel)] text-[var(--txt-dim)] hover:text-[var(--txt)]"}`}
                       >
                         {d}
                       </button>
@@ -274,7 +275,7 @@ export default function RoutinesPage({
 
               {connections.length > 0 && (
                 <div>
-                  <label className="text-xs text-[var(--txt-dim)]">Run on</label>
+                  <label className={label}>Run on</label>
                   <div className="relative mt-1">
                     <select
                       value={draft.connectionId}
@@ -291,8 +292,8 @@ export default function RoutinesPage({
               )}
 
               <div className="flex items-center gap-2 pt-1">
-                <button onClick={() => setCreating(false)} className="rounded-lg px-3 py-2 text-sm text-[var(--txt-dim)] hover:text-[var(--txt)]">Cancel</button>
-                <button onClick={save} disabled={!draft.name.trim() || !draft.prompt.trim()} className="ml-auto rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium disabled:opacity-50">
+                <button onClick={() => setCreating(false)} className="rounded-lg px-3 py-1.5 text-[13px] text-[var(--txt-dim)] hover:text-[var(--txt)]">Cancel</button>
+                <button onClick={save} disabled={!draft.name.trim() || !draft.prompt.trim()} className="ml-auto rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-[13px] font-medium disabled:opacity-50">
                   {draft.id ? "Save changes" : "Create routine"}
                 </button>
               </div>
