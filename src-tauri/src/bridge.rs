@@ -158,8 +158,10 @@ fn agent_allowed_tools() -> String {
         let ctx = dir.join("context.py");
         t.push(format!("Bash({}:*)", ctx.display()));
         t.push(format!("Bash(python3 {}:*)", ctx.display()));
-        let threads = std::path::Path::new(&home).join(".claude/skills/frappe-pr-review/scripts/pr-threads.sh");
-        t.push(format!("Bash({}:*)", threads.display()));
+        let review = std::path::Path::new(&home).join(".claude/skills/frappe-pr-review/scripts");
+        for name in ["pr-threads.sh", "where.sh"] {
+            t.push(format!("Bash({}:*)", review.join(name).display()));
+        }
     }
     t.join(" ")
 }
@@ -204,6 +206,7 @@ fn verify_allowed_tools() -> String {
         for name in ["repro.sh", "across-versions.sh", "find-code.sh"] {
             t.push(format!("Bash({}:*)", dir.join(name).display()));
         }
+        t.push(format!("Bash({}:*)", std::path::Path::new(&home).join(".claude/skills/frappe-pr-review/scripts/where.sh").display()));
     }
     t.join(" ")
 }
@@ -224,6 +227,7 @@ fn pr_allowed_tools() -> String {
         for name in ["repro.sh", "across-versions.sh", "find-code.sh"] {
             t.push(format!("Bash({}:*)", dir.join(name).display()));
         }
+        t.push(format!("Bash({}:*)", std::path::Path::new(&home).join(".claude/skills/frappe-pr-review/scripts/where.sh").display()));
     }
     t.join(" ")
 }
@@ -251,6 +255,21 @@ fn pr_push_allowed_tools() -> String {
 
 // Where browser-triggered agents run: Alter → Settings → Agent working folder
 // (exported as ALTER_AGENT_WORKDIR), else the home directory.
+// Who posts the reviews, and where to look for replies. Both are settings, not
+// constants: another user runs a different bot account on different repos.
+fn pr_bot() -> String {
+    std::env::var("ALTER_PR_BOT").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "frappe-pr-bot".into())
+}
+
+fn followup_repos() -> Vec<String> {
+    std::env::var("ALTER_PR_REPOS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|r| r.trim().to_string())
+        .filter(|r| r.contains('/'))
+        .collect()
+}
+
 fn agent_workdir() -> String {
     std::env::var("ALTER_AGENT_WORKDIR")
         .ok()
@@ -620,6 +639,8 @@ pub fn bridge_set_repro_root(
     #[allow(non_snake_case)] frappeApiKey: String,
     #[allow(non_snake_case)] frappeApiSecret: String,
     #[allow(non_snake_case)] agentWorkdir: String,
+    #[allow(non_snake_case)] prBot: String,
+    #[allow(non_snake_case)] prRepos: String,
 ) {
     // Set every repro var on the whole process env so in-process spawns (Alter
     // chat's claude_code, the bridge's agents) inherit them for free. The
@@ -641,6 +662,8 @@ pub fn bridge_set_repro_root(
     set("FRAPPE_SITE", &frappeSite);
     set("FRAPPE_API_KEY", &frappeApiKey);
     set("FRAPPE_API_SECRET", &frappeApiSecret);
+    set("ALTER_PR_BOT", prBot.trim());
+    set("ALTER_PR_REPOS", prRepos.trim());
     if agentWorkdir.trim().is_empty() {
         std::env::remove_var("ALTER_AGENT_WORKDIR");
     } else {
@@ -1009,7 +1032,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             }
             let has_root = std::env::var("ALTER_REPRO_ROOT").map(|s| !s.is_empty()).unwrap_or(false);
             let configured = has_root || !versions.is_empty();
-            (200, serde_json::json!({ "configured": configured, "versions": versions }).to_string())
+            (200, serde_json::json!({ "configured": configured, "versions": versions, "bot": pr_bot() }).to_string())
         }
         (tiny_http::Method::Post, "/ticket-context") => {
             #[derive(serde::Deserialize)]
@@ -1196,27 +1219,39 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             }
         }
         (tiny_http::Method::Get, "/bot-replies") => {
-            // Threads on open PRs reviewed by frappe-pr-bot where the last word is a
+            // Threads on open PRs the review bot reviewed, where the last word is a
             // human's, not the bot's or mine: each is a reply the bot still owes.
+            // The search spans every repo the bot reviewed unless Settings names some.
+            let bot = pr_bot();
             let me = std::process::Command::new("gh")
                 .args(["api", "user", "--jq", ".login"])
                 .output()
                 .ok()
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_default();
+            let mut args: Vec<String> = ["search", "prs"].iter().map(|s| s.to_string()).collect();
+            for repo in followup_repos() {
+                args.push("--repo".into());
+                args.push(repo);
+            }
+            for a in ["--state", "open", "--reviewed-by", &bot, "--limit", "50", "--json", "number,title,url,repository", "--jq", ".[]"] {
+                args.push(a.to_string());
+            }
             let prs = std::process::Command::new("gh")
-                .args(["search", "prs", "--repo", "frappe/frappe", "--state", "open", "--reviewed-by", "frappe-pr-bot", "--limit", "50", "--json", "number,title,url", "--jq", ".[]"])
+                .args(&args)
                 .output()
                 .ok()
                 .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
                 .unwrap_or_default();
-            let query = "query($n:Int!){ repository(owner:\"frappe\",name:\"frappe\"){ pullRequest(number:$n){ reviewThreads(first:100){ nodes{ isResolved path line originalLine comments(first:100){ nodes{ databaseId author{login} createdAt url } } } } } } }";
+            let query = "query($o:String!,$r:String!,$n:Int!){ repository(owner:$o,name:$r){ pullRequest(number:$n){ reviewThreads(first:100){ nodes{ isResolved path line originalLine comments(first:100){ nodes{ databaseId author{login} createdAt url } } } } } } }";
             let mut out = Vec::new();
             for line in prs.lines() {
                 let pr: serde_json::Value = match serde_json::from_str(line) { Ok(v) => v, Err(_) => continue };
                 let num = match pr.get("number").and_then(|n| n.as_u64()) { Some(n) => n, None => continue };
+                let full = pr.pointer("/repository/nameWithOwner").and_then(|r| r.as_str()).unwrap_or("").to_string();
+                let (owner, name) = match full.split_once('/') { Some(p) => p, None => continue };
                 let res = std::process::Command::new("gh")
-                    .args(["api", "graphql", "-F", &format!("n={num}"), "-f", &format!("query={query}"), "--jq", ".data.repository.pullRequest.reviewThreads.nodes"])
+                    .args(["api", "graphql", "-F", &format!("o={owner}"), "-F", &format!("r={name}"), "-F", &format!("n={num}"), "-f", &format!("query={query}"), "--jq", ".data.repository.pullRequest.reviewThreads.nodes"])
                     .output();
                 let threads: Vec<serde_json::Value> = res.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok()).unwrap_or_default();
                 let mut pending = Vec::new();
@@ -1225,10 +1260,10 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                         continue;
                     }
                     let comments = t.get("comments").and_then(|c| c.get("nodes")).and_then(|n| n.as_array()).cloned().unwrap_or_default();
-                    let bot_in = comments.iter().any(|c| c.pointer("/author/login").and_then(|a| a.as_str()) == Some("frappe-pr-bot"));
+                    let bot_in = comments.iter().any(|c| c.pointer("/author/login").and_then(|a| a.as_str()) == Some(bot.as_str()));
                     let last = match comments.last() { Some(c) => c, None => continue };
                     let last_author = last.pointer("/author/login").and_then(|a| a.as_str()).unwrap_or("");
-                    if !bot_in || last_author == "frappe-pr-bot" || last_author == me || last_author.ends_with("[bot]") || last_author == "greptile-apps" {
+                    if !bot_in || last_author == bot || last_author == me || last_author.ends_with("[bot]") || last_author == "greptile-apps" {
                         continue;
                     }
                     pending.push(serde_json::json!({
@@ -1243,7 +1278,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 // Pushback also arrives as a plain conversation comment that @-mentions
                 // the bot; those have no review thread, so collect them separately.
                 let convo = std::process::Command::new("gh")
-                    .args(["api", &format!("repos/frappe/frappe/issues/{num}/comments"), "--paginate", "--jq", ".[] | {id, author: .user.login, at: .created_at, url: .html_url, body}"])
+                    .args(["api", &format!("repos/{full}/issues/{num}/comments"), "--paginate", "--jq", ".[] | {id, author: .user.login, at: .created_at, url: .html_url, body}"])
                     .output()
                     .ok()
                     .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
@@ -1251,19 +1286,20 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 let convo: Vec<serde_json::Value> = convo.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
                 let bot_last = convo
                     .iter()
-                    .filter(|c| c.get("author").and_then(|a| a.as_str()) == Some("frappe-pr-bot"))
+                    .filter(|c| c.get("author").and_then(|a| a.as_str()) == Some(bot.as_str()))
                     .filter_map(|c| c.get("at").and_then(|a| a.as_str()))
                     .max()
                     .unwrap_or("")
                     .to_string();
+                let mention = format!("@{bot}");
                 for c in &convo {
                     let author = c.get("author").and_then(|a| a.as_str()).unwrap_or("");
                     let at = c.get("at").and_then(|a| a.as_str()).unwrap_or("");
                     let body = c.get("body").and_then(|b| b.as_str()).unwrap_or("");
-                    if author == "frappe-pr-bot" || author == me || author.ends_with("[bot]") || author == "greptile-apps" {
+                    if author == bot || author == me || author.ends_with("[bot]") || author == "greptile-apps" {
                         continue;
                     }
-                    if !body.contains("@frappe-pr-bot") || at <= bot_last.as_str() {
+                    if !body.contains(&mention) || at <= bot_last.as_str() {
                         continue;
                     }
                     pending.push(serde_json::json!({
@@ -1275,7 +1311,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     }));
                 }
                 if !pending.is_empty() {
-                    out.push(serde_json::json!({ "repo": "frappe/frappe", "num": num, "title": pr.get("title"), "url": pr.get("url"), "threads": pending }));
+                    out.push(serde_json::json!({ "repo": full, "num": num, "title": pr.get("title"), "url": pr.get("url"), "threads": pending }));
                 }
             }
             (200, serde_json::json!(out).to_string())
@@ -1313,7 +1349,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                             rs.iter()
                                 .filter(|r| {
                                     let a = r.get("a").and_then(|x| x.as_str()).unwrap_or("");
-                                    a == me || a == "frappe-pr-bot"
+                                    a == me || a == pr_bot()
                                 })
                                 .filter_map(|r| r.get("at").and_then(|x| x.as_str()).map(str::to_string))
                                 .max()

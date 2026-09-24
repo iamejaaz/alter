@@ -294,7 +294,7 @@ chrome.storage.onChanged.addListener((c) => {
 
 // Auto-review: a "review requested" / "assigned" entry in the GitHub notifications
 // feed starts the same review the panel would, keeps its runId under the PR key
-// so opening the PR page reconnects to it, and posts the result as frappe-pr-bot
+// so opening the PR page reconnects to it, and posts the result as the review bot
 // (or only notifies when auto-post is off).
 const AUTO_ALARM = "alter-auto-review";
 const AUTO_POLL = "alter-auto-poll";
@@ -400,7 +400,7 @@ async function autoPollOnce() {
         const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(review))));
         const post = await bridge("/gh-bot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo, num: prNum, review_b64: b64 }) });
         const what = rec.kind === "reply" ? "Replied" : "Posted";
-        notify("done-" + rec.runId, post.ok ? `${what} as frappe-pr-bot on #${num}` : `${rec.kind === "reply" ? "Reply" : "Review"} ready for #${num}, bot post failed`, post.ok ? verdict : (post.body.error || "").slice(0, 120), rec.url);
+        notify("done-" + rec.runId, post.ok ? `${what} as the review bot on #${num}` : `${rec.kind === "reply" ? "Reply" : "Review"} ready for #${num}, bot post failed`, post.ok ? verdict : (post.body.error || "").slice(0, 120), rec.url);
       } else notify("done-" + rec.runId, `${rec.kind === "reply" ? "Reply" : "Review"} ready for #${num}`, verdict, rec.url);
     }
   }

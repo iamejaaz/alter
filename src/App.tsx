@@ -398,6 +398,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       mariadbPassword: settings.mariadbRootPassword ?? "",
       frappeSite: settings.frappeSite ?? "",
       agentWorkdir: settings.agentWorkdir ?? "",
+      prBot: settings.prBot ?? "",
+      prRepos: settings.prRepos ?? "",
       frappeApiKey: settings.frappeApiKey ?? "",
       frappeApiSecret: settings.frappeApiSecret ?? "",
     }).catch(() => {});
@@ -407,6 +409,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     settings.mariadbRootPassword,
     settings.frappeSite,
     settings.agentWorkdir,
+    settings.prBot,
+    settings.prRepos,
     settings.frappeApiKey,
     settings.frappeApiSecret,
   ]);

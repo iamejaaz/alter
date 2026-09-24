@@ -382,6 +382,26 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
               />
             </div>
             <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
+              <p className="text-sm text-[var(--txt)]">Review bot</p>
+              <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
+                The GitHub account reviews are posted as, and the repos to watch for replies. Leave the repos empty to watch every repo that account reviewed.
+              </p>
+              <div className="space-y-1.5">
+                <input
+                  value={draft.prBot ?? ""}
+                  onChange={(e) => setDraft({ ...draft, prBot: e.target.value })}
+                  placeholder="frappe-pr-bot"
+                  className="w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-indigo-500"
+                />
+                <input
+                  value={draft.prRepos ?? ""}
+                  onChange={(e) => setDraft({ ...draft, prRepos: e.target.value })}
+                  placeholder="frappe/frappe, frappe/erpnext"
+                  className="w-full rounded-md bg-[var(--input)] border border-[var(--bd)] px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+            <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
               <p className="text-sm text-[var(--txt)]">Repro benches</p>
               <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
                 Point each version at an existing bench folder. The support agent reproduces bugs there — develop first, then the customer's version.

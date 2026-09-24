@@ -36,6 +36,9 @@ async function getChecks(parts) {
 
 let session = null;
 let running = false;
+// Who the review gets posted as — whatever account Alter is set up with, not a
+// fixed one. The bridge answers with it; until then, assume the common default.
+let botLogin = "frappe-pr-bot";
 
 // Ignore re-clicks while a review is in flight: a second run() would clear the
 // panel and detach the live block.
@@ -739,6 +742,11 @@ function renderFooter() {
   });
   // Gate Verify on bench: disable it until a repro bench is configured in Alter.
   send({ type: "repro-info" }).then((r) => {
+    if (r && r.ok && r.data && r.data.bot) {
+      botLogin = r.data.bot;
+      const b = foot.querySelector("#alter-post-bot");
+      if (b) b.textContent = `Post as ${botLogin}`;
+    }
     if (!(r && r.ok && r.data && r.data.configured)) {
       verifyBtn.disabled = true;
       verifyBtn.title = "Set up a repro bench in Alter → Settings → Repro benches first";
@@ -773,7 +781,7 @@ function renderPostPreview(text, suggested) {
       <button data-ev="comment" class="${ev === "comment" ? "alter-primary" : ""}">Comment</button>
     </div>
     <div id="alter-foot-btns2">
-      <button id="alter-post-bot">Post as frappe-pr-bot</button>
+      <button id="alter-post-bot">Post as ${botLogin}</button>
       <button id="alter-back" class="alter-ghost">Back</button>
     </div>
     <div id="alter-foot-note"></div>`;
@@ -809,7 +817,7 @@ function renderPostPreview(text, suggested) {
 }
 
 // Same text, posted by the bot: the bridge dispatches the repo's post-review
-// workflow, which posts a COMMENT review under frappe-pr-bot. Never as you.
+// workflow, which posts a COMMENT review under the bot account. Never as you.
 async function postAsBot(text, btn) {
   if (!session) return;
   const note = document.querySelector("#alter-foot-note");
@@ -828,7 +836,7 @@ async function postAsBot(text, btn) {
     resolve.length ? `${resolve.length} thread${resolve.length > 1 ? "s" : ""} resolved` : "",
   ].filter(Boolean);
   const inline = extras.length ? ` with ${extras.join(", ")}` : "";
-  if (!window.confirm(`Post a comment review${inline} to ${dest} as frappe-pr-bot?\n\nThis is public.`)) return;
+  if (!window.confirm(`Post a comment review${inline} to ${dest} as ${botLogin}?\n\nThis is public.`)) return;
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Dispatching…";

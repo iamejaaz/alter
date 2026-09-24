@@ -80,6 +80,8 @@ export interface Settings {
   frappeApiKey?: string;
   frappeApiSecret?: string;
   agentWorkdir?: string; // where browser-triggered agents run (e.g. your bench folder)
+  prBot?: string; // GitHub account the reviews are posted as
+  prRepos?: string; // comma-separated owner/repo to watch for replies; empty = every repo the bot reviewed
 }
 
 export interface MemoryItem {
