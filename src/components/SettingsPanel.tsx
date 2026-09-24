@@ -198,9 +198,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
         </div>
 
         {tab === "projects" && (
-          <div className="h-[60vh]">
-            <ProjectsEditor projects={projects} onChange={onProjectsChange} initialSelectedId={projectsInitialId} />
-          </div>
+          <ProjectsEditor projects={projects} onChange={onProjectsChange} initialSelectedId={projectsInitialId} />
         )}
 
         {tab === "connections" && (
@@ -372,7 +370,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
             <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
               <p className="text-sm text-[var(--txt)]">Agent working folder</p>
               <p className="mb-2 text-[11px] text-[var(--txt-faint)]">
-                Where browser-triggered agents run (PR review, support, prepare fix) — usually your bench folder. Defaults to your home folder.
+                Where browser-triggered agents run (PR review, support, prepare fix) — usually your bench folder. Empty falls back to the develop repro bench below, then your home folder.
               </p>
               <input
                 value={draft.agentWorkdir ?? ""}
