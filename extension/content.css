@@ -329,3 +329,12 @@
 #alter-panel.alter-collapsed .alter-grip {
   display: none;
 }
+.alter-link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: #a5b4fc;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}

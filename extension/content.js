@@ -64,7 +64,7 @@ async function runInner() {
   const { models, claudeModel } = await chrome.storage.local.get(["models", "claudeModel"]);
   const connectionId = models && models.prReview;
   openPanel();
-  if (!connectionId) return setStatus("Pick a model for PR review in the Alter extension settings first.", true);
+  if (!connectionId) return needModel();
 
   setStatus("Reading CI…");
   const checks = await getChecks(parts).catch(() => "");
@@ -570,7 +570,7 @@ async function runIssueFix() {
     openPanel();
     document.querySelector("#alter-panel-title").textContent = "Alter — Fix issue";
     clearBody();
-    if (!connectionId) return setStatus("Pick a model for PR review in the Alter extension settings first.", true);
+    if (!connectionId) return needModel();
     const issue = `${location.origin}/${parts.owner}/${parts.repo}/issues/${parts.num}`;
     session = { parts, issue, connectionId, model: claudeModel || undefined, review: "", draft: "", transcript: [], kind: "issue" };
     appendBlock("user").textContent = `Fix ${parts.owner}/${parts.repo}#${parts.num}`;
@@ -711,6 +711,13 @@ function setStatus(text, isError) {
     ? `<span class="alter-err">${escapeHtml(text)}</span>`
     : escapeHtml(text);
 }
+
+// A missing model is a settings problem, so the message carries the way there.
+function needModel() {
+  const body = document.querySelector("#alter-panel-body");
+  body.innerHTML = `<span class="alter-err">No model picked for PR review yet.</span> <button id="alter-open-options" class="alter-link">Open extension settings</button>`;
+  body.querySelector("#alter-open-options").addEventListener("click", () => send({ type: "open-options" }));
+}
 function appendBlock(cls) {
   const b = document.createElement("div");
   b.className = "alter-msg alter-" + cls;
@@ -745,21 +752,14 @@ function renderFooter() {
   }
   foot.innerHTML = `
     <div id="alter-foot-btns">
-      <button id="alter-draft">✍️ Draft comment</button>
+      <button id="alter-post-review" class="alter-primary">Post review…</button>
       <button id="alter-verify">🔬 Verify on bench</button>
-      <button id="alter-post-review" class="alter-ghost">Post…</button>
     </div>
     <div id="alter-foot-ask">
       <input id="alter-ask" placeholder="Ask a follow-up…" />
       <button id="alter-ask-send">Send</button>
     </div>
     <div id="alter-foot-note"></div>`;
-  foot.querySelector("#alter-draft").addEventListener("click", (e) => {
-    e.target.disabled = true;
-    draftComment().finally(() => {
-      if (e.target.isConnected) e.target.disabled = false;
-    });
-  });
   const verifyBtn = foot.querySelector("#alter-verify");
   verifyBtn.addEventListener("click", (e) => {
     e.target.disabled = true;
@@ -776,7 +776,16 @@ function renderFooter() {
       verifyBtn.textContent = "🔬 Verify on bench — set up a bench";
     }
   });
-  foot.querySelector("#alter-post-review").addEventListener("click", () => renderPostPreview(session.draft || extractDraft(session.review), extractEvent(session.review)));
+  // One way in: the skill's own comments open the preview straight away, and a
+  // review without them gets a draft written first, then the same preview.
+  foot.querySelector("#alter-post-review").addEventListener("click", (e) => {
+    const ready = session.draft || extractDraft(session.review);
+    if (ready) return renderPostPreview(ready, extractEvent(session.review));
+    e.target.disabled = true;
+    draftComment().finally(() => {
+      if (e.target.isConnected) e.target.disabled = false;
+    });
+  });
   const input = foot.querySelector("#alter-ask");
   const go = () => {
     const q = input.value.trim();
