@@ -214,7 +214,7 @@ async function postToGh(event, text, btn) {
   const dest = `${session.parts.owner}/${session.parts.repo}#${session.parts.num}`;
   const kind = event === "request_changes" ? "a 🔴 Request-changes review" : event === "approve" ? "a 🟢 Approve review" : "a comment";
   const inline = comments.length ? ` with ${comments.length} inline comment${comments.length > 1 ? "s" : ""}` : "";
-  if (!window.confirm(`Post ${kind}${inline} to ${dest}?\n\nThis is public and posts as you.`)) return;
+  if (!(await panelConfirm(`Post ${escapeHtml(kind)}${escapeHtml(inline)} to <b>${escapeHtml(dest)}</b> as <b>you</b>. This is public.`))) return;
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Posting…";
@@ -712,6 +712,22 @@ function setStatus(text, isError) {
     : escapeHtml(text);
 }
 
+// The one irreversible step gets its confirm inside the panel, showing what
+// posts, where, and as whom, instead of a browser dialog.
+function panelConfirm(summary) {
+  const note = document.querySelector("#alter-foot-note");
+  if (!note) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    note.innerHTML = `<div class="alter-confirm"><div>${summary}</div><div class="alter-confirm-btns"><button id="alter-confirm-yes">Post</button><button id="alter-confirm-no" class="alter-ghost">Cancel</button></div></div>`;
+    const done = (v) => {
+      note.innerHTML = "";
+      resolve(v);
+    };
+    note.querySelector("#alter-confirm-yes").addEventListener("click", () => done(true));
+    note.querySelector("#alter-confirm-no").addEventListener("click", () => done(false));
+  });
+}
+
 // A missing model is a settings problem, so the message carries the way there.
 function needModel() {
   const body = document.querySelector("#alter-panel-body");
@@ -868,7 +884,7 @@ async function postAsBot(text, btn) {
     resolve.length ? `${resolve.length} thread${resolve.length > 1 ? "s" : ""} resolved` : "",
   ].filter(Boolean);
   const inline = extras.length ? ` with ${extras.join(", ")}` : "";
-  if (!window.confirm(`Post a comment review${inline} to ${dest} as ${botLogin}?\n\nThis is public.`)) return;
+  if (!(await panelConfirm(`Post a comment review${escapeHtml(inline)} to <b>${escapeHtml(dest)}</b> as <b>${escapeHtml(botLogin)}</b>. This is public.`))) return;
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Dispatching…";

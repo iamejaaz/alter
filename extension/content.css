@@ -338,3 +338,27 @@
   cursor: pointer;
   text-decoration: underline;
 }
+.alter-confirm {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #e4e4e7;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.alter-confirm-btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.alter-confirm-btns button {
+  background: #4f46e5;
+  border: 1px solid #4f46e5;
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: 12px/1 inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
