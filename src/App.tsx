@@ -684,7 +684,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const paired = !opts?.text && activeId ? conversations.find((c) => c.id === activeId)?.peer : undefined;
     if (paired && activeId) {
       setInput("");
-      return sendToPeer(activeId, paired, text);
+      setAttachments([]);
+      return sendToPeer(activeId, paired, text, atts);
     }
 
     // "/skill args" runs one of Alter's saved skills: its instructions ride along,
@@ -1578,9 +1579,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     setConversations((prev) => [{ id, title: p.name, messages: [], createdAt: Date.now(), peer }, ...prev]);
     openChat(id);
   };
-  const sendToPeer = async (convId: string, peer: { pid: number; name: string }, text: string) => {
+  const sendToPeer = async (convId: string, peer: { pid: number; name: string }, text: string, atts: Attachment[] = []) => {
     const msgId = newId();
-    updateConversation(convId, (c) => ({ ...c, messages: [...c.messages, { role: "user", content: text, peer: { name: peer.name, dir: "out", status: "sending", msgId } }] }));
+    updateConversation(convId, (c) => ({
+      ...c,
+      messages: [...c.messages, { role: "user", content: text, attachments: atts.length ? atts : undefined, peer: { name: peer.name, dir: "out", status: "sending", msgId } }],
+    }));
+    const files = atts.map((a) => ({ name: a.name, dataUrl: a.kind === "image" ? a.dataUrl : undefined, text: a.kind === "text" ? a.text : undefined }));
     const title = conversations.find((c) => c.id === convId)?.title ?? "";
     const patch = (status: string, realId?: string) =>
       updateConversation(convId, (c) => ({
@@ -1588,7 +1593,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         messages: c.messages.map((m) => (m.peer?.msgId === msgId ? { ...m, peer: { ...m.peer!, status, msgId: realId ?? msgId } } : m)),
       }));
     try {
-      const realId = await invoke<string>("peer_send", { pid: peer.pid, text, fromName: `Alter · ${title}` });
+      const realId = await invoke<string>("peer_send", { pid: peer.pid, text, fromName: `Alter · ${title}`, files });
       patch("sent", realId);
     } catch (e) {
       patch(`failed · ${String(e)}`);

@@ -135,18 +135,63 @@ fn write_frames(sock: &str, frames: &[serde_json::Value]) -> Result<(), String> 
     Ok(())
 }
 
-pub fn send(pid: u32, text: &str, from_name: &str) -> Result<String, String> {
+// A file rides along as a copy in Claude's file-transfer spool, named by its
+// hash, with the hash in the frame so the receiver can verify it before it
+// copies it into its own uploads and prepends @"path" to the message.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerFile {
+    pub name: String,
+    pub data_url: Option<String>,
+    pub text: Option<String>,
+}
+
+fn stage_file(f: &PeerFile) -> Option<serde_json::Value> {
+    let bytes = match (&f.data_url, &f.text) {
+        (Some(url), _) => super::bridge::base64_decode(url.split(",").nth(1)?)?,
+        (None, Some(t)) => t.as_bytes().to_vec(),
+        _ => return None,
+    };
+    let media = f.data_url.as_deref().and_then(|u| u.strip_prefix("data:")).and_then(|u| u.split(';').next()).map(|s| s.to_string());
+    let sha = sha256_hex_bytes(&bytes);
+    let spool = Path::new(&std::env::var("HOME").ok()?).join(".claude/file-transfers");
+    std::fs::create_dir_all(&spool).ok()?;
+    let _ = std::fs::set_permissions(&spool, std::fs::Permissions::from_mode(0o700));
+    let safe: String = f.name.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' }).collect();
+    let path = spool.join(format!("{}-{}-{}", &sha[..8], &super::bridge::gen_token()[..8], safe));
+    std::fs::write(&path, &bytes).ok()?;
+    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    Some(serde_json::json!({
+        "path": path.to_string_lossy(),
+        "file_name": f.name,
+        "file_size": bytes.len(),
+        "sha256": sha,
+        "media_type": media,
+    }))
+}
+
+fn sha256_hex_bytes(b: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(b);
+    format!("{:x}", h.finalize())
+}
+
+pub fn send(pid: u32, text: &str, from_name: &str, files: &[PeerFile]) -> Result<String, String> {
     let (_, v) = read_registry().into_iter().find(|(p, _)| *p == pid).ok_or("that session is gone")?;
     let sock = v["messagingSocketPath"].as_str().ok_or("that session has no inbox")?.to_string();
     let msg_id = super::bridge::gen_token();
-    let frame = serde_json::json!({
+    let staged: Vec<serde_json::Value> = files.iter().filter_map(stage_file).collect();
+    let mut frame = serde_json::json!({
         "type": "user",
-        "message": { "role": "user", "content": text },
+        "message": { "role": "user", "content": if text.is_empty() && !staged.is_empty() { "(see attached)" } else { text } },
         "from": self_addr().unwrap_or_else(|| "bridge:alter".into()),
         "from_name": from_name,
         "msg_id": msg_id,
         "from_mode": "bypass",
     });
+    if !staged.is_empty() {
+        frame["file_attachments"] = serde_json::Value::Array(staged);
+    }
     write_frames(&sock, &[frame])?;
     Ok(msg_id)
 }
@@ -305,8 +350,8 @@ pub async fn peers_list() -> Vec<Peer> {
 }
 
 #[tauri::command]
-pub async fn peer_send(pid: u32, text: String, #[allow(non_snake_case)] fromName: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || send(pid, &text, &fromName))
+pub async fn peer_send(pid: u32, text: String, #[allow(non_snake_case)] fromName: String, files: Option<Vec<PeerFile>>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || send(pid, &text, &fromName, &files.unwrap_or_default()))
         .await
         .map_err(|e| e.to_string())?
 }
