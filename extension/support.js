@@ -52,19 +52,27 @@ function renderContextCard(id, data, err) {
   }
   const t = data.ticket || {};
   const apps = (data.apps || []).map((a) => `${a.app} ${a.version || a.branch}${a.commit ? " @" + a.commit : ""}`);
-  const sim = (data.similar || [])
-    .map(
-      (s) =>
-        `<a href="/helpdesk/tickets/${s.name}" target="_blank" title="${escapeHtml(s.subject || "")}">#${s.name}</a>`
-    )
-    .join(" ");
   card.innerHTML =
     `<div class="sup-ctx-row"><b>Site</b> ${escapeHtml(t.custom_site_name || "not set")}${t.custom_plan ? " · " + escapeHtml(t.custom_plan) : ""} · queue ${escapeHtml(t.custom_app || "?")} · ${escapeHtml(t.ticket_type || "?")}</div>` +
     `<div class="sup-ctx-row"><b>Apps</b> ${apps.length ? escapeHtml(apps.join(", ")) : "none"} <span class="sup-ctx-src">(${escapeHtml(data.apps_source || "")})</span></div>` +
     (data.hypotheses ? `<div class="sup-ctx-row"><b>Bot output</b> ${data.hypotheses} item${data.hypotheses > 1 ? "s" : ""}, treated as unverified</div>` : "") +
-    (sim ? `<div class="sup-ctx-row"><b>Similar resolved</b> ${sim}</div>` : "") +
     (data.gaps && data.gaps.length ? `<div class="sup-ctx-row sup-ctx-gap"><b>Gaps</b> ${escapeHtml(data.gaps.join("; "))}</div>` : "");
   body.appendChild(card);
+}
+
+// Similar tickets are hints for the agent, not findings. They stay out of the
+// context card and appear once the investigation has finished, under the answer.
+function renderSimilar(data) {
+  const body = document.querySelector("#sup-body");
+  const sim = (data && data.similar) || [];
+  if (!body || !sim.length) return;
+  const links = sim
+    .map((s) => `<a href="/helpdesk/tickets/${s.name}" target="_blank" title="${escapeHtml(s.subject || "")}">#${s.name}</a>`)
+    .join(" ");
+  const el = document.createElement("div");
+  el.className = "sup-msg sup-ctx";
+  el.innerHTML = `<div class="sup-ctx-row"><b>Similar resolved tickets</b> ${links}</div>`;
+  body.appendChild(el);
 }
 
 async function runVerb(verb) {
@@ -126,6 +134,7 @@ async function runVerbInner(verb) {
   } else {
     renderFooter();
   }
+  if (raw) renderSimilar(ctxCache[id]);
 }
 
 // The opt-in heavy pass: full version triage + reproduction + gh, continuing from
