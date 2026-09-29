@@ -1920,7 +1920,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               )}
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
+            <>
               {selMenu && (
                 <div
                   data-sel-menu
@@ -1936,6 +1936,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   </button>
                 </div>
               )}
+            <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
               {groupMessages(active.messages).map((item, idx, items) =>
                 item.kind === "tools" ? (
                   <ToolSteps key={item.key} lines={item.lines} live={activeStreaming && items.slice(idx + 1).every((x) => x.kind === "msg" && x.m.role === "assistant" && !x.m.content)} />
@@ -2054,6 +2055,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 ))}
               <div ref={bottomRef} />
             </div>
+            </>
           )}
         </div>
 
