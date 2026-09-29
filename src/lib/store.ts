@@ -21,6 +21,7 @@ export interface Message {
   toolResults?: { id: string; name: string; output: string }[];
   attachments?: Attachment[];
   peer?: { name: string; dir: "in" | "out"; status?: string; msgId?: string }; // exchanged with a Claude Code session, not the model
+  quote?: string; // the passage of an earlier answer this message replies to
 }
 
 export interface Conversation {

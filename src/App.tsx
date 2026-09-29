@@ -175,6 +175,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
+  const [quote, setQuote] = useState<string | null>(null); // selected passage the next message replies to
+  const [selMenu, setSelMenu] = useState<{ x: number; y: number; text: string } | null>(null);
   const INFLIGHT_KEY = "alter.inflight";
   const RESUME_TEXT = "The app was quit while you were working. Please continue from where you left off.";
   const setInflight = (convId: string, on: boolean) => {
@@ -675,10 +677,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     targetConvId?: string; // internal: drain a queued message into this conversation
     routineId?: string; // a manual "Run now": file the chat under that routine
   }) => {
-    const text = (opts?.text ?? input).trim();
-    const shown = opts?.display ?? text;
+    const typed = (opts?.text ?? input).trim();
+    const q = !opts?.text && quote ? quote : null;
+    const text = q ? `> ${q.replace(/\n/g, "\n> ")}\n\n${typed}` : typed;
+    const shown = opts?.display ?? typed;
     const atts = opts?.text ? [] : attachments;
-    if (!text && atts.length === 0) return;
+    if (!typed && atts.length === 0) return;
+    if (q) setQuote(null);
 
     // A paired chat delivers what was typed to its session and skips the model.
     const paired = !opts?.text && activeId ? conversations.find((c) => c.id === activeId)?.peer : undefined;
@@ -789,7 +794,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       setActiveId(convId);
     }
 
-    const userMsg: Message = { role: "user", content: shown, attachments: atts.length ? atts : undefined };
+    const userMsg: Message = { role: "user", content: shown, attachments: atts.length ? atts : undefined, quote: q ?? undefined };
     const priorMessages = opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? [];
     updateConversation(convId, (c) => ({
       ...c,
@@ -1562,6 +1567,45 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }))
       : []),
   ];
+  // Selecting a passage of an answer offers Reply, which quotes it into the next
+  // message, and Start a side chat, which opens a fresh chat carrying the quote.
+  useEffect(() => {
+    const onUp = () => {
+      setTimeout(() => {
+        const sel = window.getSelection();
+        const text = sel?.toString().trim() ?? "";
+        if (!text || !sel || sel.rangeCount === 0) return setSelMenu(null);
+        const node = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
+        if (!node?.closest('[data-role="assistant"]')) return setSelMenu(null);
+        const r = sel.getRangeAt(0).getBoundingClientRect();
+        setSelMenu({ x: r.left + r.width / 2, y: r.top, text });
+      }, 0);
+    };
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as Element).closest?.("[data-sel-menu]")) setSelMenu(null);
+    };
+    document.addEventListener("mouseup", onUp);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, []);
+  const replyTo = (text: string, sideChat: boolean) => {
+    setSelMenu(null);
+    window.getSelection()?.removeAllRanges();
+    if (sideChat) {
+      const id = newId();
+      setConversations((prev) => [
+        { id, title: text.slice(0, 40), messages: [], createdAt: Date.now(), connectionId: settings.activeConnectionId, model: settings.model, effort: settings.effort, projectId: activeProjectId ?? undefined },
+        ...prev,
+      ]);
+      openChat(id);
+    }
+    setQuote(text);
+    setTimeout(() => composerRef.current?.focus(), 0);
+  };
+
   // "@" lists the Claude Code sessions running on this Mac; picking one binds
   // the chat to it, so what you type next goes to that session.
   const showPeers = input.startsWith("@") && !input.includes("\n");
@@ -1877,6 +1921,21 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
+              {selMenu && (
+                <div
+                  data-sel-menu
+                  style={{ left: selMenu.x, top: selMenu.y - 8 }}
+                  className="fixed z-30 flex -translate-x-1/2 -translate-y-full items-center overflow-hidden rounded-lg border border-[var(--bd)] bg-[var(--modal)] text-[13px] shadow-xl"
+                >
+                  <button onClick={() => replyTo(selMenu.text, true)} className="px-3 py-1.5 text-[var(--txt)] hover:bg-[var(--panel-2)]">
+                    Start a side chat
+                  </button>
+                  <span className="h-4 w-px bg-[var(--bd)]" />
+                  <button onClick={() => replyTo(selMenu.text, false)} className="px-3 py-1.5 text-[var(--txt)] hover:bg-[var(--panel-2)]">
+                    Reply
+                  </button>
+                </div>
+              )}
               {groupMessages(active.messages).map((item, idx, items) =>
                 item.kind === "tools" ? (
                   <ToolSteps key={item.key} lines={item.lines} live={activeStreaming && items.slice(idx + 1).every((x) => x.kind === "msg" && x.m.role === "assistant" && !x.m.content)} />
@@ -1908,6 +1967,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                       )}
                       {m.content && (
                         <div className="rounded-xl bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap">
+                          {m.quote && (
+                            <div className="mb-2 line-clamp-3 border-l-2 border-[var(--bd)] pl-2.5 text-[12px] text-[var(--txt-dim)]">{m.quote}</div>
+                          )}
                           {m.content}
                         </div>
                       )}
@@ -1935,7 +1997,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     </div>
                   </div>
                 ) : (
-                  <div key={i} className="group animate-fade-up">
+                  <div key={i} className="group animate-fade-up" data-role="assistant">
                     <div className="min-w-0">
                       {m.peer && <p className="mb-1 text-[11px] text-[var(--txt-faint)]">From {m.peer.name}</p>}
                       {m.content ? (
@@ -2007,6 +2069,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 <span className="text-indigo-400">↻</span>
                 {(activeId && convInfos[activeId]) || info}
               </p>
+            )}
+            {quote && (
+              <div className="mb-2 flex items-start gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1.5 text-[12px] text-[var(--txt-dim)]">
+                <span className="shrink-0 text-[var(--txt-faint)]">Replying to</span>
+                <span className="line-clamp-2 min-w-0 flex-1 border-l-2 border-[var(--bd)] pl-2">{quote}</span>
+                <button onClick={() => setQuote(null)} className="shrink-0 text-[var(--txt-faint)] hover:text-[var(--txt)]" title="Drop the quote">
+                  ×
+                </button>
+              </div>
             )}
             {active?.peer && (
               <div className="mb-2 flex w-fit items-center gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1 text-[11px] text-[var(--txt-dim)]">
