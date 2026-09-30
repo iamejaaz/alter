@@ -134,7 +134,7 @@
   font-weight: 600;
 }
 #alter-panel-foot {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   max-height: 48vh;
   overflow-y: auto;
