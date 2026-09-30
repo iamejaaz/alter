@@ -1819,7 +1819,26 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     };
     if (left <= 0) return stop(`Auto reply paused after ${AUTO_TURNS} turns. Turn it on again to continue.`);
     const conn = (settings.connections ?? []).find((k) => k.id === (c.connectionId ?? settings.activeConnectionId));
-    if (!conn || isClaudeCodeUrl(conn.baseUrl)) return stop("Auto reply needs an API connection on this chat, not Claude Code.");
+    if (!conn) return stop("Auto reply needs a connection on this chat.");
+    if (isClaudeCodeUrl(conn.baseUrl)) {
+      const incoming = [...c.messages].reverse().find((m) => m.peer?.dir === "in")?.content ?? "";
+      updateConversation(c.id, (x) => (x.peer ? { ...x, peer: { ...x.peer, left: left - 1 } } : x));
+      try {
+        await sendRef.current({
+          text: `${peer.name}, another Claude session working with us, sent this. Talk to them like a colleague in a normal conversation: share what you found with the evidence, react to what they found, agree or push back, say what you will take next, and ask what you need. Plain prose, no report formatting, a few short paragraphs at most.\n\n${incoming}`,
+          targetConvId: c.id,
+        });
+        await new Promise((r) => setTimeout(r, 80));
+        const reply = [...(convsRef.current.find((x) => x.id === c.id)?.messages ?? [])]
+          .reverse()
+          .find((m) => m.role === "assistant" && !m.peer && m.content)?.content?.trim();
+        if (!reply) return stop("Auto reply got an empty answer from Claude Code.");
+        await sendToPeer(c.id, peer, reply);
+      } catch (e) {
+        stop(`Auto reply failed: ${String(e).slice(0, 160)}`);
+      }
+      return;
+    }
     const history = c.messages
       .filter((m) => m.peer && m.content)
       .map((m) => ({ role: m.peer!.dir === "in" ? "user" : "assistant", content: m.content }));
@@ -1849,11 +1868,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     for (const c of conversations) {
       const last = c.messages[c.messages.length - 1];
       const id = last?.peer?.dir === "in" ? last.peer.msgId : undefined;
-      if (!c.peer?.auto || !id || autoSeenRef.current.has(id)) continue;
+      if (!c.peer?.auto || !id || autoSeenRef.current.has(id) || streamingIds.includes(c.id)) continue;
       autoSeenRef.current.add(id);
       void autoReply(c);
     }
-  }, [conversations]);
+  }, [conversations, streamingIds]);
   // Ghost-text autocomplete: complete from a recent message that starts with the current input.
   const ghost = (() => {
     const val = input;
