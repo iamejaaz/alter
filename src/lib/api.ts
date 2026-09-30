@@ -88,13 +88,14 @@ export async function streamChat(
   cancelId = "default"
 ): Promise<ChatResult> {
   const url = settings.baseUrl.replace(/\/$/, "") + "/chat/completions";
-  const body = JSON.stringify({
-    model: settings.model,
-    messages,
-    stream: true,
-    ...(settings.effort ? { reasoning_effort: settings.effort } : {}),
-    ...(useTools ? { tools: TOOL_DEFINITIONS } : {}),
-  });
+  const bodyFor = (effort: string | undefined) =>
+    JSON.stringify({
+      model: settings.model,
+      messages,
+      stream: true,
+      ...(effort ? { reasoning_effort: effort } : {}),
+      ...(useTools ? { tools: TOOL_DEFINITIONS } : {}),
+    });
 
   let full = "";
   const toolCalls: ToolCall[] = [];
@@ -132,7 +133,13 @@ export async function streamChat(
   signal.addEventListener("abort", onAbort);
 
   try {
-    await invoke("stream_chat", { id: cancelId, url, apiKey: settings.apiKey, body, onChunk: channel });
+    try {
+      await invoke("stream_chat", { id: cancelId, url, apiKey: settings.apiKey, body: bodyFor(settings.effort), onChunk: channel });
+    } catch (e) {
+      const rejectsEffort = !full && settings.effort && /reasoning_effort/i.test(String(e));
+      if (!rejectsEffort) throw e;
+      await invoke("stream_chat", { id: cancelId, url, apiKey: settings.apiKey, body: bodyFor("none"), onChunk: channel });
+    }
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
