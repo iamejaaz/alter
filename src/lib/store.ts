@@ -40,7 +40,7 @@ export interface Conversation {
   routineId?: string; // this chat is one run of that routine, grouped under it in the sidebar
   prs?: string[]; // "owner/repo#123" for every PR this chat opened, shown above the composer
   prsHidden?: string[]; // ones dismissed from that bar
-  peer?: { pid: number; name: string }; // the local session this chat is paired with, picked with @
+  peer?: { pid: number; name: string; auto?: boolean; left?: number }; // the local session this chat is paired with, picked with @
 }
 
 export interface Project {

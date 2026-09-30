@@ -1662,6 +1662,52 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       patch(`failed · ${String(e)}`);
     }
   };
+  const AUTO_TURNS = 20;
+  const autoSeenRef = useRef<Set<string>>(new Set());
+  const autoReply = async (c: Conversation) => {
+    const peer = c.peer!;
+    const left = peer.left ?? AUTO_TURNS;
+    const stop = (why: string) => {
+      updateConversation(c.id, (x) => (x.peer ? { ...x, peer: { ...x.peer, auto: false } } : x));
+      setConvInfo(c.id, why);
+    };
+    if (left <= 0) return stop(`Auto reply paused after ${AUTO_TURNS} turns. Turn it on again to continue.`);
+    const conn = (settings.connections ?? []).find((k) => k.id === (c.connectionId ?? settings.activeConnectionId));
+    if (!conn || isClaudeCodeUrl(conn.baseUrl)) return stop("Auto reply needs an API connection on this chat, not Claude Code.");
+    const history = c.messages
+      .filter((m) => m.peer && m.content)
+      .map((m) => ({ role: m.peer!.dir === "in" ? "user" : "assistant", content: m.content }));
+    const system = [
+      `You are Alter, a macOS desktop AI chat app, in a live conversation with ${peer.name}, another AI agent session on the same Mac.`,
+      "Talk like a colleague: short plain paragraphs, answer what they said, disagree when you think they are wrong, and ask one question when it moves things forward. No headings, no bullet walls.",
+      "What Alter has today: chats with per chat connection, model and effort; any OpenAI compatible provider plus the local Claude Code CLI; fallback to another connection when one fails; projects with a working folder and instructions; memory; skills; routines on a schedule with a runs panel; a command palette; artifacts panel; image, PDF and text attachments; voice input; branch and edit a message; regenerate; export to Markdown; pinned chats and search; a menubar tray with a global hotkey; a browser extension for GitHub PR review and helpdesk ticket diagnosis through a local bridge; and messaging with Claude Code sessions, which is how you are talking now.",
+    ].join("\n");
+    try {
+      const res = await streamChat(
+        { ...settings, baseUrl: conn.baseUrl, apiKey: conn.apiKey, model: conn.model, effort: undefined },
+        [{ role: "system", content: system }, ...history] as Message[],
+        () => {},
+        new AbortController().signal,
+        false,
+        `auto-${c.id}`
+      );
+      const reply = res.content.trim();
+      if (!reply) return stop("Auto reply got an empty answer from the model.");
+      updateConversation(c.id, (x) => (x.peer ? { ...x, peer: { ...x.peer, left: left - 1 } } : x));
+      await sendToPeer(c.id, peer, reply);
+    } catch (e) {
+      stop(`Auto reply failed: ${String(e).slice(0, 160)}`);
+    }
+  };
+  useEffect(() => {
+    for (const c of conversations) {
+      const last = c.messages[c.messages.length - 1];
+      const id = last?.peer?.dir === "in" ? last.peer.msgId : undefined;
+      if (!c.peer?.auto || !id || autoSeenRef.current.has(id)) continue;
+      autoSeenRef.current.add(id);
+      void autoReply(c);
+    }
+  }, [conversations]);
   // Ghost-text autocomplete: complete from a recent message that starts with the current input.
   const ghost = (() => {
     const val = input;
@@ -2103,6 +2149,17 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             {active?.peer && (
               <div className="mb-2 flex w-fit items-center gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1 text-[11px] text-[var(--txt-dim)]">
                 <span>→ {active.peer.name}</span>
+                <button
+                  onClick={() =>
+                    updateConversation(active.id, (c) =>
+                      c.peer ? { ...c, peer: { ...c.peer, auto: !c.peer.auto, left: AUTO_TURNS } } : c
+                    )
+                  }
+                  className={`rounded px-1.5 ${active.peer.auto ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-faint)] hover:text-[var(--txt)]"}`}
+                  title="Let this chat's model answer the session's messages on its own"
+                >
+                  {active.peer.auto ? `Auto reply on · ${active.peer.left ?? AUTO_TURNS} left` : "Auto reply"}
+                </button>
                 <button
                   onClick={() => updateConversation(active.id, (c) => ({ ...c, peer: undefined }))}
                   className="text-[var(--txt-faint)] hover:text-[var(--txt)]"
