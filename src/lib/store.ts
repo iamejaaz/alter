@@ -57,6 +57,7 @@ export interface Conversation {
   parentId?: string;
   changes?: FileChange[];
   plan?: PlanItem[];
+  lastAt?: number;
   handoffDone?: boolean;
   muted?: boolean;
   peer?: { pid: number; name: string; auto?: boolean; left?: number }; // the local session this chat is paired with, picked with @

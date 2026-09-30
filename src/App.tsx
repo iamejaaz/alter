@@ -1721,7 +1721,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   convsRef.current = conversations;
   const finishedTurn = (cid: string, ms: number) => {
     const viewing = cid === activeIdRef.current && document.hasFocus();
-    if (!viewing) updateConversation(cid, (c) => ({ ...c, unread: true }));
+    updateConversation(cid, (c) => ({ ...c, lastAt: Date.now(), unread: viewing ? c.unread : true }));
     const conv = convsRef.current.find((c) => c.id === cid);
     if (document.hasFocus() || ms < 20000 || conv?.muted) return;
     void invoke("notify", { title: conv?.title || "Alter", body: "Finished. Ready for you." }).catch(() => {});
@@ -1778,6 +1778,36 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       return { ...c, changes: [...(c.changes ?? []).filter((x) => x.path !== path), entry] };
     });
   };
+  const [resume, setResume] = useState<{ id: string; ago: string; was: string; drifted: number } | null>(null);
+  useEffect(() => {
+    setResume(null);
+    const c = convsRef.current.find((x) => x.id === activeId);
+    if (!c || c.peer || !c.messages.length || streamingIds.includes(c.id)) return;
+    const last = c.lastAt ?? c.createdAt;
+    const idle = Date.now() - last;
+    if (idle < 6 * 3600_000) return;
+    const hours = Math.round(idle / 3600_000);
+    const ago = hours < 48 ? `${hours} hours ago` : `${Math.round(hours / 24)} days ago`;
+    const now = c.plan?.find((p) => p.status === "in_progress") ?? c.plan?.find((p) => p.status === "pending");
+    const lastAsk = [...c.messages].reverse().find((m) => m.role === "user" && m.content)?.content ?? "";
+    const was = (now?.text ?? lastAsk).replace(/\s+/g, " ").slice(0, 120);
+    let gone = false;
+    Promise.all(
+      (c.changes ?? []).slice(-20).map(async (ch) => {
+        const [after, cur] = await Promise.all([
+          invoke<string | null>("snapshot_load", { key: `${ch.key}-after` }),
+          invoke<string | null>("file_read_full", { path: ch.path }),
+        ]);
+        return after !== cur;
+      })
+    )
+      .then((flags) => flags.filter(Boolean).length)
+      .catch(() => 0)
+      .then((drifted) => !gone && setResume({ id: c.id, ago, was, drifted }));
+    return () => {
+      gone = true;
+    };
+  }, [activeId]);
   const AUTO_TURNS = 20;
   const autoSeenRef = useRef<Set<string>>(new Set());
   const autoReply = async (c: Conversation) => {
@@ -2269,6 +2299,35 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 <span className="shrink-0 text-[var(--txt-faint)]">Replying to</span>
                 <span className="line-clamp-2 min-w-0 flex-1 border-l-2 border-[var(--bd)] pl-2">{quote}</span>
                 <button onClick={() => setQuote(null)} className="shrink-0 text-[var(--txt-faint)] hover:text-[var(--txt)]" title="Drop the quote">
+                  ×
+                </button>
+              </div>
+            )}
+            {resume && resume.id === active?.id && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1.5 text-[12px]">
+                <span className="min-w-0 flex-1 truncate text-[var(--txt-dim)]">
+                  <span className="text-[var(--txt)]">Last active {resume.ago}</span>
+                  {resume.was && <> · was on: {resume.was}</>}
+                  {resume.drifted > 0 && (
+                    <span className="text-amber-400">
+                      {" "}
+                      · {resume.drifted} {resume.drifted === 1 ? "file" : "files"} changed since
+                    </span>
+                  )}
+                </span>
+                <button
+                  onClick={() => {
+                    setResume(null);
+                    void send({
+                      text: `We're picking this chat back up after a break. In a few lines: what we were doing, where it stands, and the next step.${resume.drifted ? ` ${resume.drifted} of the files you edited changed since then, so check them before relying on them.` : ""}`,
+                      display: "Pick up where we left off",
+                    });
+                  }}
+                  className="shrink-0 rounded-md border border-[var(--bd)] px-2 py-0.5 text-[var(--txt)] hover:bg-[var(--panel-2)]"
+                >
+                  Recap
+                </button>
+                <button onClick={() => setResume(null)} className="text-[var(--txt-faint)] hover:text-[var(--txt)]" title="Dismiss">
                   ×
                 </button>
               </div>
