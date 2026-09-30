@@ -845,7 +845,20 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         }
       : { role: "user", content: apiText };
 
-    const history = buildHistory(priorMessages, useTools);
+    const hydrated = await Promise.all(
+      priorMessages.map(async (m) => {
+        if (m.role !== "user" || !m.attachments?.some((a) => a.kind === "image" && a.stored && !a.dataUrl)) return m;
+        const attachments = await Promise.all(
+          m.attachments.map(async (a) =>
+            a.kind === "image" && a.stored && !a.dataUrl
+              ? { ...a, dataUrl: await invoke<string>("load_attachment", { id: a.id }).catch(() => undefined) }
+              : a
+          )
+        );
+        return { ...m, attachments };
+      })
+    );
+    const history = buildHistory(hydrated, useTools);
     const payload = [
       { role: "system", content: systemContent },
       ...history,

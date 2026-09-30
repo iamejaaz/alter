@@ -58,7 +58,20 @@ export function extractMemories(text: string): { clean: string; found: string[] 
 export function buildHistory(messages: Message[], withTools: boolean): Message[] {
   const out: Message[] = [];
   for (const m of messages) {
-    if (m.role === "user" || m.role === "assistant") {
+    if (m.role === "user") {
+      const images = (m.attachments ?? []).filter((a) => a.kind === "image" && a.dataUrl);
+      if (images.length) {
+        const content = [
+          { type: "text", text: m.content || "(see attached image)" },
+          ...images.map((a) => ({ type: "image_url", image_url: { url: a.dataUrl } })),
+        ];
+        out.push({ role: "user", content: content as unknown as string });
+      } else if (m.content) {
+        out.push({ role: "user", content: m.content });
+      }
+      continue;
+    }
+    if (m.role === "assistant") {
       if (m.content) out.push({ role: m.role, content: m.content });
       continue;
     }
