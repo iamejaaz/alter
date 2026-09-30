@@ -1983,7 +1983,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                           → {m.peer.name}{m.peer.status ? ` · ${m.peer.status}` : ""}
                         </p>
                       )}
-                      <div className="flex justify-end gap-3">
+                      <div className="flex justify-end gap-3 select-none">
                         <button
                           onClick={() => branchFrom(i)}
                           className="mt-1 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 transition-opacity"
@@ -2013,7 +2013,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                         <span className="block py-1" />
                       )}
                       {m.content && (
-                        <div className="mt-1.5 flex items-center gap-3">
+                        <div className="mt-1.5 flex items-center gap-3 select-none">
                           <button
                             onClick={() => navigator.clipboard.writeText(m.content)}
                             className="text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 transition-opacity"
@@ -2194,7 +2194,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 {ghost && (
                   <div
                     aria-hidden
-                    className="pointer-events-none absolute inset-0 px-4 pt-3.5 pb-1 text-[15px] leading-relaxed whitespace-pre-wrap break-words"
+                    className="pointer-events-none absolute inset-0 px-4 pt-3 pb-1 text-[13px] leading-[1.5] whitespace-pre-wrap break-words"
                   >
                     <span className="invisible">{input}</span>
                     <span className="text-[var(--txt-faint)]">{ghost}</span>
