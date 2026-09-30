@@ -507,6 +507,12 @@ async fn pr_auto_merge(pr: String, on: bool) -> Result<String, String> {
     .unwrap_or_else(|e| Err(e.to_string()))
 }
 
+#[tauri::command]
+fn notify(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification().builder().title(title).body(body).show().map_err(|e| e.to_string())
+}
+
 // Generate a short chat title from the first message (HTTP providers).
 #[tauri::command]
 async fn quick_complete(url: String, api_key: String, model: String, prompt: String) -> Result<String, String> {
@@ -1509,6 +1515,7 @@ pub fn run() {
         .manage(ClaudeState::default())
         .manage(bridge::BridgeState::default())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
@@ -1519,6 +1526,7 @@ pub fn run() {
             peers::peer_send,
             read_file,
             write_file,
+            notify,
             save_attachment,
             load_attachment,
             list_claude_skills,

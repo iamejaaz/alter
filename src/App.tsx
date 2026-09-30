@@ -497,8 +497,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       const msg: Message = { role: "assistant", content, peer: { name: fromName, dir: "in", msgId } };
       setConversations((prev) => {
         const hit = prev.find((c) => c.peer && (fromPid ? c.peer.pid === fromPid : c.peer.name === fromName));
-        if (hit) return prev.map((c) => (c.id === hit.id ? { ...c, peer: { pid: fromPid ?? c.peer!.pid, name: fromName }, messages: [...c.messages, msg] } : c));
-        return [{ id: newId(), title: fromName, messages: [msg], createdAt: Date.now(), peer: { pid: fromPid ?? 0, name: fromName } }, ...prev];
+        if (hit) return prev.map((c) => (c.id === hit.id ? { ...c, unread: !(c.id === activeIdRef.current && document.hasFocus()), peer: { ...c.peer!, pid: fromPid ?? c.peer!.pid, name: fromName }, messages: [...c.messages, msg] } : c));
+        return [{ id: newId(), title: fromName, unread: true, messages: [msg], createdAt: Date.now(), peer: { pid: fromPid ?? 0, name: fromName } }, ...prev];
       });
       setInfo(`Message from ${fromName}`);
     }).then((u) => (gone ? u() : uns.push(u)));
@@ -870,7 +870,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     abortsRef.current[convId] = controller;
     setStreamingIds((ids) => (ids.includes(convId!) ? ids : [...ids, convId!]));
     setInflight(convId, true);
+    const startedAt = Date.now();
     const endStream = () => {
+      finishedTurn(convId!, Date.now() - startedAt);
       setInflight(convId!, false);
       setStreamingIds((ids) => ids.filter((x) => x !== convId));
       delete abortsRef.current[convId!];
@@ -1662,6 +1664,26 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       patch(`failed · ${String(e)}`);
     }
   };
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  const convsRef = useRef(conversations);
+  convsRef.current = conversations;
+  const finishedTurn = (cid: string, ms: number) => {
+    const viewing = cid === activeIdRef.current && document.hasFocus();
+    if (!viewing) updateConversation(cid, (c) => ({ ...c, unread: true }));
+    const conv = convsRef.current.find((c) => c.id === cid);
+    if (document.hasFocus() || ms < 20000 || conv?.muted) return;
+    void invoke("notify", { title: conv?.title || "Alter", body: "Finished. Ready for you." }).catch(() => {});
+  };
+  useEffect(() => {
+    const clear = () => {
+      const id = activeIdRef.current;
+      if (id && convsRef.current.find((c) => c.id === id)?.unread) updateConversation(id, (c) => ({ ...c, unread: false }));
+    };
+    clear();
+    window.addEventListener("focus", clear);
+    return () => window.removeEventListener("focus", clear);
+  }, [activeId]);
   const AUTO_TURNS = 20;
   const autoSeenRef = useRef<Set<string>>(new Set());
   const autoReply = async (c: Conversation) => {
@@ -1813,6 +1835,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         onDelete={deleteConversation}
         onRename={(id, title) => updateConversation(id, (c) => ({ ...c, title }))}
         onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}
+        onToggleMute={(id) => updateConversation(id, (c) => ({ ...c, muted: !c.muted }))}
         onOpenSettings={() => setShowSettings(true)}
         onOpenExtension={() => setShowSettings(true, "extension")}
         onOpenRoutines={() => setView("routines")}

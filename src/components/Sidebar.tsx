@@ -19,6 +19,7 @@ interface Props {
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string) => void;
+  onToggleMute: (id: string) => void;
   onOpenSettings: () => void;
   onOpenRoutines: () => void;
   onOpenExtension: () => void;
@@ -42,6 +43,7 @@ export default function Sidebar({
   onDelete,
   onRename,
   onTogglePin,
+  onToggleMute,
   onOpenSettings,
   onOpenRoutines,
   onOpenExtension,
@@ -128,10 +130,13 @@ export default function Sidebar({
           {streamingIds.includes(c.id) && (
             <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" title="Running" />
           )}
-          <span className="flex-1 truncate">
+          <span className={`flex-1 truncate ${c.unread && c.id !== activeId ? "font-medium text-[var(--txt)]" : ""}`}>
             {c.pinned && <span className="mr-1.5 text-[var(--txt-faint)]">★</span>}
             {c.title}
           </span>
+          {c.unread && c.id !== activeId && !streamingIds.includes(c.id) && (
+            <span className="ml-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt)]" title="New reply" />
+          )}
         </>
       )}
       <button
@@ -154,6 +159,13 @@ export default function Sidebar({
             className="fixed z-40 w-44 -translate-x-full rounded-lg border border-[var(--bd)] bg-[var(--modal)] py-1 shadow-2xl"
             style={{ left: menu.x, top: menu.y + 4 }}
           >
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleMute(c.id); setMenu(null); }}
+              className="block w-full truncate px-3 py-1.5 text-left text-[13px] text-[var(--txt)] transition-colors hover:bg-[var(--panel-2)]"
+            >
+              {c.muted ? "Unmute notifications" : "Mute notifications"}
+            </button>
+            <div className="my-1 border-t border-[var(--bd-soft)]" />
             <button
               onClick={(e) => { e.stopPropagation(); onMoveToProject(c.id, null); setMenu(null); }}
               className={`block w-full truncate px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--panel-2)] ${
