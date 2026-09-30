@@ -54,4 +54,69 @@ $("describe-page").addEventListener("click", async () => {
   }
 });
 
+function ago(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
+}
+
+function runRow(r) {
+  const row = document.createElement("div");
+  row.className = "run";
+  const mark = document.createElement("span");
+  mark.className = "run-mark" + (r.error ? " run-fail" : "");
+  if (!r.done) mark.innerHTML = '<span class="run-dot"></span>';
+  else mark.textContent = r.error ? "✕" : "✓";
+  const main = document.createElement("div");
+  main.className = "run-main";
+  const label = document.createElement(r.url ? "a" : "span");
+  label.className = "run-label";
+  label.textContent = r.label;
+  if (r.url) {
+    label.href = r.url;
+    label.addEventListener("click", (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: r.url });
+    });
+  }
+  const sub = document.createElement("div");
+  sub.className = "run-sub" + (r.error ? " run-fail" : "");
+  sub.textContent = r.done
+    ? `${r.error ? r.error : "Finished"} · ${ago(r.startedAt)} ago`
+    : `${r.step || "Starting"} · ${ago(r.startedAt)}`;
+  main.append(label, sub);
+  row.append(mark, main);
+  if (!r.done) {
+    const stop = document.createElement("button");
+    stop.className = "run-stop";
+    stop.textContent = "Stop";
+    stop.addEventListener("click", async () => {
+      stop.disabled = true;
+      await send({ type: "cancel", runId: r.runId });
+      loadRuns();
+    });
+    row.append(stop);
+  }
+  return row;
+}
+
+async function loadRuns() {
+  const box = $("runs");
+  const r = await send({ type: "runs" });
+  const list = r && r.ok ? r.data : [];
+  box.innerHTML = "";
+  const running = list.filter((x) => !x.done);
+  const done = list.filter((x) => x.done).slice(0, 4);
+  const section = (title, items) => {
+    if (!items.length) return;
+    const h = document.createElement("div");
+    h.className = "runs-h";
+    h.textContent = title;
+    box.append(h, ...items.map(runRow));
+  };
+  section(running.length ? `Running now · ${running.length}` : "", running);
+  section("Recently finished", done);
+  if (running.length) setTimeout(loadRuns, 3000);
+}
+
 refresh();
+loadRuns();

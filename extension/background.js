@@ -127,7 +127,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   chrome.scripting.executeScript({ target: { tabId: tab.id }, func: replaceSelectionInPage, args: [r.body.content] });
 });
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
     try {
@@ -149,6 +149,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             ticket: msg.ticket, verb: msg.verb, connectionId: msg.connectionId, site: msg.site, voice: msg.voice,
             transcript: msg.transcript, question: msg.question, resume: msg.resume, images: msg.images, issue: msg.issue, model: msg.model, runId: msg.runId, includeMemory: msg.includeMemory,
             renderOnly: msg.type === "support-prompt",
+            url: (sender.tab && sender.tab.url) || "",
           }),
         });
         sendResponse(r.ok ? { ok: true, runId: r.body.runId, prompt: r.body.prompt, system: r.body.system } : { ok: false, error: r.body.error || hint(r) });
@@ -217,6 +218,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             model: msg.model,
             runId: msg.runId,
             mode: msg.mode,
+            label: msg.runLabel || "",
+            url: (sender.tab && sender.tab.url) || "",
+            kind: msg.kind || "",
           }),
         });
         sendResponse(r.ok ? { ok: true, runId: r.body.runId } : { ok: false, error: r.body.error || hint(r) });
@@ -241,6 +245,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           body: JSON.stringify({ task: msg.task }),
         });
         sendResponse(r.ok ? { ok: true } : { ok: false, error: r.body.error || hint(r) });
+      } else if (msg.type === "runs") {
+        const r = await bridge("/runs");
+        sendResponse(r.ok && Array.isArray(r.body) ? { ok: true, data: r.body } : { ok: false, error: hint(r) });
       } else if (msg.type === "cancel") {
         const r = await bridge("/cancel", {
           method: "POST",
@@ -353,7 +360,7 @@ async function autoReviewTick() {
     const s = await bridge("/agent-start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connectionId, system: ALTER.REVIEW_SYSTEM, prompt, includeMemory: true, model: claudeModel || undefined, runId }),
+      body: JSON.stringify({ connectionId, system: ALTER.REVIEW_SYSTEM, prompt, includeMemory: true, model: claudeModel || undefined, runId, label: `Auto review ${key}`, url: pr.url, kind: "review" }),
     });
     if (!s.ok) continue;
     runs[key] = { key, runId, connectionId, model: claudeModel || undefined, label: "review" };
@@ -447,7 +454,7 @@ async function autoReplyTick() {
       const s = await bridge("/agent-start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionId, system: ALTER.REVIEW_SYSTEM, prompt, includeMemory: true, model: claudeModel || undefined, runId }),
+        body: JSON.stringify({ connectionId, system: ALTER.REVIEW_SYSTEM, prompt, includeMemory: true, model: claudeModel || undefined, runId, label: `Reply on ${pr.repo}#${pr.num}`, url: t.url || "", kind: "reply" }),
       });
       if (!s.ok) continue;
       store[key] = { runId, url: t.url, title: pr.title, ts: Date.now(), notified: false, kind: "reply" };

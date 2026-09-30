@@ -500,6 +500,8 @@ function streamAgent(el, params) {
         ? send({ type: "support-start", ...params.support, connectionId: params.connectionId, includeMemory: params.includeMemory, model: params.model, runId: rid })
         : send({
             type: "agent-start",
+            runLabel: parts ? `${{ review: "Review", verify: "Verify on bench", draft: "Draft" }[params.label] || "Review"} ${prKey(parts)}` : "",
+            kind: "review",
             connectionId: params.connectionId,
             includeMemory: params.includeMemory,
             system: params.system,

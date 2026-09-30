@@ -508,6 +508,16 @@ async fn pr_auto_merge(pr: String, on: bool) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn bridge_runs(state: tauri::State<'_, bridge::BridgeState>) -> Vec<serde_json::Value> {
+    bridge::runs_snapshot(&state)
+}
+
+#[tauri::command]
+fn bridge_cancel(state: tauri::State<'_, bridge::BridgeState>, run_id: String) -> bool {
+    bridge::cancel_run(&state, &run_id)
+}
+
+#[tauri::command]
 fn notify(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
     app.notification().builder().title(title).body(body).show().map_err(|e| e.to_string())
@@ -1583,6 +1593,8 @@ pub fn run() {
             read_file,
             write_file,
             notify,
+            bridge_runs,
+            bridge_cancel,
             file_read_full,
             file_remove,
             snapshot_save,

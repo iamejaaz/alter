@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import Sidebar from "./components/Sidebar";
+import Sidebar, { BackgroundRun } from "./components/Sidebar";
 import SettingsPanel, { SettingsTab } from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
 import ComposerSelect from "./components/ComposerSelect";
@@ -1813,6 +1813,25 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       gone = true;
     };
   }, [activeId]);
+  const [bgRuns, setBgRuns] = useState<BackgroundRun[]>([]);
+  useEffect(() => {
+    let gone = false;
+    let timer = 0;
+    const poll = async () => {
+      const list = await invoke<BackgroundRun[]>("bridge_runs").catch(() => [] as BackgroundRun[]);
+      if (gone) return;
+      const hour = Date.now() - 3600_000;
+      const running = list.filter((r) => !r.done);
+      const recent = list.filter((r) => r.done && r.startedAt > hour).slice(0, 3);
+      setBgRuns([...running, ...recent]);
+      timer = window.setTimeout(poll, running.length ? 3000 : 15000);
+    };
+    void poll();
+    return () => {
+      gone = true;
+      clearTimeout(timer);
+    };
+  }, []);
   const AUTO_TURNS = 20;
   const autoSeenRef = useRef<Set<string>>(new Set());
   const autoReply = async (c: Conversation) => {
@@ -1984,6 +2003,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         onRename={(id, title) => updateConversation(id, (c) => ({ ...c, title }))}
         onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}
         onToggleMute={(id) => updateConversation(id, (c) => ({ ...c, muted: !c.muted }))}
+        backgroundRuns={bgRuns}
+        onOpenUrl={(url) => void invoke("open_external", { url }).catch(() => {})}
+        onStopRun={(runId) => {
+          void invoke("bridge_cancel", { runId }).catch(() => {});
+          setBgRuns((l) => l.map((r) => (r.runId === runId ? { ...r, done: true, error: "Stopped" } : r)));
+        }}
         onOpenSettings={() => setShowSettings(true)}
         onOpenExtension={() => setShowSettings(true, "extension")}
         onOpenRoutines={() => setView("routines")}

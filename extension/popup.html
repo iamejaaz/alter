@@ -26,12 +26,27 @@
       }
       #summary:empty { display: none; }
       #summary .err { color: #f87171; }
+      #runs:empty { display: none; }
+      #runs { margin: 0 0 12px; }
+      .runs-h { color: #a1a1aa; font-size: 11px; margin: 8px 0 4px; }
+      .run { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-top: 1px solid #26262c; }
+      .run:first-of-type { border-top: 0; }
+      .run-mark { width: 10px; flex: none; text-align: center; color: #71717a; font-size: 11px; line-height: 18px; }
+      .run-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #a1a1aa; animation: pulse 1.2s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.3; } }
+      .run-main { min-width: 0; flex: 1; }
+      .run-label { color: #e4e4e7; text-decoration: none; display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .run-label:hover { text-decoration: underline; }
+      .run-sub { color: #71717a; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .run-fail { color: #f87171; }
+      .run-stop { width: auto; flex: none; background: transparent; border: 1px solid #34343c; color: #a1a1aa; padding: 2px 8px; font-size: 11px; border-radius: 6px; }
     </style>
   </head>
   <body>
     <h1>Alter</h1>
     <p class="sub">Uses your desktop app's models. No keys stored here.</p>
     <div class="status" id="status"></div>
+    <div id="runs"></div>
     <button id="settings" class="ghost">⚙ Settings &amp; models</button>
     <button id="describe-page">Describe this page</button>
     <div id="summary"></div>

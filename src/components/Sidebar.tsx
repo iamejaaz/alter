@@ -4,7 +4,21 @@ import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
 import { IconClock, IconFolder, IconPlus, IconPuzzle, IconSearch, IconSettings, IconSparkles } from "./Icons";
 
+export interface BackgroundRun {
+  runId: string;
+  label: string;
+  url?: string;
+  kind?: string;
+  startedAt: number;
+  done: boolean;
+  error?: string | null;
+  step?: string;
+}
+
 interface Props {
+  backgroundRuns?: BackgroundRun[];
+  onOpenUrl?: (url: string) => void;
+  onStopRun?: (runId: string) => void;
   conversations: Conversation[];
   activeId: string | null;
   routines: Routine[];
@@ -28,7 +42,15 @@ interface Props {
   onOpenPalette?: () => void;
 }
 
+const since = (ms: number) => {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
+};
+
 export default function Sidebar({
+  backgroundRuns = [],
+  onOpenUrl,
+  onStopRun,
   conversations,
   activeId,
   routines,
@@ -277,6 +299,47 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
+        {!q && backgroundRuns.length > 0 && (
+          <div>
+            <p className="px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">
+              {backgroundRuns.some((r) => !r.done) ? `Running now · ${backgroundRuns.filter((r) => !r.done).length}` : "Recent reviews"}
+            </p>
+            <div className="space-y-0.5">
+              {backgroundRuns.map((r) => (
+                <div
+                  key={r.runId}
+                  className="group flex min-h-7 items-center gap-2 rounded-lg px-2 py-1 text-[13px] cursor-pointer text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
+                  onClick={() => r.url && onOpenUrl?.(r.url)}
+                  title={r.error || r.step || r.label}
+                >
+                  <span className="flex w-2 shrink-0 justify-center">
+                    {!r.done ? (
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--txt-dim)] animate-pulse" />
+                    ) : (
+                      <span className={`text-[10px] ${r.error ? "text-red-400" : "text-[var(--txt-faint)]"}`}>{r.error ? "✕" : "✓"}</span>
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate ${r.done ? "" : "text-[var(--txt)]"}`}>{r.label}</span>
+                    {!r.done && <span className="block truncate text-[11px] text-[var(--txt-faint)]">{r.step || "Starting"}</span>}
+                  </span>
+                  <span className="shrink-0 text-[11px] tabular-nums text-[var(--txt-faint)] group-hover:hidden">{since(r.startedAt)}</span>
+                  {!r.done && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStopRun?.(r.runId);
+                      }}
+                      className="hidden shrink-0 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] group-hover:block"
+                    >
+                      Stop
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {!q && routineRows.length > 0 && (
           <div>
             <p className="px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">Routines</p>

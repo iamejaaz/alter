@@ -478,6 +478,8 @@ function streamAgent(el, params) {
         ? send({ type: "support-start", ...params.support, connectionId: params.connectionId, includeMemory: params.includeMemory, model: params.model, runId: rid })
         : send({
             type: "agent-start",
+            runLabel: `${params.label || "Run"} · ticket ${location.pathname.split("/").filter(Boolean).pop() || ""}`,
+            kind: "support",
             connectionId: params.connectionId,
             includeMemory: params.includeMemory,
             system: params.system,

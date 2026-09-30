@@ -54,6 +54,57 @@ pub struct AgentProgress {
     session_id: Option<String>,
     #[serde(skip)]
     finished_at: Option<std::time::Instant>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    label: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    url: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    kind: String,
+    #[serde(rename = "startedAt")]
+    started_at: u64,
+}
+
+fn tag_run(state: &BridgeState, run_id: &str, label: String, url: String, kind: String) {
+    if let Some(p) = state.progress.lock().unwrap_or_else(|e| e.into_inner()).get_mut(run_id) {
+        p.label = label;
+        p.url = url;
+        p.kind = kind;
+        p.started_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+    }
+}
+
+pub fn runs_snapshot(state: &BridgeState) -> Vec<serde_json::Value> {
+    let map = state.progress.lock().unwrap_or_else(|e| e.into_inner());
+    let mut out: Vec<serde_json::Value> = map
+        .iter()
+        .filter(|(_, p)| !p.label.is_empty())
+        .map(|(id, p)| {
+            serde_json::json!({
+                "runId": id,
+                "label": p.label,
+                "url": p.url,
+                "kind": p.kind,
+                "startedAt": p.started_at,
+                "done": p.done,
+                "error": p.error,
+                "step": p.steps.last().cloned().unwrap_or_default(),
+                "steps": p.steps.len(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| b["startedAt"].as_u64().cmp(&a["startedAt"].as_u64()));
+    out
+}
+
+pub fn cancel_run(state: &BridgeState, run_id: &str) -> bool {
+    let pid = state.running.lock().unwrap_or_else(|e| e.into_inner()).get(run_id).copied();
+    if let Some(pid) = pid {
+        kill_group(pid);
+    }
+    pid.is_some()
 }
 
 fn prune_progress(map: &mut std::collections::HashMap<String, AgentProgress>) {
@@ -92,6 +143,12 @@ struct RunReq {
     // anything else = the read-only support/review allowlist.
     #[serde(default)]
     mode: Option<String>,
+    #[serde(default)]
+    label: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    kind: String,
 }
 
 // fr read subcommands the agent may run WITHOUT asking, and the write ones that
@@ -1078,6 +1135,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
     };
 
     match (method, path) {
+        (tiny_http::Method::Get, "/runs") => (200, serde_json::Value::Array(runs_snapshot(&state)).to_string()),
         (tiny_http::Method::Get, "/connections") => {
             let list: Vec<ConnInfo> = state
                 .conns
@@ -1157,6 +1215,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 include_memory: bool,
                 #[serde(default)]
                 render_only: bool,
+                #[serde(default)]
+                url: String,
             }
             let req: S = match serde_json::from_str(body) {
                 Ok(r) => r,
@@ -1235,6 +1295,17 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
             let max_turns = prompts["budgets"][req.verb.as_str()].as_u64().map(|n| n as u32);
             spawn_agent_run(conn, system, prompt, run_id.clone(), mode, repro_root, state.running.clone(), state.progress.clone(), max_turns, if resuming { req.resume.clone() } else { None });
+            let verb = match req.verb.as_str() {
+                "summarize" | "summary" => "Summarize",
+                "diagnose" => "Diagnose",
+                "draft" | "reply" => "Draft reply",
+                "deepen" => "Dig deeper",
+                "followup" | "ask" => "Follow-up",
+                "handoff" => "Handoff",
+                "pr" => "Create PR",
+                other => other,
+            };
+            tag_run(&state, &run_id, format!("Ticket {} · {}", req.ticket, verb), req.url.clone(), "support".into());
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/run") => {
@@ -1660,6 +1731,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             prune_progress(&mut state.progress.lock().unwrap_or_else(|e| e.into_inner()));
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
             spawn_agent_run(conn, system, prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone(), None, None);
+            if !req.label.is_empty() {
+                tag_run(&state, &run_id, req.label.clone(), req.url.clone(), req.kind.clone());
+            }
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/agent-poll") => {
