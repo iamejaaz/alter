@@ -992,6 +992,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       let full = "";
       let finished = false;
       let cappedOut = false;
+      let lastFinish: string | undefined;
+      let lastRaw = "";
       let interrupted = false;
       for (let round = 0; round < MAX_ROUNDS; round++) {
         if (controller.signal.aborted) break;
@@ -1038,6 +1040,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             result = chosen!;
           } else {
             result = await streamChat(activeSettings, payload, writePartial, streamSignal(), useTools, convId);
+            lastFinish = result.finishReason;
+            lastRaw = result.rawTail ?? "";
           }
         } catch (e) {
           if (interruptsRef.current[convId] && !controller.signal.aborted) {
@@ -1141,7 +1145,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         } else if (!finished) {
           full = "I took several steps but couldn't wrap this up. Try narrowing the question, or attach the specific folder you mean.";
         } else {
-          full = "(The model returned an empty response.)";
+          full = `(The model returned an empty response${lastFinish ? `, finish_reason ${lastFinish}` : ""}.)${lastRaw ? `\n\n\`\`\`\n${lastRaw}\n\`\`\`` : ""}`;
         }
       }
       const { clean, found } = extractMemories(full);

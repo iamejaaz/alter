@@ -77,6 +77,8 @@ export function buildHistory(messages: Message[], withTools: boolean): Message[]
 export interface ChatResult {
   content: string;
   toolCalls: ToolCall[];
+  finishReason?: string;
+  rawTail?: string;
 }
 
 export async function streamChat(
@@ -98,16 +100,23 @@ export async function streamChat(
     });
 
   let full = "";
+  let finishReason: string | undefined;
+  let rawTail = "";
   const toolCalls: ToolCall[] = [];
 
   const handleLine = (line: string) => {
     const data = line.replace(/^data: /, "").trim();
     if (!data || data === "[DONE]") return;
+    rawTail = (rawTail + data).slice(-600);
     try {
       const json = JSON.parse(data);
-      const delta = json.choices?.[0]?.delta ?? {};
-      if (delta.content) {
-        full += delta.content;
+      const choice = json.choices?.[0] ?? {};
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+      const delta = choice.delta ?? choice.message ?? {};
+      const text = delta.content ?? delta.refusal;
+      const piece = Array.isArray(text) ? text.map((t: { text?: string }) => t.text ?? "").join("") : text;
+      if (piece) {
+        full += piece;
         onDelta(full);
       }
       for (const tc of delta.tool_calls ?? []) {
@@ -144,7 +153,7 @@ export async function streamChat(
     signal.removeEventListener("abort", onAbort);
   }
 
-  return { content: full, toolCalls: toolCalls.filter(Boolean) };
+  return { content: full, toolCalls: toolCalls.filter(Boolean), finishReason, rawTail };
 }
 
 export async function testConnection(settings: Settings): Promise<string> {
