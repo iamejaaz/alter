@@ -133,8 +133,11 @@ export async function streamChat(
     }
   };
 
-  const channel = new Channel<string>();
-  channel.onmessage = handleLine;
+  const run = (effort: string | undefined) => {
+    const channel = new Channel<string>();
+    channel.onmessage = handleLine;
+    return invoke("stream_chat", { id: cancelId, url, apiKey: settings.apiKey, body: bodyFor(effort), onChunk: channel });
+  };
 
   const onAbort = () => {
     void invoke("cancel_chat", { id: cancelId }).catch(() => {});
@@ -143,11 +146,11 @@ export async function streamChat(
 
   try {
     try {
-      await invoke("stream_chat", { id: cancelId, url, apiKey: settings.apiKey, body: bodyFor(settings.effort), onChunk: channel });
+      await run(settings.effort);
     } catch (e) {
       const rejectsEffort = !full && settings.effort && /reasoning_effort/i.test(String(e));
       if (!rejectsEffort) throw e;
-      await invoke("stream_chat", { id: cancelId, url, apiKey: settings.apiKey, body: bodyFor("none"), onChunk: channel });
+      await run("none");
     }
   } finally {
     signal.removeEventListener("abort", onAbort);

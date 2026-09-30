@@ -1023,6 +1023,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   convId
                 );
                 activeSettings = cand;
+                lastFinish = chosen.finishReason;
+                lastRaw = chosen.rawTail ?? "";
                 if (fi > 0) {
                   setConvInfo(convId, `${connLabel(fallbacks[0])} was unavailable — switched to ${connLabel(cand)}.`);
                   setSettings(cand);
