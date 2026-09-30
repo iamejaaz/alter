@@ -258,7 +258,8 @@ function toolLabel(name: string, input: Record<string, unknown>): string {
     case "WebSearch":
       return `Search "${clip(input.query, 48)}"`;
     case "Task":
-      return `Task: ${clip(input.description ?? input.subagent_type, 48)}`;
+    case "Agent":
+      return `Agent: ${clip(input.description ?? input.subagent_type, 48)}`;
     default:
       return name;
   }
