@@ -106,6 +106,7 @@ import {
   newId,
   scheduleLabel,
   storage,
+  PlanItem,
 } from "./lib/store";
 
 interface Peer {
@@ -174,6 +175,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   };
   const [input, setInput] = useState("");
   const [showChanges, setShowChanges] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
@@ -1146,6 +1148,17 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             output = skill
               ? `Skill "${skill.name}" instructions — follow these:\n\n${skill.instructions}`
               : `No skill named "${args.name}". Available: ${skills.map((s) => s.name).join(", ") || "none"}.`;
+          } else if (tc.function.name === "update_plan") {
+            const statuses = ["pending", "in_progress", "done", "blocked"];
+            const items = (Array.isArray(args.items) ? args.items : [])
+              .filter((x: unknown): x is { text: string; status: string } => !!x && typeof (x as { text?: unknown }).text === "string")
+              .map((x: { text: string; status: string }) => ({
+                text: x.text.slice(0, 160),
+                status: (statuses.includes(x.status) ? x.status : "pending") as PlanItem["status"],
+              }))
+              .slice(0, 20);
+            updateConversation(convId!, (c) => ({ ...c, plan: items.length ? items : undefined }));
+            output = items.length ? "Plan shown to the user." : "Plan cleared.";
           } else if (tc.function.name === "write_file" && typeof args.path === "string") {
             const path = args.path;
             const before = await invoke<string | null>("file_read_full", { path }).catch(() => undefined);
@@ -2260,6 +2273,58 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </button>
               </div>
             )}
+            {!!active?.plan?.length && (() => {
+              const plan = active.plan;
+              const done = plan.filter((p) => p.status === "done").length;
+              const now = plan.find((p) => p.status === "in_progress") ?? plan.find((p) => p.status === "pending");
+              const blocked = plan.filter((p) => p.status === "blocked").length;
+              const mark = { done: "✓", in_progress: "●", pending: "○", blocked: "!" } as const;
+              return (
+                <div className="mb-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] text-[12px]">
+                  <div className="flex items-center gap-2 px-2.5 py-1.5">
+                    <button onClick={() => setPlanOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                      <span className="shrink-0 text-[var(--txt)]">
+                        Plan · {done}/{plan.length}
+                      </span>
+                      {blocked > 0 && <span className="shrink-0 text-amber-400">{blocked} blocked</span>}
+                      {now && done < plan.length && (
+                        <span className="truncate text-[var(--txt-dim)]">
+                          {now.status === "in_progress" ? "Now" : "Next"}: {now.text}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => updateConversation(active.id, (c) => ({ ...c, plan: undefined }))}
+                      className="text-[var(--txt-faint)] hover:text-[var(--txt)]"
+                      title="Hide the plan"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  {planOpen && (
+                    <ol className="border-t border-[var(--bd-soft)] px-2.5 py-1.5">
+                      {plan.map((p, k) => (
+                        <li
+                          key={k}
+                          className={`flex gap-2 py-0.5 ${
+                            p.status === "done"
+                              ? "text-[var(--txt-faint)] line-through"
+                              : p.status === "blocked"
+                                ? "text-amber-400"
+                                : p.status === "in_progress"
+                                  ? "text-[var(--txt)]"
+                                  : "text-[var(--txt-dim)]"
+                          }`}
+                        >
+                          <span className="w-3 shrink-0 text-center no-underline">{mark[p.status]}</span>
+                          <span>{p.text}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              );
+            })()}
             {!!active?.changes?.length && (
               <button
                 onClick={() => {

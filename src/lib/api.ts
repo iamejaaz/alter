@@ -37,6 +37,9 @@ export function buildSystemPrompt(memories: MemoryItem[], mode: Mode = "auto", s
     const list = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
     prompt += `\n\nThe user has these saved skills. When a request matches one, call use_skill with its exact name to load its full instructions, then follow them:\n${list}`;
   }
+  if (mode !== "chat")
+    prompt +=
+      "\n\nFor a task with three or more real steps, call update_plan first with the steps, then call it again as each step starts, finishes or gets blocked. Skip it for questions and quick tasks.";
   return prompt + MODE_NOTES[mode];
 }
 

@@ -25,6 +25,11 @@ export interface Message {
   handoff?: { id: string; title: string; summary: string };
 }
 
+export interface PlanItem {
+  text: string;
+  status: "pending" | "in_progress" | "done" | "blocked";
+}
+
 export interface FileChange {
   path: string;
   key: string;
@@ -51,6 +56,7 @@ export interface Conversation {
   unread?: boolean;
   parentId?: string;
   changes?: FileChange[];
+  plan?: PlanItem[];
   handoffDone?: boolean;
   muted?: boolean;
   peer?: { pid: number; name: string; auto?: boolean; left?: number }; // the local session this chat is paired with, picked with @

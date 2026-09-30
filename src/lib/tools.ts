@@ -6,6 +6,31 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "update_plan",
+      description:
+        "Show the user a live checklist for a task with three or more real steps. Send the whole list every time, in order, with each step's status. Keep exactly one step in_progress while working. Mark a step blocked when it needs the user or something outside your reach. Never use it for a short question.",
+      parameters: {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                text: { type: "string", description: "The step, a few words" },
+                status: { type: "string", enum: ["pending", "in_progress", "done", "blocked"] },
+              },
+              required: ["text", "status"],
+            },
+          },
+        },
+        required: ["items"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "use_skill",
       description:
         "Load the full instructions of one of the user's saved skills by its exact name, then follow them. Only the skills listed in the system prompt exist. Use when a request matches a skill.",
@@ -208,6 +233,7 @@ export async function executeTool(
 
 export function describeToolCall(name: string, argsJson: string): string {
   try {
+    if (name === "update_plan") return "Updated the plan";
     const args = JSON.parse(argsJson) as { path?: string; query?: string; url?: string };
     if (args.query) return `${name}("${args.query}")`;
     if (args.url) return `${name}(${args.url})`;
