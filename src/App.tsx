@@ -8,6 +8,7 @@ import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
 import RunsPanel from "./components/RunsPanel";
+import ChangesPanel from "./components/ChangesPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
 import { IconArrowUp, IconChevronRight, IconFolder, IconMic, IconPaperclip } from "./components/Icons";
 
@@ -172,6 +173,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     setView("chat");
   };
   const [input, setInput] = useState("");
+  const [showChanges, setShowChanges] = useState(false);
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
@@ -1144,6 +1146,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             output = skill
               ? `Skill "${skill.name}" instructions — follow these:\n\n${skill.instructions}`
               : `No skill named "${args.name}". Available: ${skills.map((s) => s.name).join(", ") || "none"}.`;
+          } else if (tc.function.name === "write_file" && typeof args.path === "string") {
+            const path = args.path;
+            const before = await invoke<string | null>("file_read_full", { path }).catch(() => undefined);
+            output = await executeTool(tc.function.name, args, mode);
+            if (output.startsWith("wrote") && before !== undefined) await recordChange(convId!, path, before, String(args.content ?? ""));
           } else {
             output = await executeTool(tc.function.name, args, mode);
           }
@@ -1741,6 +1748,23 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       }));
     }
   }, [conversations, streamingIds]);
+  const recordChange = async (cid: string, path: string, before: string | null, after: string) => {
+    let h = 5381;
+    for (const ch of cid + path) h = ((h << 5) + h + ch.charCodeAt(0)) >>> 0;
+    const key = `c${h.toString(36)}`;
+    const known = convsRef.current.find((c) => c.id === cid)?.changes?.find((x) => x.path === path);
+    try {
+      if (!known && before !== null) await invoke("snapshot_save", { key: `${key}-before`, content: before });
+      await invoke("snapshot_save", { key: `${key}-after`, content: after });
+    } catch {
+      return;
+    }
+    updateConversation(cid, (c) => {
+      const prev = c.changes?.find((x) => x.path === path);
+      const entry = { path, key, created: prev ? prev.created : before === null, at: Date.now() };
+      return { ...c, changes: [...(c.changes ?? []).filter((x) => x.path !== path), entry] };
+    });
+  };
   const AUTO_TURNS = 20;
   const autoSeenRef = useRef<Set<string>>(new Set());
   const autoReply = async (c: Conversation) => {
@@ -2236,6 +2260,17 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </button>
               </div>
             )}
+            {!!active?.changes?.length && (
+              <button
+                onClick={() => {
+                  setArtifact(null);
+                  setShowChanges((v) => !v);
+                }}
+                className="mb-2 mr-2 inline-flex w-fit items-center gap-1.5 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1 text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]"
+              >
+                Changes · {active.changes.length} {active.changes.length === 1 ? "file" : "files"}
+              </button>
+            )}
             {active?.parentId && conversations.some((c) => c.id === active.parentId) && (
               <button
                 onClick={() => openChat(active.parentId!)}
@@ -2571,6 +2606,16 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       </main>
 
       {artifact && <ArtifactPanel artifact={artifact} onClose={() => setArtifact(null)} />}
+      {showChanges && !artifact && active && (
+        <ChangesPanel
+          key={active.id}
+          changes={active.changes ?? []}
+          onClose={() => setShowChanges(false)}
+          onReverted={(path) =>
+            updateConversation(active.id, (c) => ({ ...c, changes: (c.changes ?? []).filter((x) => x.path !== path) }))
+          }
+        />
+      )}
       {(() => {
         const routine = routines.find((r) => r.id === runsRoutineId);
         if (!routine) return null;

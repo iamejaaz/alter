@@ -25,6 +25,13 @@ export interface Message {
   handoff?: { id: string; title: string; summary: string };
 }
 
+export interface FileChange {
+  path: string;
+  key: string;
+  created: boolean;
+  at: number;
+}
+
 export interface Conversation {
   id: string;
   title: string;
@@ -43,6 +50,7 @@ export interface Conversation {
   prsHidden?: string[]; // ones dismissed from that bar
   unread?: boolean;
   parentId?: string;
+  changes?: FileChange[];
   handoffDone?: boolean;
   muted?: boolean;
   peer?: { pid: number; name: string; auto?: boolean; left?: number }; // the local session this chat is paired with, picked with @
