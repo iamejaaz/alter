@@ -275,6 +275,19 @@ export function claudeInterrupt(convId: string): void {
   void invoke("claude_interrupt", { convId }).catch(() => {});
 }
 
+export interface AgentRun {
+  id: string;
+  desc: string;
+  type: string;
+  status: "running" | "completed" | "failed" | "stopped";
+  step?: string;
+  tools?: number;
+  summary?: string;
+}
+
+const agentStatus = (s: unknown): AgentRun["status"] =>
+  s === "completed" ? "completed" : s === "failed" || s === "error" ? "failed" : s === "killed" || s === "stopped" || s === "cancelled" ? "stopped" : "running";
+
 export async function claudeCodeChat(
   prompt: string,
   images: { mediaType: string; data: string }[],
@@ -288,7 +301,8 @@ export async function claudeCodeChat(
   onActivity: (label: string) => void,
   signal: AbortSignal,
   onSession?: (sid: string) => void,
-  onPr?: (url: string) => void
+  onPr?: (url: string) => void,
+  onAgents?: (agents: AgentRun[]) => void
 ): Promise<{ content: string; sessionId: string | null; costUsd: number | null; tokens: number | null }> {
   let streamed = ""; // text of the current segment (reset at each tool boundary)
   let result = ""; // authoritative final answer from the result event
@@ -301,6 +315,7 @@ export async function claudeCodeChat(
   let sawCreate = false;
   let interrupted = false;
   const smoother = makeSmoother(onDelta);
+  const agents = new Map<string, AgentRun>();
 
   const channel = new Channel<string>();
   channel.onmessage = (line: string) => {
@@ -310,6 +325,33 @@ export async function claudeCodeChat(
         sid = ev.session_id;
         onSession?.(sid!);
       }
+
+      if (ev.type === "system" && typeof ev.subtype === "string" && ev.subtype.startsWith("task_") && ev.task_id) {
+        const a: AgentRun = agents.get(ev.task_id) ?? { id: String(ev.task_id), desc: "", type: "", status: "running" };
+        if (ev.subtype === "task_started") {
+          a.desc = String(ev.description ?? a.desc);
+          a.type = String(ev.subagent_type ?? "");
+        } else if (ev.subtype === "task_progress") {
+          a.step = String(ev.description ?? "").replace(/^Running\s+/, "");
+          if (typeof ev.usage?.tool_uses === "number") a.tools = ev.usage.tool_uses;
+        } else if (ev.subtype === "task_updated" && ev.patch?.status) {
+          a.status = agentStatus(ev.patch.status);
+        } else if (ev.subtype === "task_notification") {
+          a.status = agentStatus(ev.status);
+          if (typeof ev.summary === "string") a.summary = ev.summary;
+          if (typeof ev.usage?.tool_uses === "number") a.tools = ev.usage.tool_uses;
+        }
+        agents.set(ev.task_id, a);
+        onAgents?.([...agents.values()].map((x) => ({ ...x })));
+        if (ev.subtype === "task_notification") {
+          if (streamed) onDelta(streamed);
+          onActivity(`Agent ${a.status === "completed" ? "finished" : a.status}: ${a.desc || a.type || "agent"}`);
+          streamed = "";
+          smoother.reset();
+        }
+        return;
+      }
+      if (ev.parent_tool_use_id) return;
 
       // Backend watchdog: a long silence is surfaced as a step, never as a kill —
       // a slow tool call (a big test run) can legitimately go quiet for minutes.

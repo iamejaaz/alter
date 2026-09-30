@@ -818,6 +818,9 @@ async fn claude_code(
     let mut last_output = std::time::Instant::now();
     let mut warned_at: u64 = 0;
     let mut interrupted_at: Option<std::time::Instant> = None;
+    let mut pending_bg: usize = 0;
+    let mut notified: u32 = 0;
+    let mut results: u32 = 0;
     loop {
         if cancel.is_cancelled(&conv_id) {
             if let Some(mut old) = guard.take() {
@@ -852,7 +855,19 @@ async fn claude_code(
             Ok(Some(line)) => {
                 last_output = std::time::Instant::now();
                 warned_at = 0;
-                let done = line.contains("\"type\":\"result\"");
+                if line.contains("\"subtype\":\"background_tasks_changed\"") {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                        pending_bg = v.get("tasks").and_then(|t| t.as_array()).map_or(0, |a| a.len());
+                    }
+                }
+                if line.contains("\"subtype\":\"task_notification\"") {
+                    notified += 1;
+                }
+                let is_result = line.contains("\"type\":\"result\"");
+                if is_result {
+                    results += 1;
+                }
+                let done = is_result && pending_bg == 0 && results > notified;
                 if !line.trim().is_empty() {
                     let _ = on_chunk.send(line);
                 }
@@ -871,6 +886,10 @@ async fn claude_code(
             Err(_) => {
                 // 100ms tick — re-check cancel, and surface (never kill) a long silence.
                 let idle = last_output.elapsed().as_secs();
+                if results > 0 && pending_bg == 0 && idle >= 20 {
+                    p.last_used = std::time::Instant::now();
+                    break;
+                }
                 let window = idle / STALL_SECS;
                 if idle >= STALL_SECS && window > warned_at {
                     warned_at = window;
