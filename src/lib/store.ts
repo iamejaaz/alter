@@ -22,6 +22,7 @@ export interface Message {
   attachments?: Attachment[];
   peer?: { name: string; dir: "in" | "out"; status?: string; msgId?: string }; // exchanged with a Claude Code session, not the model
   quote?: string; // the passage of an earlier answer this message replies to
+  handoff?: { id: string; title: string; summary: string };
 }
 
 export interface Conversation {
@@ -41,6 +42,8 @@ export interface Conversation {
   prs?: string[]; // "owner/repo#123" for every PR this chat opened, shown above the composer
   prsHidden?: string[]; // ones dismissed from that bar
   unread?: boolean;
+  parentId?: string;
+  handoffDone?: boolean;
   muted?: boolean;
   peer?: { pid: number; name: string; auto?: boolean; left?: number }; // the local session this chat is paired with, picked with @
 }

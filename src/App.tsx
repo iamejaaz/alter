@@ -57,7 +57,7 @@ type RenderItem = { kind: "tools"; lines: string[]; key: string } | { kind: "msg
 function groupMessages(messages: Message[]): RenderItem[] {
   const items: RenderItem[] = [];
   messages.forEach((m, i) => {
-    if (m.role === "tool") {
+    if (m.role === "tool" && !m.handoff) {
       const lines = m.content.split("\n").filter(Boolean).map((l) => l.replace(/^▸\s*/, ""));
       const last = items[items.length - 1];
       if (last && last.kind === "tools") last.lines.push(...lines);
@@ -676,6 +676,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     historyOverride?: Message[];
     targetConvId?: string; // internal: drain a queued message into this conversation
     routineId?: string; // a manual "Run now": file the chat under that routine
+    background?: boolean;
+    parentId?: string;
   }) => {
     const typed = (opts?.text ?? input).trim();
     const q = !opts?.text && quote ? quote : null;
@@ -691,6 +693,32 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       setInput("");
       setAttachments([]);
       return sendToPeer(activeId, paired, text, atts);
+    }
+
+    const hand = !opts?.text ? text.match(/^\/handoff(-full)?\s+([\s\S]+)$/i) : null;
+    if (hand && active) {
+      setInput("");
+      setAttachments([]);
+      const task = hand[2].trim();
+      const transcript = hand[1]
+        ? active.messages
+            .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.peer)
+            .slice(-16)
+            .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 700)}`)
+            .join("\n\n")
+            .slice(-9000)
+        : "";
+      setConvInfo(active.id, `Handed off: ${task.slice(0, 60)}. It runs in the background and reports back here.`);
+      return send({
+        text:
+          `This task was handed off from the chat "${active.title}". Do it fully on your own, then end with a short summary of what you found or did.\n\nTask: ${task}` +
+          (transcript ? `\n\nContext from that chat, condensed:\n\n${transcript}` : ""),
+        display: task,
+        forceNew: true,
+        title: `↳ ${task.slice(0, 38)}`,
+        background: true,
+        parentId: active.id,
+      });
     }
 
     // "/skill args" runs one of Alter's saved skills: its instructions ride along,
@@ -789,9 +817,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         effort: settings.effort,
         projectId: activeProjectId ?? undefined,
         routineId: opts?.routineId,
+        parentId: opts?.parentId,
       };
       setConversations((prev) => [conv, ...prev]);
-      setActiveId(convId);
+      if (!opts?.background) setActiveId(convId);
     }
 
     const userMsg: Message = { role: "user", content: shown, attachments: atts.length ? atts : undefined, quote: q ?? undefined };
@@ -1562,6 +1591,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         if (active && (await confirmDialog(`Delete "${active.title}"?`))) deleteConversation(active.id);
       },
     },
+    { cmd: "/handoff", desc: "Hand a task to a background chat (task only)", run: () => setInput("/handoff ") },
+    { cmd: "/handoff-full", desc: "Hand a task to a background chat with this conversation", run: () => setInput("/handoff-full ") },
     { cmd: "/usage", desc: "Show cost tally (instant, no tokens)", run: showUsage },
     { cmd: "/compact", desc: "Reset Claude Code context for this chat (no tokens used)", run: compactChat },
     { cmd: "/auto", desc: "Auto — act freely, writes confirm", run: () => applyMode("auto") },
@@ -1684,6 +1715,32 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     window.addEventListener("focus", clear);
     return () => window.removeEventListener("focus", clear);
   }, [activeId]);
+  useEffect(() => {
+    for (const c of conversations) {
+      if (!c.parentId || c.handoffDone || streamingIds.includes(c.id)) continue;
+      const last = c.messages[c.messages.length - 1];
+      if (last?.role !== "assistant" || !last.content) continue;
+      const summary = last.content
+        .replace(/```[\s\S]*?```/g, " ")
+        .replace(/^#+.*$/gm, " ")
+        .replace(/[#*`>_|]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(/(?<=[.!?])\s+/)
+        .slice(0, 2)
+        .join(" ")
+        .slice(0, 280);
+      const parentId = c.parentId;
+      updateConversation(c.id, (x) => ({ ...x, handoffDone: true }));
+      updateConversation(parentId, (p) => ({
+        ...p,
+        unread: !(p.id === activeIdRef.current && document.hasFocus()),
+        messages: p.messages.some((m) => m.handoff?.id === c.id)
+          ? p.messages
+          : [...p.messages, { role: "tool", content: "", handoff: { id: c.id, title: c.title, summary } }],
+      }));
+    }
+  }, [conversations, streamingIds]);
   const AUTO_TURNS = 20;
   const autoSeenRef = useRef<Set<string>>(new Set());
   const autoReply = async (c: Conversation) => {
@@ -2029,7 +2086,17 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 item.kind === "tools" ? (
                   <ToolSteps key={item.key} lines={item.lines} live={activeStreaming && items.slice(idx + 1).every((x) => x.kind === "msg" && x.m.role === "assistant" && !x.m.content)} />
                 ) : ((m, i) =>
-                  m.role === "user" ? (
+                  m.handoff ? (
+                  <div key={i} className="flex justify-center animate-fade-up">
+                    <button
+                      onClick={() => openChat(m.handoff!.id)}
+                      className="max-w-[85%] rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-3 py-2 text-left text-[12px] leading-[1.5] text-[var(--txt-dim)] transition-colors hover:bg-[var(--panel-2)]"
+                    >
+                      <span className="text-[var(--txt)]">Handoff finished · {m.handoff.title.replace(/^↳\s*/, "")}</span>
+                      {m.handoff.summary && <span className="mt-0.5 block">{m.handoff.summary}</span>}
+                    </button>
+                  </div>
+                  ) : m.role === "user" ? (
                   <div key={i} className="group flex justify-end animate-fade-up">
                     <div className="max-w-[80%]">
                       {m.attachments && m.attachments.length > 0 && (
@@ -2168,6 +2235,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   ×
                 </button>
               </div>
+            )}
+            {active?.parentId && conversations.some((c) => c.id === active.parentId) && (
+              <button
+                onClick={() => openChat(active.parentId!)}
+                className="mb-2 flex w-fit items-center gap-1.5 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1 text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]"
+              >
+                Handed off from {conversations.find((c) => c.id === active.parentId)?.title}
+              </button>
             )}
             {active?.peer && (
               <div className="mb-2 flex w-fit items-center gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1 text-[11px] text-[var(--txt-dim)]">
