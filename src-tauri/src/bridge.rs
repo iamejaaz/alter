@@ -791,7 +791,7 @@ async fn run_completion(
             }
         }
         messages.push(serde_json::json!({ "role": "user", "content": prompt }));
-        let body = serde_json::json!({ "model": conn.model, "messages": messages, "max_tokens": 4000, "stream": false });
+        let body = serde_json::json!({ "model": conn.model, "messages": messages, "stream": false });
         let resp = client
             .post(format!("{}/chat/completions", base))
             .bearer_auth(&conn.api_key)

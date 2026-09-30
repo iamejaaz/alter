@@ -515,7 +515,6 @@ async fn quick_complete(url: String, api_key: String, model: String, prompt: Str
     let body = serde_json::json!({
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 24,
         "stream": false
     });
     let resp = client
@@ -889,7 +888,6 @@ async fn test_connection(url: String, api_key: String, model: String) -> Result<
         let body = serde_json::json!({
             "model": model,
             "messages": [{"role": "user", "content": "ping"}],
-            "max_tokens": 1,
             "stream": false
         });
         let resp = client
