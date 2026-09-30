@@ -178,18 +178,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const r = await bridge("/gh", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repo: msg.repo, num: msg.num, body: msg.body, event: msg.event, comments: msg.comments || [] }),
+          body: JSON.stringify({ repo: msg.repo, num: msg.num, body: msg.body, event: msg.event, comments: msg.comments || [], head: msg.head || "" }),
         });
-        sendResponse(r.ok ? { ok: true, note: r.body.note || "" } : { ok: false, error: r.body.error || hint(r) });
+        sendResponse(r.ok ? { ok: true, note: r.body.note || "" } : { ok: false, stale: !!r.body.stale, error: r.body.error || hint(r) });
       } else if (msg.type === "gh-bot") {
         const json = JSON.stringify(msg.review || {});
         const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)));
         const r = await bridge("/gh-bot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repo: msg.repo, num: msg.num, review_b64: b64 }),
+          body: JSON.stringify({ repo: msg.repo, num: msg.num, review_b64: b64, head: msg.head || "" }),
         });
-        sendResponse(r.ok ? { ok: true } : { ok: false, error: r.body.error || hint(r) });
+        sendResponse(r.ok ? { ok: true, note: r.body.note || "" } : { ok: false, stale: !!r.body.stale, error: r.body.error || hint(r) });
       } else if (msg.type === "run") {
         const r = await bridge("/run", {
           method: "POST",
@@ -357,7 +357,7 @@ async function autoReviewTick() {
     });
     if (!s.ok) continue;
     runs[key] = { key, runId, connectionId, model: claudeModel || undefined, label: "review" };
-    store[key] = { runId, url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), lastRequest: chk.body.lastRequest, notified: false };
+    store[key] = { runId, url: pr.url, title: pr.title, ts: Date.now(), updated: Date.parse(pr.updated), lastRequest: chk.body.lastRequest, head: chk.body.head || "", notified: false };
     notify("start-" + runId, `Reviewing #${pr.num} (${pr.reason === "assign" ? "assigned" : "review requested"})`, pr.title, pr.url);
     started++;
   }
@@ -408,7 +408,13 @@ async function autoPollOnce() {
         const [repo, prNum] = key.split("#");
         const review = { event: "COMMENT", body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, discussion, resolve: ALTER.resolveIds(j) };
         const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(review))));
-        const post = await bridge("/gh-bot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo, num: prNum, review_b64: b64 }) });
+        const post = await bridge("/gh-bot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo, num: prNum, review_b64: b64, head: rec.head || "" }) });
+        if (!post.ok && post.body && post.body.stale) {
+          notify("stale-" + rec.runId, `#${num} changed during the review`, "New commits landed while it was being reviewed, so nothing was posted. It will be reviewed again.", rec.url);
+          rec.runId = null;
+          rec.updated = 0;
+          continue;
+        }
         const what = rec.kind === "reply" ? "Replied" : "Posted";
         notify("done-" + rec.runId, post.ok ? `${what} as the review bot on #${num}` : `${rec.kind === "reply" ? "Reply" : "Review"} ready for #${num}, bot post failed`, post.ok ? verdict : (post.body.error || "").slice(0, 120), rec.url);
       } else notify("done-" + rec.runId, `${rec.kind === "reply" ? "Reply" : "Review"} ready for #${num}`, verdict, rec.url);

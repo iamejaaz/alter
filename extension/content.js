@@ -73,7 +73,9 @@ async function runInner() {
   const ciBlock = checks.trim() ? `CI checks:\n${checks.slice(0, 4000)}\n\n` : "";
   const prompt = `Review ${parts.owner}/${parts.repo}#${parts.num} with the frappe-pr-review skill.\n\n${authorBlock}${ciBlock}`;
 
-  session = { parts, author, connectionId, model: claudeModel || undefined, review: "", draft: "", transcript: [] };
+  const state = await send({ type: "pr-reviewed", repo: `${parts.owner}/${parts.repo}`, num: parts.num });
+  const head = state && state.ok && state.data ? state.data.head || "" : "";
+  session = { parts, author, head, connectionId, model: claudeModel || undefined, review: "", draft: "", transcript: [] };
   clearBody();
   const block = appendBlock("assistant");
   const raw = await streamAgent(block, {
@@ -226,14 +228,22 @@ async function postToGh(event, text, btn) {
     body,
     event,
     comments,
+    head: session.head,
   });
   btn.disabled = false;
   btn.textContent = label;
-  if (r && r.ok) {
-    if (note) note.innerHTML = r.note ? `✓ Posted. ${escapeHtml(r.note)}` : "✓ Posted to the PR.";
-  } else {
-    if (note) note.innerHTML = `<span class="alter-err">${escapeHtml((r && r.error) || "Failed to post.")}</span>`;
-  }
+  showPostResult(r, r && r.ok ? (r.note ? `✓ Posted. ${escapeHtml(r.note)}` : "✓ Posted to the PR.") : "");
+}
+
+function showPostResult(r, okHtml) {
+  const note = document.querySelector("#alter-foot-note");
+  if (!note) return;
+  if (r && r.ok) note.innerHTML = okHtml;
+  else if (r && r.stale) {
+    note.innerHTML = `<span class="alter-err">${escapeHtml(r.error)}</span> <button id="alter-rerun" class="alter-link">Re-run review</button>`;
+    note.querySelector("#alter-rerun").addEventListener("click", () => run());
+  } else note.innerHTML = `<span class="alter-err">${escapeHtml((r && r.error) || "Failed to post.")}</span>`;
+  note.scrollIntoView({ block: "nearest" });
 }
 
 // Hide the reasoning-model <think> block while it streams; show the answer that
@@ -739,6 +749,7 @@ function panelConfirm(summary) {
   if (!note) return Promise.resolve(false);
   return new Promise((resolve) => {
     note.innerHTML = `<div class="alter-confirm"><div>${summary}</div><div class="alter-confirm-btns"><button id="alter-confirm-yes">Post</button><button id="alter-confirm-no" class="alter-ghost">Cancel</button></div></div>`;
+    note.scrollIntoView({ block: "nearest" });
     const done = (v) => {
       note.innerHTML = "";
       resolve(v);
@@ -947,10 +958,11 @@ async function postAsBot(text, btn) {
     repo: `${session.parts.owner}/${session.parts.repo}`,
     num: session.parts.num,
     review: { event: "COMMENT", body, comments: comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, resolve },
+    head: session.head,
   });
   btn.disabled = false;
   btn.textContent = label;
-  if (note) note.innerHTML = r && r.ok ? "✓ Dispatched. The bot posts within a minute." : `<span class="alter-err">${escapeHtml((r && r.error) || "Failed to dispatch.")}</span>`;
+  showPostResult(r, `✓ Dispatched. The bot posts within a minute.${r && r.note ? " " + escapeHtml(r.note) : ""}`);
 }
 
 // GitHub is an SPA: the URL changes without reloading. If the PR under an open

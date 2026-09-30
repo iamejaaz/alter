@@ -280,6 +280,77 @@ fn agent_workdir() -> String {
         .unwrap_or_default()
 }
 
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = (chunk[0] as u32) << 16 | (*chunk.get(1).unwrap_or(&0) as u32) << 8 | *chunk.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(TABLE[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+fn pr_head(repo: &str, num: &str) -> Option<String> {
+    let o = std::process::Command::new("gh")
+        .args(["pr", "view", num, "-R", repo, "--json", "headRefOid", "--jq", ".headRefOid"])
+        .output()
+        .ok()?;
+    let h = String::from_utf8_lossy(&o.stdout).trim().to_string();
+    (o.status.success() && !h.is_empty()).then_some(h)
+}
+
+fn pr_moved(repo: &str, num: &str, head: &str) -> bool {
+    !head.is_empty() && pr_head(repo, num).is_some_and(|h| h != head)
+}
+
+fn stale_review() -> (u16, String) {
+    (
+        409,
+        serde_json::json!({
+            "error": "The PR changed after this review was drafted, so its comments may point at old code. Re-run the review before posting.",
+            "stale": true
+        })
+        .to_string(),
+    )
+}
+
+fn diff_lines(repo: &str, num: &str) -> Option<std::collections::HashMap<String, std::collections::HashSet<u64>>> {
+    let o = std::process::Command::new("gh").args(["pr", "diff", num, "-R", repo]).output().ok()?;
+    if !o.status.success() {
+        return None;
+    }
+    let mut map: std::collections::HashMap<String, std::collections::HashSet<u64>> = Default::default();
+    let mut path: Option<String> = None;
+    let mut n = 0u64;
+    for l in String::from_utf8_lossy(&o.stdout).lines() {
+        if l.starts_with("diff --git") {
+            path = None;
+        } else if let Some(p) = l.strip_prefix("+++ ") {
+            path = p.strip_prefix("b/").map(str::to_string);
+        } else if l.starts_with("--- ") && path.is_none() {
+        } else if let Some(rest) = l.strip_prefix("@@ ") {
+            n = rest
+                .split_whitespace()
+                .find_map(|t| t.strip_prefix('+'))
+                .and_then(|t| t.split(',').next())
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(0);
+        } else if let Some(p) = &path {
+            if l.starts_with('+') || l.starts_with(' ') {
+                map.entry(p.clone()).or_default().insert(n);
+                n += 1;
+            }
+        }
+    }
+    Some(map)
+}
+
 pub fn base64_decode(input: &str) -> Option<Vec<u8>> {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = Vec::with_capacity(input.len() * 3 / 4);
@@ -1337,8 +1408,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_default();
             let out = std::process::Command::new("gh")
-                .args(["pr", "view", &req.num, "-R", &req.repo, "--json", "reviews,commits,author,state",
-                    "--jq", "{author: .author.login, state: .state, last: (.commits | last | .committedDate), reviews: [.reviews[] | {a: .author.login, at: .submittedAt}]}"])
+                .args(["pr", "view", &req.num, "-R", &req.repo, "--json", "reviews,commits,author,state,headRefOid",
+                    "--jq", "{author: .author.login, state: .state, head: .headRefOid, last: (.commits | last | .committedDate), reviews: [.reviews[] | {a: .author.login, at: .submittedAt}]}"])
                 .output();
             match out {
                 Ok(o) if o.status.success() => {
@@ -1378,7 +1449,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                         .max()
                         .unwrap_or_default();
                     let reviewed = if last_request.is_empty() { !last_review.is_empty() && last_review.as_str() >= last } else { last_review >= last_request };
-                    (200, serde_json::json!({ "reviewed": reviewed, "own": !me.is_empty() && author == me, "open": open, "author": author, "lastRequest": last_request, "lastReview": last_review }).to_string())
+                    (200, serde_json::json!({ "reviewed": reviewed, "own": !me.is_empty() && author == me, "open": open, "author": author, "head": v.get("head").and_then(|x| x.as_str()).unwrap_or(""), "lastRequest": last_request, "lastReview": last_review }).to_string())
                 }
                 Ok(o) => (502, serde_json::json!({ "error": String::from_utf8_lossy(&o.stderr).trim() }).to_string()),
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
@@ -1421,11 +1492,16 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 event: String,
                 #[serde(default)]
                 comments: Vec<InlineComment>,
+                #[serde(default)]
+                head: String,
             }
             let req: GhReq = match serde_json::from_str(body) {
                 Ok(r) => r,
                 Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
             };
+            if pr_moved(&req.repo, &req.num, &req.head) {
+                return stale_review();
+            }
             let api_event = match req.event.as_str() {
                 "comment" => "COMMENT",
                 "request_changes" => "REQUEST_CHANGES",
@@ -1495,6 +1571,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 repo: String,
                 num: String,
                 review_b64: String,
+                #[serde(default)]
+                head: String,
             }
             let req: B = match serde_json::from_str(body) {
                 Ok(r) => r,
@@ -1506,14 +1584,53 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             if pr_bot().is_empty() {
                 return (400, "{\"error\":\"no review bot configured — set one in Alter → Settings → Agents\"}".into());
             }
-            if req.review_b64.len() > 60_000 {
+            if pr_moved(&req.repo, &req.num, &req.head) {
+                return stale_review();
+            }
+            let mut review_b64 = req.review_b64.clone();
+            let mut note = String::new();
+            let parsed = base64_decode(&req.review_b64).and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+            if let Some(mut review) = parsed {
+                let comments = review.get("comments").and_then(|c| c.as_array()).cloned().unwrap_or_default();
+                if !comments.is_empty() {
+                    if let Some(lines) = diff_lines(&req.repo, &req.num) {
+                        let fits = |c: &serde_json::Value| {
+                            let path = c.get("path").and_then(|x| x.as_str()).unwrap_or("");
+                            let line = c.get("line").and_then(|x| x.as_u64()).unwrap_or(0);
+                            lines.get(path).is_some_and(|set| set.contains(&line))
+                        };
+                        let (keep, off): (Vec<_>, Vec<_>) = comments.into_iter().partition(|c| fits(c));
+                        if !off.is_empty() {
+                            let mut folded = String::new();
+                            for c in &off {
+                                folded.push_str(&format!(
+                                    "`{}:{}` {}\n\n",
+                                    c.get("path").and_then(|x| x.as_str()).unwrap_or(""),
+                                    c.get("line").and_then(|x| x.as_u64()).unwrap_or(0),
+                                    c.get("body").and_then(|x| x.as_str()).unwrap_or("")
+                                ));
+                            }
+                            folded.push_str(review.get("body").and_then(|x| x.as_str()).unwrap_or(""));
+                            review["body"] = serde_json::Value::String(folded.trim().to_string());
+                            review["comments"] = serde_json::Value::Array(keep);
+                            review_b64 = base64_encode(review.to_string().as_bytes());
+                            note = format!(
+                                "{} comment{} pointed at lines outside the diff, so they went into the review body.",
+                                off.len(),
+                                if off.len() == 1 { "" } else { "s" }
+                            );
+                        }
+                    }
+                }
+            }
+            if review_b64.len() > 60_000 {
                 return (400, "{\"error\":\"review too large for workflow_dispatch; shorten it\"}".into());
             }
             let out = std::process::Command::new("gh")
-                .args(["workflow", "run", "post-review.yml", "-R", &req.repo, "-f", &format!("pr={}", req.num), "-f", &format!("review={}", req.review_b64)])
+                .args(["workflow", "run", "post-review.yml", "-R", &req.repo, "-f", &format!("pr={}", req.num), "-f", &format!("review={}", review_b64)])
                 .output();
             match out {
-                Ok(o) if o.status.success() => (200, serde_json::json!({ "ok": true }).to_string()),
+                Ok(o) if o.status.success() => (200, serde_json::json!({ "ok": true, "note": note }).to_string()),
                 Ok(o) => (502, serde_json::json!({ "error": String::from_utf8_lossy(&o.stderr).trim() }).to_string()),
                 Err(e) => (502, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
             }

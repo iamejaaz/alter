@@ -75,6 +75,8 @@
   color: #e4e4e7 !important;
 }
 #alter-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 12px 14px;
   overflow-y: auto;
   white-space: normal;
@@ -132,6 +134,10 @@
   font-weight: 600;
 }
 #alter-panel-foot {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 48vh;
+  overflow-y: auto;
   border-top: 1px solid #26262c;
   padding: 8px 10px 10px;
 }
