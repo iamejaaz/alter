@@ -40,17 +40,32 @@ const queue = askQueue({
   alive: () => !!session,
   run: (q) => followUp(q),
 });
-// Who the review gets posted as. Empty until Alter names a bot account, and an
-// install with no bot posts only as you, so the bot button never appears.
 let botLogin = "";
-send({ type: "repro-info" }).then((r) => {
-  if (r && r.ok && r.data && r.data.bot) botLogin = r.data.bot;
-});
+
+const REVIEW_STORE = "alter_reviews";
+async function savedReview(key) {
+  try {
+    return ((await chrome.storage.local.get(REVIEW_STORE))[REVIEW_STORE] || {})[key] || null;
+  } catch (_) {
+    return null;
+  }
+}
+async function saveReview(key, rec) {
+  try {
+    const all = (await chrome.storage.local.get(REVIEW_STORE))[REVIEW_STORE] || {};
+    all[key] = rec;
+    const keep = Object.entries(all).sort((a, b) => Date.parse(b[1].at) - Date.parse(a[1].at)).slice(0, 30);
+    await chrome.storage.local.set({ [REVIEW_STORE]: Object.fromEntries(keep) });
+  } catch (_) {}
+}
 
 // Ignore re-clicks while a review is in flight: a second run() would clear the
 // panel and detach the live block.
-async function run() {
+async function run(fresh) {
   if (running) return;
+  const parts = prParts();
+  const saved = !fresh && parts ? await savedReview(prKey(parts)) : null;
+  if (saved) return showSaved(parts, saved);
   running = true;
   const btn = document.querySelector("#alter-actions button");
   if (btn) btn.disabled = true;
@@ -92,8 +107,26 @@ async function runInner() {
     label: "review",
   });
   session.review = raw;
+  if (raw) await saveReview(prKey(parts), { at: new Date().toISOString(), head, review: raw, connectionId, model: session.model });
   renderFooter();
   refreshBadge();
+}
+
+async function showSaved(parts, saved) {
+  openPanel();
+  session = { parts, author: prAuthor(), head: saved.head, connectionId: saved.connectionId, model: saved.model, review: saved.review, draft: "", transcript: [] };
+  clearBody();
+  const note = document.createElement("div");
+  note.className = "alter-step alter-step-say";
+  note.innerHTML = `Reviewed ${escapeHtml(ago(saved.at))}. <button class="alter-link">Run again</button>`;
+  note.querySelector("button").addEventListener("click", () => run(true));
+  document.querySelector("#alter-panel-body").appendChild(note);
+  const ans = appendBlock("assistant");
+  ans.innerHTML = renderReview(saved.review);
+  renderFooter();
+  const state = await send({ type: "pr-reviewed", repo: `${parts.owner}/${parts.repo}`, num: parts.num });
+  const now = state && state.ok && state.data ? state.data.head : "";
+  if (now && saved.head && now !== saved.head && note.isConnected) note.firstChild.textContent = `Reviewed ${ago(saved.at)}, and the PR has new commits since. `;
 }
 
 async function followUp(q) {
@@ -286,8 +319,8 @@ function reviewHeader(text) {
   if (!v) return "";
   const verdict = v[1].toUpperCase();
   const cls = verdict === "READY" ? "ok" : verdict === "NEEDS CHANGES" ? "warn" : "hold";
-  const blocking = (text.match(/severity:\s*blocking/gi) || []).length;
-  const nits = (text.match(/severity:\s*nit/gi) || []).length;
+  const blocking = (text.match(/severity:\s*blocking|^\s*\d+\.\s+\**Blocking\b/gim) || []).length;
+  const nits = (text.match(/severity:\s*nit|^\s*\d+\.\s+\**Nit\b/gim) || []).length;
   const repro = (text.match(/Reproduced:\s*\**\s*(yes|no|skipped)/i) || [])[1];
   const bits = [];
   if (blocking) bits.push(`${blocking} blocking`);
@@ -295,6 +328,46 @@ function reviewHeader(text) {
   if (!blocking && !nits) bits.push("nothing to ask");
   if (repro) bits.push(`reproduced: ${repro.toLowerCase()}`);
   return `<div class="alter-verdict"><span class="alter-verdict-pill alter-verdict-${cls}">${escapeHtml(verdict.toLowerCase())}</span><span>${escapeHtml(bits.join(" · "))}</span></div>`;
+}
+
+function findingCard(item) {
+  const lines = item.split("\n").map((l) => l.trim());
+  const head = lines.shift() || "";
+  const m = head.match(/^\**\s*(Blocking|Nit)\s*:\s*([\s\S]*?)\**$/i);
+  const sev = m ? m[1].toLowerCase() : "";
+  const raw = (m ? m[2] : head).replace(/\*\*/g, "").trim();
+  const ask = raw.charAt(0).toUpperCase() + raw.slice(1);
+  const at = lines.findIndex((l) => /^`[^`]+`$/.test(l));
+  const anchor = at >= 0 ? lines.splice(at, 1)[0].slice(1, -1) : "";
+  const why = lines.join("\n").trim();
+  return (
+    `<div class="alter-card"><div class="alter-card-head">` +
+    (sev ? `<span class="alter-verdict-pill alter-verdict-${sev === "blocking" ? "warn" : "hold"}">${sev}</span>` : "") +
+    `<span class="alter-card-anchor" title="${escapeHtml(anchor)}">${escapeHtml(anchor.split("/").slice(-2).join("/") || "whole PR")}</span></div>` +
+    `<div class="alter-finding">${mini(ask)}${why ? `<div class="alter-finding-why">${mini(why)}</div>` : ""}</div></div>`
+  );
+}
+
+function renderReview(text) {
+  const body = withoutJsonFence(text);
+  const parts = body.split(/^#{2,4}\s*(Changes needed|Checked)\s*$/im);
+  const section = (name) => {
+    const i = parts.findIndex((p, k) => k % 2 === 1 && p.toLowerCase() === name);
+    return i < 0 ? null : parts[i + 1].trim();
+  };
+  const changes = section("changes needed");
+  if (changes === null) return reviewHeader(body) + mini(body);
+  const summary = parts[0].replace(/^.*Verdict:.*$/im, "").trim();
+  const items = changes.split(/^\s*\d+\.\s+/m).map((x) => x.trim()).filter(Boolean);
+  const numbered = /^\s*\d+\.\s+/m.test(changes);
+  const checked = section("checked");
+  return (
+    reviewHeader(body) +
+    (summary ? `<div class="alter-summary">${mini(summary)}</div>` : "") +
+    `<b class="md-h">Changes needed</b>` +
+    (numbered ? items.map(findingCard).join("") : mini(changes)) +
+    (checked ? `<details class="alter-checked"><summary>What was checked</summary><div class="det-body">${mini(checked)}</div></details>` : "")
+  );
 }
 
 function withoutJsonFence(text) {
@@ -454,7 +527,7 @@ function pollRun(el, runId, opts) {
         const clean = displayText(p.text || "") ?? (p.text || "");
         const body = document.getElementById("alter-panel-body");
         const wasAtBottom = nearBottom(body);
-        ans.innerHTML = opts.label === "review" ? reviewHeader(clean) + mini(withoutJsonFence(clean)) : mini(clean);
+        ans.innerHTML = opts.label === "review" ? renderReview(clean) : mini(clean);
         el.appendChild(ans);
         // Only reposition if the user was following along at the bottom.
         if (wasAtBottom && body) {
@@ -573,7 +646,17 @@ async function refreshBadge() {
   if (!parts || !badge) return;
   const r = await send({ type: "pr-reviewed", repo: `${parts.owner}/${parts.repo}`, num: parts.num });
   const d = r && r.ok ? r.data : null;
-  badge.textContent = !d ? "" : !d.open ? "closed" : d.lastReview ? `reviewed ${ago(d.lastReview)}` : "not reviewed yet";
+  if (d) botLogin = d.bot || "";
+  const local = await savedReview(prKey(parts));
+  badge.textContent = !d
+    ? ""
+    : !d.open
+      ? "closed"
+      : d.lastReview
+        ? `reviewed ${ago(d.lastReview)}`
+        : local
+          ? `reviewed ${ago(local.at)}, not posted`
+          : "not reviewed yet";
 }
 
 function ensureButton() {
@@ -654,7 +737,7 @@ function openPanel() {
     <div id="alter-panel-head">
       <span id="alter-panel-title">Alter — PR review</span>
       <div>
-        <button id="alter-copy" title="Copy the review (or draft comment)">Copy</button>
+        <button id="alter-copy" title="Copy the review, or the comments while you preview them">Copy review</button>
         <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
         <button id="alter-min" title="Minimize">▾</button>
         <button id="alter-close" title="Close">×</button>
@@ -709,11 +792,12 @@ function openPanel() {
 
   el.querySelector("#alter-copy").addEventListener("click", () => {
     const b = el.querySelector("#alter-copy");
-    const text = session ? session.draft || session.review || "" : "";
+    const previewing = !!document.getElementById("alter-cards");
+    const text = !session ? "" : previewing && session.draft ? session.draft : withoutJsonFence(session.review || "");
     if (!text) return;
     navigator.clipboard.writeText(text);
     b.textContent = "Copied";
-    setTimeout(() => (b.textContent = "Copy"), 1500);
+    setTimeout(() => (b.textContent = "Copy review"), 1500);
   });
   el.querySelector("#alter-min").addEventListener("click", () => {
     const min = el.classList.toggle("alter-collapsed");
@@ -790,7 +874,7 @@ function renderFooter() {
       ? '<button id="alter-push">Push &amp; open PR</button>'
       : ""
     : session && session.review
-      ? '<button id="alter-post-review" class="alter-primary">Post review…</button><button id="alter-verify">🔬 Verify on bench</button>'
+      ? '<button id="alter-post-review" class="alter-primary">Preview comments</button><button id="alter-verify" hidden>Verify on bench</button>'
       : "";
   foot.innerHTML = `
     <div id="alter-foot-btns">${btns}</div>
@@ -811,12 +895,7 @@ function renderFooter() {
       });
     });
     send({ type: "repro-info" }).then((r) => {
-      if (r && r.ok && r.data) botLogin = r.data.bot || "";
-      if (!(r && r.ok && r.data && r.data.configured)) {
-        verifyBtn.disabled = true;
-        verifyBtn.title = "Set up a repro bench in Alter → Settings → Repro benches first";
-        verifyBtn.textContent = "🔬 Verify on bench — set up a bench";
-      }
+      if (r && r.ok && r.data && r.data.configured) verifyBtn.hidden = false;
     });
   }
   const postBtn = foot.querySelector("#alter-post-review");

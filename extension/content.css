@@ -324,6 +324,33 @@
 .alter-card-anchor {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #e4e4e7;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.alter-card-head .alter-verdict-pill {
+  flex: none;
+}
+.alter-finding {
+  padding: 8px 10px;
+}
+.alter-finding-why {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+.alter-summary {
+  margin-bottom: 4px;
+}
+.alter-checked {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+.alter-checked summary {
+  cursor: pointer;
+  padding: 4px 0;
 }
 .alter-card-hint {
   color: #71717a;

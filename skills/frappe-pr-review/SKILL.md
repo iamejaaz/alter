@@ -96,25 +96,37 @@ Only when the PR or its linked issue gives concrete steps, and the fix looks cor
 
 ## 6. Result
 
-Return this, in this order. No essay.
+The maintainer reads this in ten seconds to learn one thing: what has to change. Write it as Markdown, in this order, with these exact headings. No essay.
 
-```
-PR #<N> — <title>
-Verdict: READY | NEEDS CHANGES | NEEDS HUMAN JUDGMENT
-Focus: <what FOCUS asked, or none>
-Prior maintainer review: addressed | partly (what remains) | none
-Rationale: up to 3 sentences.
-Reproduced: yes | no | skipped (UI-only) — with the exact snippet used.
-Findings:
-  - severity: blocking | nit
-    file:line
-    claim: one true sentence
-    ask: the concrete action
-    replacement: exact text, only if it is a one-liner
-Bot claims checked: <bot>: confirmed | contradicted, with file:line
-Rubric steps that found nothing: <numbers>
-Comments: see below
-```
+````
+**Verdict: READY | NEEDS CHANGES | NEEDS HUMAN JUDGMENT** · Reproduced: yes | no | skipped (UI-only)
+
+Two or three plain sentences: what the PR does, and why it is or is not ready. No file paths, no symbols.
+
+### Changes needed
+
+1. **Blocking: the change to make, as one plain sentence.**
+   `path/to/file.py:123`
+   One sentence on what goes wrong today because of it.
+2. **Nit: the change to make.**
+   `path/to/file.py:140`
+   One sentence of why.
+
+### Checked
+
+- Reproduced: what you ran and on which branch or SHA, in one line.
+- Prior maintainer review: addressed | partly (what remains) | none
+- Bot claims: <bot>: confirmed | contradicted, with file:line
+- CI: the failing check and whether it is real or stale
+- Skipped: anything you could not check, and why
+- Rubric steps that found nothing: <numbers>
+````
+
+Rules for the block:
+
+- **Changes needed** lists every finding, most severe first, and leads each one with the change to make, not with the mechanism. A finding is three lines: the ask in bold, the anchor, one sentence of why. The mechanism, the sibling files and the counts you gathered stay out of it; name at most one more file when the change has to be made there. A one-line fix goes in a fenced block under its finding. A finding with no line (tests, title, description) omits the anchor. Write `Nothing to change.` under the heading when there are no findings.
+- **Checked** is the evidence, one line per item, and only the items that apply. The reproduction snippet goes in a fenced block at the very end of the section, and only when it is short.
+- If FOCUS was set, the first sentence of the summary answers it.
 
 Verdict rules: any real ask is NEEDS CHANGES. Blocking, not a nit: a new crash, leftover no-op code, the same bug in a sibling file, a missing permission check, a breaking change without `!` and a migration path. READY only when there is nothing you would actually ask to change. NEEDS HUMAN JUDGMENT for product or UX trade-offs; state the trade-off in two sentences.
 

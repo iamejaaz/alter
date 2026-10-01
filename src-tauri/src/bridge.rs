@@ -328,6 +328,26 @@ fn pr_bot() -> String {
     std::env::var("ALTER_PR_BOT").unwrap_or_default().trim().to_string()
 }
 
+fn repo_bot(repo: &str) -> String {
+    static READY: std::sync::OnceLock<Mutex<std::collections::HashMap<String, bool>>> = std::sync::OnceLock::new();
+    let bot = pr_bot();
+    if bot.is_empty() {
+        return bot;
+    }
+    let cache = READY.get_or_init(Default::default);
+    let known = cache.lock().unwrap_or_else(|e| e.into_inner()).get(repo).copied();
+    let ready = known.unwrap_or_else(|| {
+        let ok = std::process::Command::new("gh")
+            .args(["api", &format!("repos/{repo}/actions/workflows/post-review.yml"), "--jq", ".state"])
+            .output()
+            .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "active")
+            .unwrap_or(false);
+        cache.lock().unwrap_or_else(|e| e.into_inner()).insert(repo.to_string(), ok);
+        ok
+    });
+    if ready { bot } else { String::new() }
+}
+
 fn followup_repos() -> Vec<String> {
     std::env::var("ALTER_PR_REPOS")
         .unwrap_or_default()
@@ -1547,7 +1567,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                         .max()
                         .unwrap_or_default();
                     let reviewed = if last_request.is_empty() { !last_review.is_empty() && last_review.as_str() >= last } else { last_review >= last_request };
-                    (200, serde_json::json!({ "reviewed": reviewed, "own": !me.is_empty() && author == me, "open": open, "author": author, "head": v.get("head").and_then(|x| x.as_str()).unwrap_or(""), "lastRequest": last_request, "lastReview": last_review }).to_string())
+                    (200, serde_json::json!({ "reviewed": reviewed, "own": !me.is_empty() && author == me, "open": open, "author": author, "head": v.get("head").and_then(|x| x.as_str()).unwrap_or(""), "bot": repo_bot(&req.repo), "lastRequest": last_request, "lastReview": last_review }).to_string())
                 }
                 Ok(o) => (502, serde_json::json!({ "error": String::from_utf8_lossy(&o.stderr).trim() }).to_string()),
                 Err(e) => (500, serde_json::json!({ "error": format!("can't run gh: {e}") }).to_string()),
