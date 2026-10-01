@@ -167,6 +167,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: hint(r) });
       } else if (msg.type === "connections") {
         const r = await bridge("/connections");
+        if (r.ok) await repairModels(r.body);
         sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: hint(r) });
       } else if (msg.type === "gh-checks") {
         const r = await bridge("/gh-checks", {
@@ -276,7 +277,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 function hint(r) {
   if (r.status === 401) return "Wrong or missing token — set it in the Alter extension settings.";
-  return "Bridge error " + r.status;
+  return (r.body && r.body.error) || "Bridge error " + r.status;
+}
+
+async function repairModels(conns) {
+  const { models } = await chrome.storage.local.get("models");
+  if (!models || !Array.isArray(conns) || !conns.length) return;
+  const claude = conns.find((c) => c.isClaudeCode);
+  let changed = false;
+  for (const a of ["prReview", "support"]) {
+    if (models[a] && claude && !conns.some((c) => c.id === models[a])) {
+      models[a] = claude.id;
+      changed = true;
+    }
+  }
+  if (changed) await chrome.storage.local.set({ models });
 }
 
 

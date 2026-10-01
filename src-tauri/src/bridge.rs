@@ -748,6 +748,26 @@ fn spawn_agent_run(
     });
 }
 
+fn resolve_conn(state: &BridgeState, id: &str, needs_agent: bool) -> Result<BridgeConn, (u16, String)> {
+    let conns = state.conns.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(c) = conns.iter().find(|c| c.id == id) {
+        return Ok(c.clone());
+    }
+    if needs_agent {
+        if let Some(c) = conns.iter().find(|c| c.is_claude_code()) {
+            return Ok(c.clone());
+        }
+    }
+    let msg = if conns.is_empty() {
+        "Alter hasn't loaded its models yet. Open the Alter window, then try again."
+    } else if needs_agent {
+        "This action needs Claude Code, and Alter has no Claude Code model. Add one in Alter under Settings, Models."
+    } else {
+        "The model picked for this action was removed from Alter. Open the Alter extension settings and pick a model again."
+    };
+    Err((404, serde_json::json!({ "error": msg, "code": "unknown_connection" }).to_string()))
+}
+
 #[tauri::command]
 pub fn bridge_info(state: State<BridgeState>) -> serde_json::Value {
     serde_json::json!({ "port": BRIDGE_PORT, "token": *state.token.lock().unwrap_or_else(|e| e.into_inner()) })
@@ -1276,10 +1296,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             if req.render_only {
                 return (200, serde_json::json!({ "system": system, "prompt": prompt }).to_string());
             }
-            let conn = state.conns.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|c| c.id == req.connection_id).cloned();
-            let mut conn = match conn {
-                Some(c) => c,
-                None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
+            let mut conn = match resolve_conn(&state, &req.connection_id, true) {
+                Ok(c) => c,
+                Err(e) => return e,
             };
             if !conn.is_claude_code() {
                 return (400, "{\"error\":\"the support agent needs the Claude Code connection (it uses tools)\"}".into());
@@ -1313,10 +1332,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Ok(r) => r,
                 Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
             };
-            let conn = state.conns.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|c| c.id == req.connection_id).cloned();
-            let mut conn = match conn {
-                Some(c) => c,
-                None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
+            let mut conn = match resolve_conn(&state, &req.connection_id, false) {
+                Ok(c) => c,
+                Err(e) => return e,
             };
             if conn.is_claude_code() {
                 if let Some(m) = req.model.as_deref() {
@@ -1711,10 +1729,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Ok(r) => r,
                 Err(e) => return (400, format!("{{\"error\":\"bad request: {e}\"}}")),
             };
-            let conn = state.conns.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|c| c.id == req.connection_id).cloned();
-            let mut conn = match conn {
-                Some(c) => c,
-                None => return (404, "{\"error\":\"unknown connectionId\"}".into()),
+            let mut conn = match resolve_conn(&state, &req.connection_id, true) {
+                Ok(c) => c,
+                Err(e) => return e,
             };
             if !conn.is_claude_code() {
                 return (400, "{\"error\":\"the support agent needs the Claude Code connection (it uses tools)\"}".into());
