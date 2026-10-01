@@ -143,7 +143,20 @@ type ClaudeSlot = std::sync::Arc<tokio::sync::Mutex<Option<ClaudeProc>>>;
 pub struct ClaudeState {
     slots: tokio::sync::Mutex<std::collections::HashMap<String, ClaudeSlot>>,
     interrupts: Mutex<HashSet<String>>,
-    replies: Mutex<std::collections::HashMap<String, Vec<String>>>,
+}
+
+#[derive(Default)]
+pub struct AskReplies(Mutex<std::collections::HashMap<String, Vec<String>>>);
+
+impl AskReplies {
+    fn push(&self, conv_id: &str, line: String) {
+        if let Ok(mut m) = self.0.lock() {
+            m.entry(conv_id.to_string()).or_default().push(line);
+        }
+    }
+    fn take(&self, conv_id: &str) -> Vec<String> {
+        self.0.lock().ok().and_then(|mut m| m.remove(conv_id)).unwrap_or_default()
+    }
 }
 
 // Upper bound on idle warm processes; the least recently used idle one is killed
@@ -160,14 +173,6 @@ impl ClaudeState {
         if let Ok(mut s) = self.interrupts.lock() {
             s.insert(conv_id.to_string());
         }
-    }
-    fn push_reply(&self, conv_id: &str, line: String) {
-        if let Ok(mut m) = self.replies.lock() {
-            m.entry(conv_id.to_string()).or_default().push(line);
-        }
-    }
-    fn take_replies(&self, conv_id: &str) -> Vec<String> {
-        self.replies.lock().ok().and_then(|mut m| m.remove(conv_id)).unwrap_or_default()
     }
     fn take_interrupt(&self, conv_id: &str) -> bool {
         self.interrupts.lock().map(|mut s| s.remove(conv_id)).unwrap_or(false)
@@ -220,13 +225,8 @@ impl ClaudeState {
 // Soft interrupt: ask the running turn to stop at the CLI's next boundary. The
 // process and its session survive, so the next message continues with full context.
 #[tauri::command]
-fn claude_respond(procs: tauri::State<'_, ClaudeState>, conv_id: String, request_id: String, response: serde_json::Value) {
-    let line = serde_json::json!({
-        "type": "control_response",
-        "response": { "subtype": "success", "request_id": request_id, "response": response }
-    })
-    .to_string();
-    procs.push_reply(&conv_id, line);
+fn agent_reply(replies: tauri::State<'_, AskReplies>, conv_id: String, message: serde_json::Value) {
+    replies.push(&conv_id, message.to_string());
 }
 
 #[tauri::command]
@@ -706,9 +706,47 @@ fn import_frappe_credentials(profile: Option<String>) -> Result<FrappeCreds, Str
     })
 }
 
+type CodexLines = tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>;
+
+async fn codex_send(stdin: &mut tokio::process::ChildStdin, msg: serde_json::Value) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+    let mut line = msg.to_string();
+    line.push('\n');
+    stdin.write_all(line.as_bytes()).await.map_err(|_| "Codex closed unexpectedly.".to_string())?;
+    stdin.flush().await.map_err(|_| "Codex closed unexpectedly.".to_string())
+}
+
+async fn codex_result(lines: &mut CodexLines, id: u64, cancel: &ChatCancel, conv_id: &str) -> Result<serde_json::Value, String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        if cancel.is_cancelled(conv_id) {
+            return Err("cancelled".into());
+        }
+        if std::time::Instant::now() > deadline {
+            return Err("Codex didn't start within a minute.".into());
+        }
+        match tokio::time::timeout(std::time::Duration::from_millis(100), lines.next_line()).await {
+            Ok(Ok(Some(line))) => {
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+                if v.get("method").is_some() || v.get("id").and_then(|x| x.as_u64()) != Some(id) {
+                    continue;
+                }
+                if let Some(e) = v.get("error") {
+                    return Err(e.get("message").and_then(|m| m.as_str()).unwrap_or("Codex refused the request.").to_string());
+                }
+                return Ok(v.get("result").cloned().unwrap_or_default());
+            }
+            Ok(Ok(None)) => return Err("Codex closed unexpectedly.".into()),
+            Ok(Err(e)) => return Err(e.to_string()),
+            Err(_) => continue,
+        }
+    }
+}
+
 #[tauri::command]
 async fn codex_chat(
     cancel: tauri::State<'_, ChatCancel>,
+    replies: tauri::State<'_, AskReplies>,
     prompt: String,
     cwd: Option<String>,
     conv_id: String,
@@ -722,113 +760,150 @@ async fn codex_chat(
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     cancel.clear(&conv_id);
+    replies.take(&conv_id);
     let bin = local_cli::find("codex").ok_or("Codex isn't installed. Install the Codex app or the codex CLI, then sign in.")?;
-    let mut args: Vec<String> = vec!["exec".into()];
-    let resume = session_id.filter(|s| !s.is_empty());
-    if resume.is_some() {
-        args.push("resume".into());
-    }
-    args.extend(["--json".into(), "--skip-git-repo-check".into()]);
-    if let Some(id) = identity.filter(|i| !i.is_empty()) {
-        args.extend(["-c".into(), format!("developer_instructions={}", serde_json::Value::String(id))]);
-    }
-    match permission_mode.as_deref() {
-        Some("auto") => args.push("--dangerously-bypass-approvals-and-sandbox".into()),
-        Some("ask") => args.extend(["-c".into(), "sandbox_mode=\"workspace-write\"".into()]),
-        _ => args.extend(["-c".into(), "sandbox_mode=\"read-only\"".into()]),
-    }
-    if let Some(m) = model.filter(|m| !m.is_empty() && m != "codex") {
-        args.extend(["-m".into(), m]);
-    }
-    if let Some(e) = effort.filter(|e| !e.is_empty()) {
-        let level = match e.as_str() {
-            "low" => "low",
-            "medium" => "medium",
-            _ => "high",
-        };
-        args.extend(["-c".into(), format!("model_reasoning_effort=\"{level}\"")]);
-    }
+    let dir = cwd
+        .filter(|d| std::path::Path::new(d).is_dir())
+        .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/".into()));
+    let (policy, sandbox) = match permission_mode.as_deref() {
+        Some("auto") => ("never", "danger-full-access"),
+        Some("ask") => ("untrusted", "workspace-write"),
+        _ => ("never", "read-only"),
+    };
+    let model = model.filter(|m| !m.is_empty() && m != "codex");
+    let effort = effort.filter(|e| !e.is_empty()).map(|e| match e.as_str() {
+        "low" => "low",
+        "medium" => "medium",
+        "xhigh" | "max" => "xhigh",
+        _ => "high",
+    });
+
+    let mut input = vec![serde_json::json!({ "type": "text", "text": prompt })];
     let mut temp_images = Vec::new();
     for (i, img) in images.unwrap_or_default().iter().enumerate() {
         let ext = img.media_type.rsplit('/').next().unwrap_or("png");
         let Some(bytes) = bridge::base64_decode(&img.data) else { continue };
         let path = std::env::temp_dir().join(format!("alter-codex-{conv_id}-{i}.{ext}"));
         if std::fs::write(&path, bytes).is_ok() {
-            args.extend(["-i".into(), path.display().to_string()]);
+            input.push(serde_json::json!({ "type": "localImage", "path": path.display().to_string() }));
             temp_images.push(path);
         }
     }
-    if let Some(sid) = &resume {
-        args.push(sid.clone());
-    }
-    args.push(prompt);
 
-    let dir = cwd
-        .filter(|d| std::path::Path::new(d).is_dir())
-        .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/".into()));
     let mut child = tokio::process::Command::new(&bin)
-        .args(&args)
+        .args(["app-server", "--enable", "default_mode_request_user_input"])
         .current_dir(&dir)
-        .stdin(std::process::Stdio::null())
+        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("Couldn't start Codex ({e})"))?;
+    let mut stdin = child.stdin.take().ok_or("Codex gave no input stream")?;
     let stdout = child.stdout.take().ok_or("Codex gave no output stream")?;
-    let stderr = child.stderr.take();
-    let err_task = tokio::spawn(async move {
-        let mut tail = String::new();
-        if let Some(e) = stderr {
+    if let Some(e) = child.stderr.take() {
+        tokio::spawn(async move {
             let mut lines = BufReader::new(e).lines();
-            while let Ok(Some(l)) = lines.next_line().await {
-                tail = l;
+            while let Ok(Some(_)) = lines.next_line().await {}
+        });
+    }
+    let mut lines = BufReader::new(stdout).lines();
+
+    let outcome: Result<bool, String> = async {
+        codex_send(
+            &mut stdin,
+            serde_json::json!({ "id": 1, "method": "initialize", "params": { "clientInfo": { "name": "alter", "title": "Alter", "version": env!("CARGO_PKG_VERSION") } } }),
+        )
+        .await?;
+        codex_result(&mut lines, 1, &cancel, &conv_id).await?;
+        codex_send(&mut stdin, serde_json::json!({ "method": "initialized" })).await?;
+
+        let mut thread = serde_json::json!({ "cwd": dir, "approvalPolicy": policy, "sandbox": sandbox });
+        if let Some(id) = identity.as_deref().filter(|i| !i.is_empty()) {
+            thread["developerInstructions"] = serde_json::Value::String(id.to_string());
+        }
+        if let Some(m) = &model {
+            thread["model"] = serde_json::Value::String(m.clone());
+        }
+        let mut opened = None;
+        if let Some(sid) = session_id.as_deref().filter(|s| !s.is_empty()) {
+            let mut params = thread.clone();
+            params["threadId"] = serde_json::Value::String(sid.to_string());
+            codex_send(&mut stdin, serde_json::json!({ "id": 2, "method": "thread/resume", "params": params })).await?;
+            match codex_result(&mut lines, 2, &cancel, &conv_id).await {
+                Ok(r) => opened = Some(r),
+                Err(e) if e == "cancelled" => return Err(e),
+                Err(_) => {}
             }
         }
-        tail
-    });
-    let mut lines = BufReader::new(stdout).lines();
-    let mut finished = false;
-    let mut failure: Option<String> = None;
-    loop {
-        if cancel.is_cancelled(&conv_id) {
-            let _ = child.kill().await;
-            break;
+        let opened = match opened {
+            Some(r) => r,
+            None => {
+                codex_send(&mut stdin, serde_json::json!({ "id": 3, "method": "thread/start", "params": thread })).await?;
+                codex_result(&mut lines, 3, &cancel, &conv_id).await?
+            }
+        };
+        let thread_id = opened["thread"]["id"].as_str().ok_or("Codex didn't open a session.")?.to_string();
+        let _ = on_chunk.send(serde_json::json!({ "type": "alter_thread", "thread_id": thread_id }).to_string());
+
+        let mut turn = serde_json::json!({ "threadId": thread_id, "input": input });
+        if let Some(e) = effort {
+            turn["effort"] = serde_json::Value::String(e.to_string());
         }
-        match tokio::time::timeout(std::time::Duration::from_millis(100), lines.next_line()).await {
-            Ok(Ok(Some(line))) => {
-                if line.contains("\"turn.completed\"") {
-                    finished = true;
+        if let Some(m) = &model {
+            turn["model"] = serde_json::Value::String(m.clone());
+        }
+        codex_send(&mut stdin, serde_json::json!({ "id": 4, "method": "turn/start", "params": turn })).await?;
+
+        loop {
+            if cancel.is_cancelled(&conv_id) {
+                return Ok(false);
+            }
+            for reply in replies.take(&conv_id) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&reply) {
+                    codex_send(&mut stdin, v).await?;
                 }
-                if line.contains("\"turn.failed\"") || (line.starts_with("{\"type\":\"error\"") && !line.contains("Reconnecting")) {
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
-                        let msg = v
-                            .get("message")
-                            .or_else(|| v.get("error").and_then(|e| e.get("message")))
-                            .and_then(|x| x.as_str())
-                            .unwrap_or("Codex failed.")
-                            .to_string();
-                        failure = Some(local_cli::signin_hint(&msg).unwrap_or(msg));
+            }
+            let line = match tokio::time::timeout(std::time::Duration::from_millis(100), lines.next_line()).await {
+                Ok(Ok(Some(l))) => l,
+                Ok(Ok(None)) => return Err("Codex stopped without an answer.".into()),
+                Ok(Err(e)) => return Err(e.to_string()),
+                Err(_) => continue,
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+            let method = v.get("method").and_then(|m| m.as_str()).unwrap_or("");
+            if method.is_empty() {
+                if v.get("id").and_then(|x| x.as_u64()) == Some(4) {
+                    if let Some(e) = v.get("error") {
+                        return Err(e.get("message").and_then(|m| m.as_str()).unwrap_or("Codex refused the request.").to_string());
                     }
                 }
-                if !line.trim().is_empty() {
-                    let _ = on_chunk.send(line);
-                }
+                continue;
             }
-            Ok(Ok(None)) => break,
-            Ok(Err(e)) => return Err(e.to_string()),
-            Err(_) => continue,
+            if method.ends_with("outputDelta") || method.starts_with("item/reasoning") || method.starts_with("mcpServer/") || method.starts_with("account/") {
+                continue;
+            }
+            let _ = on_chunk.send(line);
+            if method == "turn/completed" {
+                let turn = &v["params"]["turn"];
+                return match turn["status"].as_str() {
+                    Some("failed") => Err(turn["error"]["message"].as_str().unwrap_or("Codex failed.").to_string()),
+                    _ => Ok(true),
+                };
+            }
         }
     }
-    let _ = child.wait().await;
-    let tail = err_task.await.unwrap_or_default();
+    .await;
+
+    let _ = child.kill().await;
     for p in temp_images {
         let _ = std::fs::remove_file(p);
     }
-    if cancel.is_cancelled(&conv_id) || finished {
-        return Ok(());
+    match outcome {
+        Ok(_) => Ok(()),
+        Err(_) if cancel.is_cancelled(&conv_id) => Ok(()),
+        Err(msg) => Err(local_cli::signin_hint(&msg).unwrap_or(msg)),
     }
-    Err(failure.unwrap_or_else(|| local_cli::signin_hint(&tail).unwrap_or(if tail.is_empty() { "Codex stopped without an answer.".into() } else { tail })))
 }
 
 
@@ -836,6 +911,7 @@ async fn codex_chat(
 async fn claude_code(
     cancel: tauri::State<'_, ChatCancel>,
     procs: tauri::State<'_, ClaudeState>,
+    replies: tauri::State<'_, AskReplies>,
     prompt: String,
     cwd: Option<String>,
     conv_id: String,
@@ -851,7 +927,7 @@ async fn claude_code(
     use tokio::process::Command;
     cancel.clear(&conv_id);
     procs.take_interrupt(&conv_id);
-    procs.take_replies(&conv_id);
+    replies.take(&conv_id);
 
     let model = model.unwrap_or_default();
     let cwd = cwd.unwrap_or_default();
@@ -1002,7 +1078,7 @@ async fn claude_code(
             break;
         }
         let p = guard.as_mut().unwrap();
-        for mut reply in procs.take_replies(&conv_id) {
+        for mut reply in replies.take(&conv_id) {
             reply.push('\n');
             let _ = p.stdin.write_all(reply.as_bytes()).await;
             let _ = p.stdin.flush().await;
@@ -1737,6 +1813,7 @@ pub fn run() {
         .manage(browser::BrowserState::default())
         .manage(ChatCancel::default())
         .manage(ClaudeState::default())
+        .manage(AskReplies::default())
         .manage(bridge::BridgeState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -1781,7 +1858,7 @@ pub fn run() {
             claude_code,
             claude_close,
             claude_interrupt,
-            claude_respond,
+            agent_reply,
             import_frappe_credentials,
             read_user_memory,
             append_user_memory,

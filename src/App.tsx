@@ -960,6 +960,23 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         if (!ccPrompt.trim() && ccImages.length) ccPrompt = "(see attached image)";
         setAgents((a) => ({ ...a, [convId!]: [] }));
         setAsks((a) => ({ ...a, [convId!]: [] }));
+        const onAsk = (ask: ToolAsk | null, cancelledId?: string) => {
+            if (!ask) return setAsks((a) => ({ ...a, [convId!]: (a[convId!] ?? []).filter((x) => x.id !== cancelledId) }));
+            if (settings.mode === "chat" && !ask.questions) {
+              void answerAsk(convId!, ask, {
+                behavior: "deny",
+                message: "Alter is in Chat only mode, so this is switched off. Tell the user to pick Ask first or Auto to allow it.",
+              });
+              return;
+            }
+            setAsks((a) => ({ ...a, [convId!]: [...(a[convId!] ?? []), ask] }));
+            const viewing = convId === activeIdRef.current && document.hasFocus();
+            if (viewing) return;
+            updateConversation(convId!, (c) => ({ ...c, unread: true }));
+            const conv = convsRef.current.find((c) => c.id === convId);
+            if (!conv?.muted)
+              void invoke("notify", { title: conv?.title || "Alter", body: ask.questions ? "Has a question for you." : "Needs your permission to continue." }).catch(() => {});
+        };
         const writeDelta = (partial: string) =>
             updateConversation(convId!, (c) => ({
               ...c,
@@ -993,7 +1010,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             writeStep,
             controller.signal,
             (tid) => updateConversation(convId!, (c) => ({ ...c, codexThreadId: tid })),
-            (plan) => updateConversation(convId!, (c) => ({ ...c, plan: plan.length ? plan : undefined }))
+            (plan) => updateConversation(convId!, (c) => ({ ...c, plan: plan.length ? plan : undefined })),
+            onAsk
           );
           updateConversation(convId, (c) => ({
             ...c,
@@ -1029,23 +1047,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             }));
           },
           (list) => setAgents((a) => ({ ...a, [convId!]: list })),
-          (ask, cancelledId) => {
-            if (!ask) return setAsks((a) => ({ ...a, [convId!]: (a[convId!] ?? []).filter((x) => x.id !== cancelledId) }));
-            if (settings.mode === "chat" && !ask.questions) {
-              void answerAsk(convId!, ask.id, {
-                behavior: "deny",
-                message: "Alter is in Chat only mode, so this is switched off. Tell the user to pick Ask first or Auto to allow it.",
-              });
-              return;
-            }
-            setAsks((a) => ({ ...a, [convId!]: [...(a[convId!] ?? []), ask] }));
-            const viewing = convId === activeIdRef.current && document.hasFocus();
-            if (viewing) return;
-            updateConversation(convId!, (c) => ({ ...c, unread: true }));
-            const conv = convsRef.current.find((c) => c.id === convId);
-            if (!conv?.muted)
-              void invoke("notify", { title: conv?.title || "Alter", body: ask.questions ? "Has a question for you." : "Needs your permission to continue." }).catch(() => {});
-          }
+          onAsk
         );
         updateConversation(convId, (c) => ({
           ...c,
@@ -2484,7 +2486,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   key={ask.id}
                   ask={ask}
                   onAnswer={(response) => {
-                    void answerAsk(active.id, ask.id, response);
+                    void answerAsk(active.id, ask, response);
                     setAsks((a) => ({ ...a, [active.id]: (a[active.id] ?? []).filter((x) => x.id !== ask.id) }));
                   }}
                 />

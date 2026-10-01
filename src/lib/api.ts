@@ -305,28 +305,35 @@ export function claudeInterrupt(convId: string): void {
   void invoke("claude_interrupt", { convId }).catch(() => {});
 }
 
+const codexCommand = (item: Record<string, unknown>): string => {
+  const actions = Array.isArray(item.commandActions) ? (item.commandActions as { command?: string }[]) : [];
+  return String(actions[0]?.command ?? item.command ?? "").replace(/^\/bin\/(ba|z)?sh -lc ['"]?|['"]$/g, "");
+};
+
+const codexChanges = (item: Record<string, unknown>): { path: string; kind: string }[] =>
+  (Array.isArray(item.changes) ? (item.changes as { path?: string; kind?: { type?: string } | string }[]) : []).map((c) => ({
+    path: String(c.path ?? ""),
+    kind: typeof c.kind === "string" ? c.kind : String(c.kind?.type ?? "update"),
+  }));
+
 const codexLabel = (item: Record<string, unknown>): string | null => {
   const clip = (v: unknown, n = 60) => {
     const t = String(v ?? "").replace(/\s+/g, " ").trim();
     return t.length > n ? t.slice(0, n) + "…" : t;
   };
   switch (item.type) {
-    case "command_execution": {
-      const cmd = String(item.command ?? "").replace(/^\/bin\/(ba|z)?sh -lc ['"]?|['"]$/g, "");
-      return `Bash: ${clip(cmd)}`;
-    }
-    case "file_change": {
-      const changes = Array.isArray(item.changes) ? (item.changes as { path?: string; kind?: string }[]) : [];
-      return changes
-        .map((c) => `${c.kind === "add" ? "Write" : c.kind === "delete" ? "Delete" : "Edit"} ${String(c.path ?? "").split("/").slice(-2).join("/")}`)
-        .join("\n") || "Edit files";
-    }
-    case "mcp_tool_call":
+    case "commandExecution":
+      return `Bash: ${clip(codexCommand(item))}`;
+    case "fileChange":
+      return (
+        codexChanges(item)
+          .map((c) => `${c.kind === "add" ? "Write" : c.kind === "delete" ? "Delete" : "Edit"} ${c.path.split("/").slice(-2).join("/")}`)
+          .join("\n") || "Edit files"
+      );
+    case "mcpToolCall":
       return `${item.server ?? "mcp"}.${item.tool ?? "tool"}`;
-    case "web_search":
+    case "webSearch":
       return `Search "${clip(item.query, 48)}"`;
-    case "error":
-      return `Error: ${clip(item.message, 80)}`;
     default:
       return null;
   }
@@ -345,62 +352,124 @@ export async function codexChat(
   onActivity: (label: string) => void,
   signal: AbortSignal,
   onThread?: (id: string) => void,
-  onPlan?: (items: PlanItem[]) => void
+  onPlan?: (items: PlanItem[]) => void,
+  onAsk?: (ask: ToolAsk | null, cancelledId?: string) => void
 ): Promise<{ content: string; threadId: string | null; tokens: number | null }> {
   let streamed = "";
+  let base = "";
+  let current = "";
   let last = "";
   let thread = threadId;
   let tokens: number | null = null;
   const shown = new Set<string>();
+  const items = new Map<string, Record<string, unknown>>();
   const smoother = makeSmoother(onDelta);
+  const reply = (message: Record<string, unknown>) => void invoke("agent_reply", { convId, message }).catch(() => {});
+
+  const say = (id: string, text: string, append: boolean) => {
+    if (id !== current) {
+      base = streamed ? streamed + "\n\n" : "";
+      current = id;
+    }
+    streamed = append ? streamed + text : base + text;
+    last = streamed;
+    smoother.push(streamed);
+  };
+
+  const ask = (ev: { id: number | string; method: string; params?: Record<string, unknown> }) => {
+    const p = ev.params ?? {};
+    const item = items.get(String(p.itemId ?? "")) ?? {};
+    const common = { id: String(ev.id), rpcId: ev.id, engine: "codex" as const, description: typeof p.reason === "string" ? p.reason : undefined };
+    if (ev.method === "item/commandExecution/requestApproval") {
+      return onAsk?.({
+        ...common,
+        tool: "Bash",
+        input: { command: codexCommand({ ...item, ...p }) },
+        suggestions: [{ type: "addRules", decision: "acceptForSession" }],
+      });
+    }
+    if (ev.method === "item/fileChange/requestApproval") {
+      const changes = codexChanges(item);
+      return onAsk?.({
+        ...common,
+        tool: changes.length === 1 && changes[0].kind === "add" ? "Write" : "Edit",
+        input: { file_path: changes.map((c) => c.path).join("\n") || String(p.grantRoot ?? "files in this folder") },
+        suggestions: [{ type: "setMode", decision: "acceptForSession" }],
+      });
+    }
+    if (ev.method === "item/tool/requestUserInput" && Array.isArray(p.questions)) {
+      const questions = (p.questions as { id: string; question: string; header?: string; options?: { label: string; description?: string }[] | null }[]).map((q) => ({
+        id: q.id,
+        question: q.question,
+        header: q.header,
+        options: q.options ?? [],
+      }));
+      return onAsk?.({ ...common, tool: "AskUserQuestion", input: {}, suggestions: [], questions });
+    }
+    reply({ id: ev.id, error: { code: -32601, message: "Alter does not support this request." } });
+  };
 
   const channel = new Channel<string>();
   channel.onmessage = (line: string) => {
     try {
       const ev = JSON.parse(line);
-      if (ev.type === "thread.started" && ev.thread_id) {
+      if (ev.type === "alter_thread" && ev.thread_id) {
         thread = String(ev.thread_id);
         onThread?.(thread);
         return;
       }
-      if (ev.type === "turn.completed") {
-        const u = ev.usage ?? {};
-        tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0);
+      const p = (ev.params ?? {}) as Record<string, unknown>;
+      if (ev.id !== undefined && typeof ev.method === "string") {
+        if (onAsk) ask(ev);
+        else reply({ id: ev.id, error: { code: -32601, message: "No one is available to approve this." } });
         return;
       }
-      const item = ev.item as Record<string, unknown> | undefined;
-      if (!item || typeof item !== "object") return;
-      if (item.type === "agent_message") {
-        if (ev.type === "item.completed" && typeof item.text === "string") {
-          streamed = item.text;
-          last = item.text;
-          smoother.push(streamed);
+      switch (ev.method) {
+        case "serverRequest/resolved":
+          onAsk?.(null, String(p.requestId));
+          return;
+        case "thread/tokenUsage/updated": {
+          const u = (p.tokenUsage as { last?: { inputTokens?: number; outputTokens?: number } } | undefined)?.last;
+          if (u) tokens = (u.inputTokens ?? 0) + (u.outputTokens ?? 0);
+          return;
         }
-        return;
-      }
-      if (item.type === "todo_list" && Array.isArray(item.items)) {
-        const todos = item.items as { text?: string; completed?: boolean }[];
-        let current = false;
-        onPlan?.(
-          todos.map((t) => {
-            const status: PlanItem["status"] = t.completed ? "done" : current ? "pending" : "in_progress";
-            if (!t.completed) current = true;
-            return { text: String(t.text ?? ""), status };
-          })
-        );
-        return;
-      }
-      const id = String(item.id ?? "");
-      const wantStart = item.type === "command_execution" || item.type === "mcp_tool_call" || item.type === "web_search";
-      if ((wantStart && ev.type === "item.started") || (!wantStart && ev.type === "item.completed")) {
-        if (id && shown.has(id)) return;
-        const label = codexLabel(item);
-        if (!label) return;
-        if (id) shown.add(id);
-        if (streamed) onDelta(streamed);
-        for (const l of label.split("\n")) onActivity(l);
-        streamed = "";
-        smoother.reset();
+        case "turn/plan/updated":
+          if (Array.isArray(p.plan))
+            onPlan?.(
+              (p.plan as { step?: string; status?: string }[]).map((t) => ({
+                text: String(t.step ?? ""),
+                status: t.status === "completed" ? "done" : t.status === "inProgress" ? "in_progress" : "pending",
+              }))
+            );
+          return;
+        case "item/agentMessage/delta":
+          if (typeof p.delta === "string") say(String(p.itemId ?? ""), p.delta, String(p.itemId ?? "") === current);
+          return;
+        case "item/started":
+        case "item/completed": {
+          const item = p.item as Record<string, unknown> | undefined;
+          if (!item || typeof item !== "object") return;
+          const id = String(item.id ?? "");
+          if (id) items.set(id, item);
+          if (item.type === "agentMessage") {
+            if (ev.method === "item/completed" && typeof item.text === "string") say(id, item.text, false);
+            return;
+          }
+          const atStart = item.type === "commandExecution" || item.type === "mcpToolCall" || item.type === "webSearch";
+          if (atStart !== (ev.method === "item/started")) return;
+          if (item.status === "declined") return;
+          if (id && shown.has(id)) return;
+          const label = codexLabel(item);
+          if (!label) return;
+          if (id) shown.add(id);
+          if (streamed) onDelta(streamed);
+          for (const l of label.split("\n")) onActivity(l);
+          streamed = "";
+          base = "";
+          current = "";
+          smoother.reset();
+          return;
+        }
       }
     } catch {
       /* ignore non-JSON lines */
@@ -432,6 +501,7 @@ const agentStatus = (s: unknown): AgentRun["status"] =>
   s === "completed" ? "completed" : s === "failed" || s === "error" ? "failed" : s === "killed" || s === "stopped" || s === "cancelled" ? "stopped" : "running";
 
 export interface AskQuestion {
+  id?: string;
   question: string;
   header?: string;
   multiSelect?: boolean;
@@ -444,9 +514,28 @@ export interface ToolAsk {
   description?: string;
   suggestions: Record<string, unknown>[];
   questions?: AskQuestion[];
+  engine?: "codex";
+  rpcId?: number | string;
 }
-export function answerAsk(convId: string, requestId: string, response: Record<string, unknown>) {
-  return invoke("claude_respond", { convId, requestId, response }).catch(() => {});
+
+const codexAnswer = (ask: ToolAsk, a: Record<string, unknown>): Record<string, unknown> => {
+  if (ask.questions) {
+    const given = ((a.updatedInput as { answers?: Record<string, string> } | undefined)?.answers ?? {}) as Record<string, string>;
+    const answers: Record<string, { answers: string[] }> = {};
+    for (const q of ask.questions) if (given[q.question]) answers[q.id ?? q.question] = { answers: [given[q.question]] };
+    return { answers };
+  }
+  if (a.behavior !== "allow") return { decision: "decline" };
+  const rule = (a.updatedPermissions as { decision?: unknown }[] | undefined)?.[0]?.decision;
+  return { decision: rule ?? "accept" };
+};
+
+export function answerAsk(convId: string, ask: ToolAsk, response: Record<string, unknown>) {
+  const message =
+    ask.engine === "codex"
+      ? { id: ask.rpcId, result: codexAnswer(ask, response) }
+      : { type: "control_response", response: { subtype: "success", request_id: ask.id, response } };
+  return invoke("agent_reply", { convId, message }).catch(() => {});
 }
 
 export async function claudeCodeChat(
@@ -500,7 +589,7 @@ export async function claudeCodeChat(
           questions: r.tool_name === "AskUserQuestion" && Array.isArray(input.questions) ? input.questions : undefined,
         };
         if (onAsk) onAsk(ask);
-        else void answerAsk(convId, ask.id, { behavior: "deny", message: "No one is available to approve this." });
+        else void answerAsk(convId, ask, { behavior: "deny", message: "No one is available to approve this." });
         return;
       }
       if (ev.type === "control_cancel_request") {
