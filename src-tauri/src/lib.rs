@@ -693,6 +693,7 @@ async fn codex_chat(
     effort: Option<String>,
     permission_mode: Option<String>,
     images: Option<Vec<ImageAttachment>>,
+    identity: Option<String>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
@@ -704,7 +705,9 @@ async fn codex_chat(
         args.push("resume".into());
     }
     args.extend(["--json".into(), "--skip-git-repo-check".into()]);
-    args.extend(["-c".into(), format!("developer_instructions={}", serde_json::Value::String(ALTER_IDENTITY.replace("Claude Code", "Codex")))]);
+    if let Some(id) = identity.filter(|i| !i.is_empty()) {
+        args.extend(["-c".into(), format!("developer_instructions={}", serde_json::Value::String(id))]);
+    }
     match permission_mode.as_deref() {
         Some("auto") => args.push("--dangerously-bypass-approvals-and-sandbox".into()),
         Some("ask") => args.extend(["-c".into(), "sandbox_mode=\"workspace-write\"".into()]),
@@ -804,7 +807,6 @@ async fn codex_chat(
     Err(failure.unwrap_or_else(|| local_cli::signin_hint(&tail).unwrap_or(if tail.is_empty() { "Codex stopped without an answer.".into() } else { tail })))
 }
 
-const ALTER_IDENTITY: &str = "You are Alter, a desktop AI companion app created by Ejaaz, and this chat runs inside the Alter app. Your name is Alter and your creator is Ejaaz: when asked who you are, what you are, or who made you, say that. You run on Claude Code under the hood and may say so, with the model, when someone asks what powers you, but never introduce yourself as Claude Code or as a CLI. Keep the user's project, folder and tools exactly as they are.";
 
 #[tauri::command]
 async fn claude_code(
@@ -818,6 +820,7 @@ async fn claude_code(
     effort: Option<String>,
     permission_mode: Option<String>,
     images: Option<Vec<ImageAttachment>>,
+    identity: Option<String>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -856,8 +859,10 @@ async fn claude_code(
             .arg("--output-format").arg("stream-json")
             .arg("--verbose")
             .arg("--include-partial-messages") // stream tokens as they arrive
-            .arg("--permission-mode").arg(&perm)
-            .arg("--append-system-prompt").arg(ALTER_IDENTITY);
+            .arg("--permission-mode").arg(&perm);
+        if let Some(id) = identity.as_deref().filter(|i| !i.is_empty()) {
+            cmd.arg("--append-system-prompt").arg(id);
+        }
         if !model.is_empty() && model != "claude-code" {
             cmd.arg("--model").arg(&model);
         }
