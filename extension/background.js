@@ -219,6 +219,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             model: msg.model,
             runId: msg.runId,
             mode: msg.mode,
+            resume: msg.resume,
             label: msg.runLabel || "",
             url: (sender.tab && sender.tab.url) || "",
             kind: msg.kind || "",

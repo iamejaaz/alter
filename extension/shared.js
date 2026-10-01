@@ -29,13 +29,36 @@ globalThis.ALTER = globalThis.ALTER || (() => {
       }
     });
 
-  function askQueue({ list, rowClass, alive, run }) {
-    let lock = Promise.resolve();
+  function askQueue({ list, rowClass, alive, run, interrupt }) {
+    const jobs = [];
     const queued = [];
-    const exclusive = (fn) => {
-      const p = lock.then(fn);
-      lock = p.catch(() => {});
-      return p;
+    let busy = false;
+    const pump = async () => {
+      if (busy) return;
+      const job = jobs.shift();
+      if (!job) return;
+      busy = true;
+      try {
+        job.done(await job.fn());
+      } catch (e) {
+        job.fail(e);
+      } finally {
+        busy = false;
+        pump();
+      }
+    };
+    const exclusive = (fn) =>
+      new Promise((done, fail) => {
+        jobs.push({ fn, done, fail });
+        pump();
+      });
+    const link = (label, title, onClick) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.title = title;
+      b.addEventListener("click", onClick);
+      return b;
     };
     const render = () => {
       const el = list();
@@ -46,30 +69,40 @@ globalThis.ALTER = globalThis.ALTER || (() => {
         row.className = rowClass;
         const text = document.createElement("span");
         text.textContent = "Queued: " + item.q;
-        const x = document.createElement("button");
-        x.type = "button";
-        x.textContent = "Remove";
-        x.addEventListener("click", () => {
-          const i = queued.indexOf(item);
-          if (i >= 0) queued.splice(i, 1);
-          render();
-        });
-        row.append(text, x);
+        row.append(
+          text,
+          link("Send now", "Stop what is running and send this", () => {
+            const at = jobs.indexOf(item.job);
+            if (at > 0) jobs.unshift(jobs.splice(at, 1)[0]);
+            interrupt();
+          }),
+          link("Remove", "Drop this message", () => {
+            const i = queued.indexOf(item);
+            if (i >= 0) queued.splice(i, 1);
+            render();
+          })
+        );
         el.appendChild(row);
       });
     };
     const ask = (q, extra) => {
       if (!alive()) return;
       const item = { q };
+      item.job = {
+        fn: () => {
+          const i = queued.indexOf(item);
+          if (i < 0 || !alive()) return;
+          queued.splice(i, 1);
+          render();
+          return run(q, extra);
+        },
+        done() {},
+        fail() {},
+      };
       queued.push(item);
+      jobs.push(item.job);
       render();
-      exclusive(() => {
-        const i = queued.indexOf(item);
-        if (i < 0 || !alive()) return;
-        queued.splice(i, 1);
-        render();
-        return run(q, extra);
-      });
+      pump();
     };
     const clear = () => {
       queued.length = 0;

@@ -145,6 +145,8 @@ struct RunReq {
     // Optional per-request model override (e.g. force Sonnet to conserve limits).
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    resume: Option<String>,
     // Client-supplied id so a Stop can target this exact run.
     #[serde(rename = "runId", default)]
     run_id: Option<String>,
@@ -1776,7 +1778,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             prune_progress(&mut state.progress.lock().unwrap_or_else(|e| e.into_inner()));
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            spawn_agent_run(conn, system, prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone(), None, None);
+            spawn_agent_run(conn, system, prompt, run_id.clone(), req.mode, repro_root, state.running.clone(), state.progress.clone(), None, req.resume.filter(|s| !s.is_empty()));
             if !req.label.is_empty() {
                 tag_run(&state, &run_id, req.label.clone(), req.url.clone(), req.kind.clone());
             }

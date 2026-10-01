@@ -31,6 +31,10 @@ const queue = askQueue({
   rowClass: "sup-step sup-step-say sup-queued",
   alive: () => !!supSession,
   run: (q, images) => followUp(q, images),
+  interrupt: () => {
+    if (supSession && supRunning && supSession.sessionId) supSession.carryOn = true;
+    if (activeRun) activeRun.stop();
+  },
 });
 const { exclusive } = queue;
 
@@ -294,15 +298,21 @@ async function followUp(q, images) {
   const t = supSession.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
   const block = appendBlock("assistant");
   const wantsReply = REPLY_INTENT.test(q);
+  const carry = supSession.carryOn;
+  supSession.carryOn = false;
+  const question = carry
+    ? `${q}\n\n(You were stopped part-way through your work on this ticket because I sent this message. Answer it first in a sentence or two, then carry on from where you stopped and finish.)`
+    : q;
   const a = await streamAgent(block, {
     connectionId: supSession.connectionId,
     agent: true,
     includeMemory: true,
     model: supSession.model,
     label: wantsReply ? "Draft reply" : "Follow-up",
-    support: { ticket: supSession.id, verb: "followup", site: SITE, transcript: t, question: q, resume: supSession.sessionId, images: images || [], voice: wantsReply ? "Output ONLY the message text for the customer. " + REPLY_VOICE : "" },
+    support: { ticket: supSession.id, verb: "followup", site: SITE, transcript: t, question, resume: supSession.sessionId, images: images || [], voice: wantsReply ? "Output ONLY the message text for the customer. " + REPLY_VOICE : "" },
   });
   supSession.transcript.push({ q, a });
+  if (carry && a) supSession.last = a;
 }
 
 let activeRun = null; // { runId, stop } while an agent run is in flight

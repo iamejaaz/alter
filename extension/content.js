@@ -39,7 +39,15 @@ const queue = askQueue({
   rowClass: "alter-step alter-step-say alter-queued",
   alive: () => !!session,
   run: (q) => followUp(q),
+  interrupt: () => {
+    if (session && session.reviewing && session.sessionId) session.resumeReview = true;
+    stopAllRuns();
+  },
 });
+
+const CONTINUE_REVIEW =
+  "You were stopped part-way through this review because the user sent a message. First answer that message in a sentence or two, above the result. Then carry on with the review from where you stopped, without redoing the steps you already ran, and finish with the full output.";
+
 let botLogin = "";
 
 const REVIEW_STORE = "alter_reviews";
@@ -98,6 +106,7 @@ async function runInner() {
   clearBody();
   renderFooter();
   const block = appendBlock("assistant");
+  session.reviewing = true;
   const raw = await streamAgent(block, {
     connectionId,
     includeMemory: true,
@@ -106,10 +115,33 @@ async function runInner() {
     prompt,
     label: "review",
   });
+  session.reviewing = false;
+  await reviewDone(raw);
+}
+
+async function reviewDone(raw) {
   session.review = raw;
-  if (raw) await saveReview(prKey(parts), { at: new Date().toISOString(), head, review: raw, connectionId, model: session.model });
+  if (raw) await saveReview(prKey(session.parts), { at: new Date().toISOString(), head: session.head, review: raw, connectionId: session.connectionId, model: session.model });
   renderFooter();
   refreshBadge();
+}
+
+async function continueReview(q) {
+  session.resumeReview = false;
+  const p = session.parts;
+  const block = appendBlock("assistant");
+  session.reviewing = true;
+  const raw = await streamAgent(block, {
+    connectionId: session.connectionId,
+    includeMemory: true,
+    model: session.model,
+    system: `${REVIEW_SYSTEM} ${CONTINUE_REVIEW}`,
+    prompt: `Continue the review of ${p.owner}/${p.repo}#${p.num}.\n\nUser message: ${q}`,
+    label: "review",
+    resume: session.sessionId,
+  });
+  session.reviewing = false;
+  await reviewDone(raw);
 }
 
 async function showSaved(parts, saved) {
@@ -132,6 +164,7 @@ async function showSaved(parts, saved) {
 async function followUp(q) {
   if (!session || !q.trim()) return;
   appendBlock("user").textContent = q;
+  if (session.resumeReview) return continueReview(q);
   const t = session.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
   // Normal CHAT about the PR you already reviewed — not a fresh review each time.
   // A request for a comment to POST is a PR review comment (code refs welcome, in
@@ -139,15 +172,15 @@ async function followUp(q) {
   const isIssue = session.kind === "issue";
   const domain = isIssue
     ? "The work here is a fix you prepared on a local branch for a GitHub issue; you may read the branch with git and cite file:line."
-    : "The work here is your review of a GitHub PR; cite file:line when the question is about the code.";
+    : `The work here is your review of GitHub PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}. Every question is about that PR: read it with \`gh pr view\` and \`gh pr diff\` when you need a fact, and never answer from the state of the local checkout. Cite file:line when the question is about the code. This panel is read-only, so you cannot edit, commit or push: when asked to change the PR, say exactly what to change, and say that making the change needs an Alter chat.`;
   const wantsReply = REPLY_INTENT.test(q);
   const system = wantsReply
     ? `${domain} ${FOLLOWUP_SYSTEM} You are drafting a PR REVIEW COMMENT to post on GitHub, in your OWN terse review voice from memory (not a customer reply): plain, direct, your exact phrasing. ${COMMENT_VOICE} ${ANCHOR_FORMAT} Output ONLY the comment.`
     : followupParams(q, domain).system;
   const label = wantsReply ? "Draft comment" : "Follow-up";
   const prompt =
-    (isIssue ? `GitHub issue ${session.issue}.\n\n` : "") +
-    `Your review:\n${session.review}${t}\n\nUser: ${q}\nYou:`;
+    (isIssue ? `GitHub issue ${session.issue}.\n\n` : `GitHub PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}.\n\n`) +
+    `Your review:\n${session.review || "(the review was stopped before it finished)"}${t}\n\nUser: ${q}\nYou:`;
   const block = appendBlock("assistant");
   const a = await streamAgent(block, {
     connectionId: session.connectionId,
@@ -156,6 +189,7 @@ async function followUp(q) {
     system,
     prompt,
     label,
+    resume: session.sessionId,
   });
   session.transcript.push({ q, a });
 }
@@ -515,6 +549,7 @@ function pollRun(el, runId, opts) {
       }
       misses = 0;
       const p = r.data;
+      if (p.sessionId && session) session.sessionId = p.sessionId;
       renderSteps(p.steps || []);
       if (p.done) {
         if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run — run it again." : p.error);
@@ -582,6 +617,7 @@ function streamAgent(el, params) {
             prompt: params.prompt,
             model: params.model,
             mode: params.mode,
+            resume: params.resume,
             runId: rid,
           }),
   });
