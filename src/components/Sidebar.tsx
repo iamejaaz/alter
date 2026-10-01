@@ -24,6 +24,7 @@ interface Props {
   activeId: string | null;
   routines: Routine[];
   streamingIds: string[];
+  scheduledIds?: string[];
   projects: Project[];
   activeProjectId: string | null;
   onSelectProject: (id: string | null) => void;
@@ -57,6 +58,7 @@ export default function Sidebar({
   activeId,
   routines,
   streamingIds,
+  scheduledIds = [],
   projects,
   activeProjectId,
   onSelectProject,
@@ -158,6 +160,11 @@ export default function Sidebar({
             {c.pinned && <span className="mr-1.5 text-[var(--txt-faint)]">★</span>}
             {c.title}
           </span>
+          {scheduledIds.includes(c.id) && (
+            <span className="ml-2 shrink-0 scale-75 text-[var(--txt-faint)]" title="Has a message scheduled to send later">
+              <IconClock />
+            </span>
+          )}
           {c.unread && c.id !== activeId && !streamingIds.includes(c.id) && (
             <span className="ml-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt)]" title="New reply" />
           )}

@@ -4,6 +4,7 @@ import AskCard from "./components/AskCard";
 import SettingsPanel, { SettingsTab } from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
 import ComposerSelect from "./components/ComposerSelect";
+import SendLater from "./components/SendLater";
 import AttachmentImage from "./components/AttachmentImage";
 import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
@@ -106,6 +107,7 @@ import {
   Project,
   Routine,
   Schedule,
+  Scheduled,
   Settings,
   Skill,
   isClaudeCodeUrl,
@@ -114,6 +116,7 @@ import {
   newId,
   scheduleLabel,
   storage,
+  whenLabel,
   PlanItem,
 } from "./lib/store";
 
@@ -192,6 +195,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
+  const [scheduled, setScheduled] = useState<Scheduled[]>(() => storage.loadScheduled());
   const [quote, setQuote] = useState<string | null>(null); // selected passage the next message replies to
   const [selMenu, setSelMenu] = useState<{ x: number; y: number; text: string } | null>(null);
   const INFLIGHT_KEY = "alter.inflight";
@@ -413,6 +417,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   useEffect(() => {
     storage.saveRoutines(routines);
   }, [routines]);
+  useEffect(() => {
+    storage.saveScheduled(scheduled);
+  }, [scheduled]);
   useEffect(() => {
     storage.saveProjects(projects);
   }, [projects]);
@@ -691,6 +698,21 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     return r;
   };
 
+  const settingsFor = (convId?: string): Settings => {
+    if (!convId || convId === activeId) return settings;
+    const conv = conversations.find((c) => c.id === convId);
+    const conn = (settings.connections ?? []).find((c) => c.id === conv?.connectionId);
+    if (!conv || !conn) return settings;
+    return {
+      ...settings,
+      activeConnectionId: conn.id,
+      baseUrl: conn.baseUrl,
+      apiKey: conn.apiKey,
+      model: conv.model ?? conn.model,
+      effort: conv.effort,
+    };
+  };
+
   const send = async (opts?: {
     text?: string;
     display?: string; // what the bubble shows when `text` carries extra context (e.g. a skill)
@@ -702,6 +724,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     background?: boolean;
     parentId?: string;
   }) => {
+    const settings = settingsFor(opts?.targetConvId);
     const typed = (opts?.text ?? input).trim();
     const q = !opts?.text && quote ? quote : null;
     const text = q ? `> ${q.replace(/\n/g, "\n> ")}\n\n${typed}` : typed;
@@ -1145,8 +1168,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 lastRaw = chosen.rawTail ?? "";
                 if (fi > 0) {
                   setConvInfo(convId, `${connLabel(fallbacks[0])} was unavailable — switched to ${connLabel(cand)}.`);
-                  setSettings(cand);
-                  storage.saveSettings(cand);
+                  if (convId === activeIdRef.current) {
+                    setSettings(cand);
+                    storage.saveSettings(cand);
+                  }
                 }
                 break;
               } catch (e) {
@@ -1357,6 +1382,77 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamingIds, queued]);
 
+  const scheduleSend = (at: number) => {
+    const typed = input.trim();
+    if (!typed) return;
+    const text = quote ? `> ${quote.replace(/\n/g, "\n> ")}\n\n${typed}` : typed;
+    let cid = activeId;
+    if (!cid) {
+      cid = newId();
+      const conv: Conversation = {
+        id: cid,
+        title: typed.slice(0, 40),
+        messages: [],
+        createdAt: Date.now(),
+        connectionId: settings.activeConnectionId,
+        model: settings.model,
+        effort: settings.effort,
+        projectId: activeProjectId ?? undefined,
+      };
+      setConversations((prev) => [conv, ...prev]);
+      setActiveId(cid);
+    }
+    const item: Scheduled = { id: newId(), convId: cid, text, at };
+    setScheduled((prev) => [...prev, item].sort((a, b) => a.at - b.at));
+    setInput("");
+    setQuote(null);
+    atBottomRef.current = true;
+  };
+
+  const firedRef = useRef<Set<string>>(new Set());
+  const sendScheduledNow = (item: Scheduled) => {
+    firedRef.current.add(item.id);
+    setScheduled((prev) => prev.filter((x) => x.id !== item.id));
+    if (streamingIds.includes(item.convId)) {
+      setQueued((q) => ({ ...q, [item.convId]: [...(q[item.convId] || []), item.text] }));
+      interrupt(item.convId, false);
+      return;
+    }
+    void send({ text: item.text, targetConvId: item.convId });
+  };
+
+  const fireDueRef = useRef(() => {});
+  fireDueRef.current = () => {
+    const now = Date.now();
+    const picked: Scheduled[] = [];
+    for (const item of scheduled) {
+      if (item.at > now || firedRef.current.has(item.id)) continue;
+      if (streamingIds.includes(item.convId) || picked.some((x) => x.convId === item.convId)) continue;
+      picked.push(item);
+    }
+    if (!picked.length) return;
+    picked.forEach((x) => firedRef.current.add(x.id));
+    setScheduled((prev) => prev.filter((x) => !firedRef.current.has(x.id)));
+    for (const item of picked) {
+      if (!conversations.some((c) => c.id === item.convId)) continue;
+      void send({ text: item.text, targetConvId: item.convId });
+    }
+  };
+  useEffect(() => {
+    const tick = () => fireDueRef.current();
+    const timer = setInterval(tick, 5000);
+    let un: (() => void) | undefined;
+    let gone = false;
+    void listen("alter://tick", tick)
+      .then((u) => (gone ? u() : (un = u)))
+      .catch(() => {});
+    return () => {
+      gone = true;
+      clearInterval(timer);
+      un?.();
+    };
+  }, []);
+
   const regenerate = () => {
     if (!active || activeStreaming) return;
     const msgs = active.messages;
@@ -1565,6 +1661,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       delete next[id];
       return next;
     });
+    setScheduled((prev) => prev.filter((x) => x.convId !== id));
     setConversations((prev) => prev.filter((c) => c.id !== id));
     if (activeId === id) setActiveId(null);
   };
@@ -1962,7 +2059,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const system = [
       `You are Alter, a macOS desktop AI chat app, in a live conversation with ${peer.name}, another AI agent session on the same Mac.`,
       "Talk like a colleague: short plain paragraphs, answer what they said, disagree when you think they are wrong, and ask one question when it moves things forward. No headings, no bullet walls.",
-      "What Alter has today: chats with per chat connection, model and effort; any OpenAI compatible provider plus the local Claude Code CLI; fallback to another connection when one fails; projects with a working folder and instructions; memory; skills; routines on a schedule with a runs panel; a command palette; artifacts panel; image, PDF and text attachments; voice input; branch and edit a message; regenerate; export to Markdown; pinned chats and search; a menubar tray with a global hotkey; a browser extension for GitHub PR review and helpdesk ticket diagnosis through a local bridge; and messaging with Claude Code sessions, which is how you are talking now.",
+      "What Alter has today: chats with per chat connection, model and effort; any OpenAI compatible provider plus the local Claude Code CLI; fallback to another connection when one fails; projects with a working folder and instructions; memory; skills; routines on a schedule with a runs panel; a message scheduled to send later into a chat; a command palette; artifacts panel; image, PDF and text attachments; voice input; branch and edit a message; regenerate; export to Markdown; pinned chats and search; a menubar tray with a global hotkey; a browser extension for GitHub PR review and helpdesk ticket diagnosis through a local bridge; and messaging with Claude Code sessions, which is how you are talking now.",
     ].join("\n");
     try {
       const res = await streamChat(
@@ -2084,6 +2181,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         conversations={conversations}
         activeId={activeId}
         routines={routines}
+        scheduledIds={scheduled.map((x) => x.convId)}
         streamingIds={streamingIds}
         projects={projects}
         activeProjectId={activeProjectId}
@@ -2249,7 +2347,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }}
           className="flex-1 overflow-y-auto overflow-x-hidden"
         >
-          {!active || active.messages.length === 0 ? (
+          {!active || (active.messages.length === 0 && !scheduled.some((x) => x.convId === active.id)) ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-8">
               <Logo size={48} />
               <h1 className="mt-5 text-[28px] font-semibold tracking-tight text-[var(--txt)]">Alter</h1>
@@ -2428,6 +2526,43 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                         </button>
                       </span>
                       {q}
+                    </div>
+                  </div>
+                ))}
+              {scheduled
+                .filter((x) => x.convId === activeId)
+                .map((item) => (
+                  <div key={item.id} className="flex justify-end animate-fade-up">
+                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--txt-dim)]">
+                      <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
+                        {item.at <= Date.now() ? "Sends when this turn finishes" : `Sends ${whenLabel(item.at)}`}
+                        <span className="flex items-center gap-2.5 normal-case tracking-normal">
+                          <button type="button" onClick={() => sendScheduledNow(item)} className="hover:text-[var(--txt)] transition-colors">
+                            Send now
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScheduled((prev) => prev.filter((x) => x.id !== item.id));
+                              setInput(item.text);
+                              composerRef.current?.focus();
+                            }}
+                            className="hover:text-[var(--txt)] transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Remove scheduled message"
+                            title="Remove"
+                            onClick={() => setScheduled((prev) => prev.filter((x) => x.id !== item.id))}
+                            className="hover:text-[var(--txt)] transition-colors"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </span>
+                      {item.text}
                     </div>
                   </div>
                 ))}
@@ -2924,6 +3059,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   <span
                     className="mx-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 border-[var(--txt-faint)] border-t-transparent animate-spin"
                     title="Working…"
+                  />
+                )}
+                {!active?.peer && (
+                  <SendLater
+                    disabled={!input.trim() || attachments.length > 0}
+                    title={attachments.length ? "Attachments cannot be scheduled" : "Send later"}
+                    onPick={scheduleSend}
                   />
                 )}
                 {activeStreaming ? (

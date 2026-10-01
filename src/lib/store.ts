@@ -65,6 +65,23 @@ export interface Conversation {
   peer?: { pid: number; name: string; auto?: boolean; left?: number }; // the local session this chat is paired with, picked with @
 }
 
+export interface Scheduled {
+  id: string;
+  convId: string;
+  text: string;
+  at: number;
+}
+
+export function whenLabel(at: number): string {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(new Date())) / 86_400_000);
+  if (diff === 0) return `today at ${time}`;
+  if (diff === 1) return `tomorrow at ${time}`;
+  return `${d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })} at ${time}`;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -253,6 +270,8 @@ export const storage = {
   saveMemories: (m: MemoryItem[]) => save("alter.memories", m),
   loadRoutines: () => load<Routine[]>("alter.routines", []),
   saveRoutines: (r: Routine[]) => save("alter.routines", r),
+  loadScheduled: () => load<Scheduled[]>("alter.scheduled", []),
+  saveScheduled: (s: Scheduled[]) => save("alter.scheduled", s),
   loadSkills: () => {
     const s = load<Skill[]>("alter.skills", []);
     // One-time seed of starter skills built from Ejaaz's working preferences.

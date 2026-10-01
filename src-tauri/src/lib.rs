@@ -1753,7 +1753,7 @@ fn search_files(path: String, query: String) -> Result<String, String> {
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1891,6 +1891,13 @@ pub fn run() {
                     }
                 });
             }
+            let ticker = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                    let _ = ticker.emit("alter://tick", ());
+                }
+            });
             bridge::start(app.handle().clone());
             peers::start(app.handle().clone());
 
