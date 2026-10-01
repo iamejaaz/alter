@@ -167,6 +167,28 @@
   opacity: 0.6;
   cursor: default;
 }
+.alter-queued {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.alter-queued span {
+  flex: 1;
+  min-width: 0;
+}
+.alter-queued button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: #a1a1aa;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+#alter-queue:empty,
+#alter-foot-btns:empty {
+  display: none;
+}
 #alter-foot-ask {
   display: flex;
   gap: 6px;

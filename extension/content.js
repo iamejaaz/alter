@@ -3,18 +3,8 @@
 // IIFE-wrapped so its top-level names don't collide with sibling content scripts.
 (() => {
 
-const RELOADED = "The Alter extension was updated. Refresh this page to keep using it.";
-const send = (msg) =>
-  new Promise((res) => {
-    try {
-      chrome.runtime.sendMessage(msg, (r) => res(chrome.runtime.lastError ? { ok: false, error: chrome.runtime.lastError.message } : r));
-    } catch (_) {
-      res({ ok: false, error: RELOADED, reloaded: true });
-    }
-  });
-
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue } = window.ALTER;
 
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
@@ -44,6 +34,12 @@ async function getChecks(parts) {
 
 let session = null;
 let running = false;
+const queue = askQueue({
+  list: () => document.getElementById("alter-queue"),
+  rowClass: "alter-step alter-step-say alter-queued",
+  alive: () => !!session,
+  run: (q) => followUp(q),
+});
 // Who the review gets posted as. Empty until Alter names a bot account, and an
 // install with no bot posts only as you, so the bot button never appears.
 let botLogin = "";
@@ -59,7 +55,7 @@ async function run() {
   const btn = document.querySelector("#alter-actions button");
   if (btn) btn.disabled = true;
   try {
-    await runInner();
+    await queue.exclusive(runInner);
   } finally {
     running = false;
     if (btn && btn.isConnected) btn.disabled = false;
@@ -85,6 +81,7 @@ async function runInner() {
   const head = state && state.ok && state.data ? state.data.head || "" : "";
   session = { parts, author, head, connectionId, model: claudeModel || undefined, review: "", draft: "", transcript: [] };
   clearBody();
+  renderFooter();
   const block = appendBlock("assistant");
   const raw = await streamAgent(block, {
     connectionId,
@@ -540,8 +537,9 @@ async function reconnectIfActive() {
   note.className = "alter-step alter-step-say";
   note.textContent = "Reconnected to a review in progress…";
   document.querySelector("#alter-panel-body").appendChild(note);
+  renderFooter();
   const block = appendBlock("assistant");
-  const a = await pollRun(block, rec.runId, { label: rec.label });
+  const a = await queue.exclusive(() => pollRun(block, rec.runId, { label: rec.label }));
   if (rec.label === "draft") {
     session.draft = a;
     renderPostPreview(a);
@@ -609,15 +607,18 @@ async function runIssueFix() {
     const issue = `${location.origin}/${parts.owner}/${parts.repo}/issues/${parts.num}`;
     session = { parts, issue, connectionId, model: claudeModel || undefined, review: "", draft: "", transcript: [], kind: "issue" };
     appendBlock("user").textContent = `Fix ${parts.owner}/${parts.repo}#${parts.num}`;
+    renderFooter();
     const block = appendBlock("assistant");
-    const a = await streamAgent(block, {
-      connectionId,
-      includeMemory: true,
-      model: session.model,
-      mode: "pr",
-      support: { ticket: parts.num, verb: "issue", site: "github.com", issue },
-      label: "Prepare fix",
-    });
+    const a = await queue.exclusive(() =>
+      streamAgent(block, {
+        connectionId,
+        includeMemory: true,
+        model: session.model,
+        mode: "pr",
+        support: { ticket: parts.num, verb: "issue", site: "github.com", issue },
+        label: "Prepare fix",
+      })
+    );
     session.review = a;
     session.transcript.push({ q: "Prepare fix", a });
     session.fixPrepared = !!a;
@@ -731,6 +732,7 @@ function openPanel() {
     stopAllRuns();
   });
   el.querySelector("#alter-close").addEventListener("click", () => {
+    queue.clear();
     stopAllRuns();
     el.remove();
     session = null;
@@ -779,71 +781,63 @@ function appendBlock(cls) {
 
 function renderFooter() {
   const foot = document.querySelector("#alter-panel-foot");
-  if (session && session.kind === "issue") {
-    foot.innerHTML = `
-    <div id="alter-foot-btns">
-      ${session.fixPrepared ? '<button id="alter-push">Push &amp; open PR</button>' : ""}
-    </div>
-    <div id="alter-foot-ask">
-      <input id="alter-ask" placeholder="Ask a follow-up…" />
-      <button id="alter-ask-send">Send</button>
-    </div>
-    <div id="alter-foot-note"></div>`;
-    const pushBtn = foot.querySelector("#alter-push");
-    if (pushBtn) pushBtn.addEventListener("click", (e) => { e.target.disabled = true; pushIssueFix(); });
-    const input = foot.querySelector("#alter-ask");
-    const go = () => {
-      const q = input.value.trim();
-      if (!q) return;
-      input.value = "";
-      followUp(q);
-    };
-    foot.querySelector("#alter-ask-send").addEventListener("click", go);
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
-    return;
-  }
+  const prev = foot.querySelector("#alter-ask");
+  const typed = prev ? prev.value : "";
+  const hadFocus = !!prev && document.activeElement === prev;
+  const isIssue = session && session.kind === "issue";
+  const btns = isIssue
+    ? session.fixPrepared
+      ? '<button id="alter-push">Push &amp; open PR</button>'
+      : ""
+    : session && session.review
+      ? '<button id="alter-post-review" class="alter-primary">Post review…</button><button id="alter-verify">🔬 Verify on bench</button>'
+      : "";
   foot.innerHTML = `
-    <div id="alter-foot-btns">
-      <button id="alter-post-review" class="alter-primary">Post review…</button>
-      <button id="alter-verify">🔬 Verify on bench</button>
-    </div>
+    <div id="alter-foot-btns">${btns}</div>
+    <div id="alter-queue"></div>
     <div id="alter-foot-ask">
       <input id="alter-ask" placeholder="Ask a follow-up…" />
       <button id="alter-ask-send">Send</button>
     </div>
     <div id="alter-foot-note"></div>`;
+  const pushBtn = foot.querySelector("#alter-push");
+  if (pushBtn) pushBtn.addEventListener("click", (e) => { e.target.disabled = true; pushIssueFix(); });
   const verifyBtn = foot.querySelector("#alter-verify");
-  verifyBtn.addEventListener("click", (e) => {
-    e.target.disabled = true;
-    verifyOnBench().finally(() => {
-      if (e.target.isConnected) e.target.disabled = false;
+  if (verifyBtn) {
+    verifyBtn.addEventListener("click", (e) => {
+      e.target.disabled = true;
+      verifyOnBench().finally(() => {
+        if (e.target.isConnected) e.target.disabled = false;
+      });
     });
-  });
-  // Gate Verify on bench: disable it until a repro bench is configured in Alter.
-  send({ type: "repro-info" }).then((r) => {
-    if (r && r.ok && r.data) botLogin = r.data.bot || "";
-    if (!(r && r.ok && r.data && r.data.configured)) {
-      verifyBtn.disabled = true;
-      verifyBtn.title = "Set up a repro bench in Alter → Settings → Repro benches first";
-      verifyBtn.textContent = "🔬 Verify on bench — set up a bench";
-    }
-  });
-  // One way in: the skill's own comments open the preview straight away, and a
-  // review without them gets a draft written first, then the same preview.
-  foot.querySelector("#alter-post-review").addEventListener("click", (e) => {
-    const ready = session.draft || extractDraft(session.review);
-    if (ready) return renderPostPreview(ready, extractEvent(session.review));
-    e.target.disabled = true;
-    draftComment().finally(() => {
-      if (e.target.isConnected) e.target.disabled = false;
+    send({ type: "repro-info" }).then((r) => {
+      if (r && r.ok && r.data) botLogin = r.data.bot || "";
+      if (!(r && r.ok && r.data && r.data.configured)) {
+        verifyBtn.disabled = true;
+        verifyBtn.title = "Set up a repro bench in Alter → Settings → Repro benches first";
+        verifyBtn.textContent = "🔬 Verify on bench — set up a bench";
+      }
     });
-  });
+  }
+  const postBtn = foot.querySelector("#alter-post-review");
+  if (postBtn)
+    postBtn.addEventListener("click", (e) => {
+      const ready = session.draft || extractDraft(session.review);
+      if (ready) return renderPostPreview(ready, extractEvent(session.review));
+      e.target.disabled = true;
+      draftComment().finally(() => {
+        if (e.target.isConnected) e.target.disabled = false;
+      });
+    });
+  queue.render();
   const input = foot.querySelector("#alter-ask");
+  input.value = typed;
+  if (hadFocus) input.focus();
   const go = () => {
     const q = input.value.trim();
     if (!q) return;
     input.value = "";
-    followUp(q);
+    queue.ask(q);
   };
   foot.querySelector("#alter-ask-send").addEventListener("click", go);
   input.addEventListener("keydown", (e) => {
@@ -982,6 +976,7 @@ setInterval(() => {
     lastPrKey = key;
     const panel = document.getElementById("alter-panel");
     if (panel) {
+      queue.clear();
       detachAllRuns();
       panel.remove();
       session = null;

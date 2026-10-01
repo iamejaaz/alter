@@ -19,6 +19,65 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return s || "No response — check the Alter app is running.";
   }
 
+  const RELOADED = "The Alter extension was updated. Refresh this page to keep using it.";
+  const send = (msg) =>
+    new Promise((res) => {
+      try {
+        chrome.runtime.sendMessage(msg, (r) => res(chrome.runtime.lastError ? { ok: false, error: chrome.runtime.lastError.message } : r));
+      } catch (_) {
+        res({ ok: false, error: RELOADED, reloaded: true });
+      }
+    });
+
+  function askQueue({ list, rowClass, alive, run }) {
+    let lock = Promise.resolve();
+    const queued = [];
+    const exclusive = (fn) => {
+      const p = lock.then(fn);
+      lock = p.catch(() => {});
+      return p;
+    };
+    const render = () => {
+      const el = list();
+      if (!el) return;
+      el.innerHTML = "";
+      queued.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = rowClass;
+        const text = document.createElement("span");
+        text.textContent = "Queued: " + item.q;
+        const x = document.createElement("button");
+        x.type = "button";
+        x.textContent = "Remove";
+        x.addEventListener("click", () => {
+          const i = queued.indexOf(item);
+          if (i >= 0) queued.splice(i, 1);
+          render();
+        });
+        row.append(text, x);
+        el.appendChild(row);
+      });
+    };
+    const ask = (q, extra) => {
+      if (!alive()) return;
+      const item = { q };
+      queued.push(item);
+      render();
+      exclusive(() => {
+        const i = queued.indexOf(item);
+        if (i < 0 || !alive()) return;
+        queued.splice(i, 1);
+        render();
+        return run(q, extra);
+      });
+    };
+    const clear = () => {
+      queued.length = 0;
+      render();
+    };
+    return { exclusive, ask, render, clear };
+  }
+
   function mini(md) {
     const blocks = [];
     let s = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
@@ -132,5 +191,5 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return (j && Array.isArray(j.resolve) ? j.resolve : []).filter((x) => typeof x === "string" && x.startsWith("PRRT_"));
   }
 
-  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom };
+  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom, send, askQueue };
 })();

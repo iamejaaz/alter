@@ -15,61 +15,7 @@ const SITE = location.host;
 const SUPPORT_MODEL = "sonnet";
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REPLY_VOICE, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
-
-const RELOADED = "The Alter extension was updated. Refresh this page to keep using it.";
-const send = (msg) =>
-  new Promise((res) => {
-    try {
-      chrome.runtime.sendMessage(msg, (r) => res(chrome.runtime.lastError ? { ok: false, error: chrome.runtime.lastError.message } : r));
-    } catch (_) {
-      res({ ok: false, error: RELOADED, reloaded: true });
-    }
-  });
-
-let lock = Promise.resolve();
-const exclusive = (fn) => {
-  const p = lock.then(fn);
-  lock = p.catch(() => {});
-  return p;
-};
-
-const queued = [];
-let askImages = [];
-function renderQueue() {
-  const el = document.getElementById("sup-queue");
-  if (!el) return;
-  el.innerHTML = "";
-  queued.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "sup-step sup-step-say sup-queued";
-    const text = document.createElement("span");
-    text.textContent = "Queued: " + item.q;
-    const x = document.createElement("button");
-    x.type = "button";
-    x.textContent = "Remove";
-    x.addEventListener("click", () => {
-      const i = queued.indexOf(item);
-      if (i >= 0) queued.splice(i, 1);
-      renderQueue();
-    });
-    row.append(text, x);
-    el.appendChild(row);
-  });
-}
-function ask(q, images) {
-  if (!supSession) return;
-  const item = { q, images };
-  queued.push(item);
-  renderQueue();
-  exclusive(() => {
-    const i = queued.indexOf(item);
-    if (i < 0 || !supSession) return;
-    queued.splice(i, 1);
-    renderQueue();
-    return followUp(q, images);
-  });
-}
+const { escapeHtml, humanizeErr, mini, REPLY_VOICE, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue } = window.ALTER;
 
 function ticketId() {
   const m = location.pathname.match(/\/helpdesk\/tickets\/(\d+)/);
@@ -79,6 +25,14 @@ function ticketId() {
 let supSession = null;
 
 let supRunning = false;
+let askImages = [];
+const queue = askQueue({
+  list: () => document.getElementById("sup-queue"),
+  rowClass: "sup-step sup-step-say sup-queued",
+  alive: () => !!supSession,
+  run: (q, images) => followUp(q, images),
+});
+const { exclusive } = queue;
 
 // Ignore re-clicks while a run is in flight: a second runVerb() would clear the
 // panel body, detach the live block, and leave the first run un-stoppable.
@@ -680,7 +634,7 @@ function openPanel(verb) {
       if (activeRun) activeRun.stop();
     });
     el.querySelector("#sup-close").addEventListener("click", () => {
-      queued.length = 0;
+      queue.clear();
       if (activeRun) activeRun.stop();
       el.remove();
       supSession = null;
@@ -769,7 +723,7 @@ function renderFooter() {
     imagesEl.hidden = askImages.length === 0;
   };
   renderImages();
-  renderQueue();
+  queue.render();
   input.value = draft;
   grow();
   if (hadFocus) input.focus();
@@ -781,7 +735,7 @@ function renderFooter() {
     input.value = "";
     renderImages();
     grow();
-    ask(q || "See the attached screenshot.", sent);
+    queue.ask(q || "See the attached screenshot.", sent);
   };
   foot.querySelector("#sup-ask-send").addEventListener("click", go);
   input.addEventListener("input", grow);
@@ -828,7 +782,7 @@ setInterval(() => {
     lastTicketId = id;
     const panel = document.getElementById("sup-panel");
     if (panel) {
-      queued.length = 0;
+      queue.clear();
       if (activeRun) activeRun.stop();
       panel.remove();
       supSession = null;
