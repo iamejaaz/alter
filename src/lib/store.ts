@@ -52,6 +52,7 @@ export interface Conversation {
   costUsd?: number; // cumulative Claude Code spend for this chat
   lastTokens?: number; // context tokens reported on the last turn
   projectId?: string;
+  folder?: string; // working folder this chat started in, used to group the sidebar
   routineId?: string; // this chat is one run of that routine, grouped under it in the sidebar
   prs?: string[]; // "owner/repo#123" for every PR this chat opened, shown above the composer
   prsHidden?: string[]; // ones dismissed from that bar

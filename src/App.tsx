@@ -181,7 +181,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [activeId, setActiveId] = useState<string | null>(conversations[0]?.id ?? null);
   // Selecting or starting a chat must also leave whatever page (routines/settings/
   // skills) is open — otherwise the chat changes underneath a hidden main view.
+  const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const openChat = (id: string | null) => {
+    setDraftProjectId(null);
     setActiveId(id);
     setView("chat");
   };
@@ -421,6 +423,40 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     storage.saveScheduled(scheduled);
   }, [scheduled]);
   useEffect(() => {
+    if (localStorage.getItem("alter.folderBackfill")) return;
+    localStorage.setItem("alter.folderBackfill", "1");
+    const dirs = projects
+      .map((p) => p.folder)
+      .filter((f): f is string => !!f)
+      .sort((a, b) => b.length - a.length);
+    if (!dirs.length) return;
+    const guess = (c: Conversation) => {
+      const own = projects.find((p) => p.id === c.projectId)?.folder;
+      if (own) return own;
+      const text = c.messages.map((m) => m.content ?? "").join("\n");
+      let best: string | undefined;
+      let at = Infinity;
+      for (const d of dirs) {
+        let from = 0;
+        while (true) {
+          const i = text.indexOf(d, from);
+          if (i < 0) break;
+          if (!/[\w-]/.test(text[i + d.length] ?? "")) {
+            if (i < at) {
+              at = i;
+              best = d;
+            }
+            break;
+          }
+          from = i + 1;
+        }
+      }
+      return best;
+    };
+    setConversations((prev) => prev.map((c) => (c.folder || c.routineId ? c : { ...c, folder: guess(c) })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
     storage.saveProjects(projects);
   }, [projects]);
   // Keep the local bridge's copy of connections in sync (extension reads them, no keys leave the app).
@@ -475,7 +511,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         connectionId: conn?.id ?? settings.activeConnectionId,
         model: conn && isClaudeCodeUrl(conn.baseUrl) && model_ ? model_ : conn?.model ?? settings.model,
         effort: settings.effort,
-        projectId: activeProjectId ?? undefined,
+        projectId: activeProjectId ?? draftProjectId ?? undefined, folder: folder ?? undefined,
       },
       ...prev,
     ]);
@@ -861,7 +897,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         connectionId: settings.activeConnectionId,
         model: settings.model,
         effort: settings.effort,
-        projectId: activeProjectId ?? undefined,
+        projectId: activeProjectId ?? draftProjectId ?? undefined, folder: folder ?? undefined,
         routineId: opts?.routineId,
         parentId: opts?.parentId,
       };
@@ -1397,7 +1433,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         connectionId: settings.activeConnectionId,
         model: settings.model,
         effort: settings.effort,
-        projectId: activeProjectId ?? undefined,
+        projectId: activeProjectId ?? draftProjectId ?? undefined, folder: folder ?? undefined,
       };
       setConversations((prev) => [conv, ...prev]);
       setActiveId(cid);
@@ -1855,7 +1891,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     if (sideChat) {
       const id = newId();
       setConversations((prev) => [
-        { id, title: text.slice(0, 40), messages: [], createdAt: Date.now(), connectionId: settings.activeConnectionId, model: settings.model, effort: settings.effort, projectId: activeProjectId ?? undefined },
+        { id, title: text.slice(0, 40), messages: [], createdAt: Date.now(), connectionId: settings.activeConnectionId, model: settings.model, effort: settings.effort, projectId: activeProjectId ?? draftProjectId ?? undefined, folder: folder ?? undefined },
         ...prev,
       ]);
       openChat(id);
@@ -2190,6 +2226,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         onMoveToProject={(id, projectId) => updateConversation(id, (c) => ({ ...c, projectId: projectId ?? undefined }))}
         onSelect={openChat}
         onNew={() => openChat(null)}
+        onNewIn={(projectId, dir) => {
+          openChat(null);
+          setDraftProjectId(projectId);
+          if (dir) {
+            setFolder(dir);
+            localStorage.setItem("alter.folder", dir);
+          }
+        }}
         onDelete={deleteConversation}
         onRename={(id, title) => updateConversation(id, (c) => ({ ...c, title }))}
         onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}

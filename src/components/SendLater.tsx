@@ -8,14 +8,24 @@ interface Props {
   onPick: (at: number) => void;
 }
 
-const localValue = (at: number) => {
-  const d = new Date(at - new Date(at).getTimezoneOffset() * 60_000);
-  return d.toISOString().slice(0, 16);
+const dayStart = (offset: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  d.setHours(0, 0, 0, 0);
+  return d;
 };
+const dayName = (offset: number) =>
+  offset === 0
+    ? "Today"
+    : offset === 1
+      ? "Tomorrow"
+      : dayStart(offset).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+const pad = (n: number) => String(n).padStart(2, "0");
 
 export default function SendLater({ disabled, title, onPick }: Props) {
   const [open, setOpen] = useState(false);
-  const [custom, setCustom] = useState("");
+  const [day, setDay] = useState(0);
+  const [time, setTime] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,10 +51,11 @@ export default function SendLater({ disabled, title, onPick }: Props) {
     { label: "In 1 hour", at: now + 60 * 60_000 },
     { label: "Tomorrow morning", at: tomorrow.getTime() },
   ];
-  const customAt = custom ? new Date(custom).getTime() : NaN;
+  const [h, m] = time.split(":").map(Number);
+  const customAt = time ? dayStart(day).setHours(h, m, 0, 0) : NaN;
+  const valid = customAt > now;
   const pick = (at: number) => {
     setOpen(false);
-    setCustom("");
     onPick(at);
   };
 
@@ -52,7 +63,9 @@ export default function SendLater({ disabled, title, onPick }: Props) {
     <div ref={ref} className="relative">
       <button
         onClick={() => {
-          setCustom(localValue(Date.now() + 60 * 60_000));
+          const d = new Date(Date.now() + 60 * 60_000);
+          setDay(d.getDate() === new Date().getDate() ? 0 : 1);
+          setTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
           setOpen((v) => !v);
         }}
         disabled={disabled}
@@ -64,7 +77,7 @@ export default function SendLater({ disabled, title, onPick }: Props) {
         <IconClock />
       </button>
       {open && (
-        <div className="absolute bottom-9 right-0 z-30 w-64 overflow-hidden rounded-xl border border-[var(--bd)] bg-[var(--modal)] text-[13px] shadow-xl">
+        <div className="absolute bottom-9 right-0 z-30 w-72 overflow-hidden rounded-xl border border-[var(--bd)] bg-[var(--modal)] text-[13px] shadow-xl">
           <p className="px-3 pt-2.5 pb-1 text-[11px] text-[var(--txt-faint)]">Send later</p>
           {presets.map((p) => (
             <button
@@ -72,25 +85,44 @@ export default function SendLater({ disabled, title, onPick }: Props) {
               onClick={() => pick(p.at)}
               className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[var(--txt)] hover:bg-[var(--panel-2)]"
             >
-              <span>{p.label}</span>
-              <span className="text-[11px] text-[var(--txt-faint)]">{whenLabel(p.at)}</span>
+              <span className="whitespace-nowrap">{p.label}</span>
+              <span className="shrink-0 whitespace-nowrap text-[11px] text-[var(--txt-faint)]">{whenLabel(p.at)}</span>
             </button>
           ))}
-          <div className="flex items-center gap-2 border-t border-[var(--bd-soft)] px-3 py-2">
-            <input
-              type="datetime-local"
-              value={custom}
-              min={localValue(now)}
-              onChange={(e) => setCustom(e.target.value)}
-              aria-label="Pick a date and time"
-              className="min-w-0 flex-1 rounded-lg border border-[var(--bd)] bg-[var(--input)] px-2 py-1 text-[12px]"
-            />
+          <div className="border-t border-[var(--bd-soft)] px-3 py-2">
+            <div className="flex items-center gap-2">
+              <select
+                value={day}
+                onChange={(e) => setDay(Number(e.target.value))}
+                aria-label="Day"
+                className="min-w-0 flex-1 rounded-lg border border-[var(--bd)] bg-[var(--input)] px-2 py-1 text-[12px]"
+              >
+                {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+                  <option key={d} value={d}>
+                    {dayName(d)}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && valid) {
+                    e.preventDefault();
+                    pick(customAt);
+                  }
+                }}
+                aria-label="Time"
+                className="rounded-lg border border-[var(--bd)] bg-[var(--input)] px-2 py-1 text-[12px]"
+              />
+            </div>
             <button
               onClick={() => pick(customAt)}
-              disabled={!(customAt > Date.now())}
-              className="shrink-0 rounded-lg border border-[var(--bd)] px-2.5 py-1 text-[var(--txt)] hover:bg-[var(--panel-2)] disabled:opacity-40"
+              disabled={!valid}
+              className="mt-2 w-full rounded-lg border border-[var(--bd)] px-2.5 py-1 text-[var(--txt)] hover:bg-[var(--panel-2)] disabled:opacity-40"
             >
-              Set
+              {valid ? `Send ${whenLabel(customAt)}` : "Pick a time in the future"}
             </button>
           </div>
         </div>

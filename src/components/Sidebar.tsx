@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Conversation, Project, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
-import { IconClock, IconFolder, IconPlus, IconPuzzle, IconSearch, IconSettings, IconSparkles } from "./Icons";
+import { IconClock, IconPlus, IconPuzzle, IconSearch, IconSettings, IconSparkles } from "./Icons";
 
 export interface BackgroundRun {
   runId: string;
@@ -32,6 +32,7 @@ interface Props {
   onMoveToProject: (id: string, projectId: string | null) => void;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onNewIn?: (projectId: string | null, folder?: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string) => void;
@@ -66,6 +67,7 @@ export default function Sidebar({
   onMoveToProject,
   onSelect,
   onNew,
+  onNewIn,
   onDelete,
   onRename,
   onTogglePin,
@@ -80,7 +82,9 @@ export default function Sidebar({
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
-  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number; up: boolean; moving: boolean } | null>(null);
+  const menuItem =
+    "flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--panel-2)]";
   const startRename = (c: Conversation) => {
     setEditingId(c.id);
     setDraftTitle(c.title);
@@ -118,12 +122,51 @@ export default function Sidebar({
   }
   const pinned = loose.filter((c) => c.pinned);
   const rest = loose.filter((c) => !c.pinned);
-  const sections = q
-    ? [{ label: `Results (${filtered.length})`, items: filtered }]
+  type Section = { key: string; label: string; items: Conversation[]; projectId?: string | null; folder?: string };
+  const groups: Section[] = [];
+  const other: Conversation[] = [];
+  for (const c of rest) {
+    const project = projects.find((p) => p.id === c.projectId) ?? (c.folder ? projects.find((p) => p.folder === c.folder) : undefined);
+    const dir = project?.folder ?? c.folder;
+    if (!project && !dir) {
+      other.push(c);
+      continue;
+    }
+    const key = project ? `p:${project.id}` : `f:${dir}`;
+    const g = groups.find((x) => x.key === key);
+    if (g) g.items.push(c);
+    else
+      groups.push({
+        key,
+        label: project?.name ?? dir!.replace(/\/+$/, "").split("/").pop()!,
+        items: [c],
+        projectId: project?.id ?? null,
+        folder: dir ?? "",
+      });
+  }
+  const flat: Section[] = rest.length ? [{ key: "recent", label: "Recent", items: rest }] : [];
+  const grouped: Section[] = [...groups, ...(other.length ? [{ key: "other", label: "Other chats", items: other }] : [])];
+  const sections: Section[] = q
+    ? [{ key: "results", label: `Results (${filtered.length})`, items: filtered }]
     : [
-        ...(pinned.length ? [{ label: "Pinned", items: pinned }] : []),
-        ...(rest.length ? [{ label: "Recent", items: rest }] : []),
+        ...(pinned.length ? [{ key: "pinned", label: "Pinned", items: pinned }] : []),
+        ...(activeProjectId || !groups.length ? flat : grouped),
       ];
+  const [collapsed, setCollapsed] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("alter.collapsedGroups") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const toggleGroup = (key: string) =>
+    setCollapsed((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      try {
+        localStorage.setItem("alter.collapsedGroups", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
   // Every routine shows, even with no run yet, so the sidebar is the routine list.
   const routineRows = routines.map((r) => ({ routine: r, runs: runsByRoutine.get(r.id) ?? [] }));
 
@@ -161,7 +204,7 @@ export default function Sidebar({
             {c.title}
           </span>
           {scheduledIds.includes(c.id) && (
-            <span className="ml-2 shrink-0 scale-75 text-[var(--txt-faint)]" title="Has a message scheduled to send later">
+            <span className="ml-1 shrink-0 scale-75 text-[var(--txt-faint)]" title="Has a message scheduled to send later">
               <IconClock />
             </span>
           )}
@@ -174,84 +217,75 @@ export default function Sidebar({
         onClick={(e) => {
           e.stopPropagation();
           const r = e.currentTarget.getBoundingClientRect();
-          setMenu((cur) => (cur?.id === c.id ? null : { id: c.id, x: r.right, y: r.bottom }));
+          const up = r.bottom + 240 > window.innerHeight;
+          setMenu((cur) =>
+            cur?.id === c.id ? null : { id: c.id, x: r.right, y: up ? window.innerHeight - r.top + 4 : r.bottom + 4, up, moving: false }
+          );
         }}
-        className={`ml-2 text-[var(--txt-faint)] hover:text-[var(--txt)] transition-opacity ${
+        className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--txt-faint)] hover:bg-[var(--panel-2)] hover:text-[var(--txt)] transition-opacity ${
           menu?.id === c.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
         }`}
-        title="Move to project"
+        title="More"
+        aria-label={`More actions for ${c.title}`}
       >
-        <IconFolder />
+        ⋮
       </button>
       {menu?.id === c.id && (
         <>
           <div className="fixed inset-0 z-30" onClick={(e) => { e.stopPropagation(); setMenu(null); }} />
           <div
-            className="fixed z-40 w-44 -translate-x-full rounded-lg border border-[var(--bd)] bg-[var(--modal)] py-1 shadow-2xl"
-            style={{ left: menu.x, top: menu.y + 4 }}
+            className="fixed z-40 w-48 -translate-x-full rounded-lg border border-[var(--bd)] bg-[var(--modal)] py-1 shadow-2xl"
+            style={menu.up ? { left: menu.x, bottom: menu.y } : { left: menu.x, top: menu.y }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleMute(c.id); setMenu(null); }}
-              className="block w-full truncate px-3 py-1.5 text-left text-[13px] text-[var(--txt)] transition-colors hover:bg-[var(--panel-2)]"
-            >
-              {c.muted ? "Unmute notifications" : "Mute notifications"}
-            </button>
-            <div className="my-1 border-t border-[var(--bd-soft)]" />
-            <button
-              onClick={(e) => { e.stopPropagation(); onMoveToProject(c.id, null); setMenu(null); }}
-              className={`block w-full truncate px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--panel-2)] ${
-                c.projectId ? "text-[var(--txt-dim)]" : "text-[var(--txt)]"
-              }`}
-            >
-              No project
-            </button>
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                onClick={(e) => { e.stopPropagation(); onMoveToProject(c.id, p.id); setMenu(null); }}
-                className={`block w-full truncate px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--panel-2)] ${
-                  c.projectId === p.id ? "text-[var(--txt)]" : "text-[var(--txt-dim)]"
-                }`}
-              >
-                {p.name}
-              </button>
-            ))}
-            {projects.length === 0 && (
-              <p className="px-3 py-1.5 text-xs text-[var(--txt-faint)]">No projects yet</p>
+            {menu.moving ? (
+              <>
+                <button onClick={() => setMenu({ ...menu, moving: false })} className={`${menuItem} text-[var(--txt-dim)]`}>
+                  ‹ Move to project
+                </button>
+                <div className="my-1 border-t border-[var(--bd-soft)]" />
+                {[{ id: null as string | null, name: "No project" }, ...projects].map((p) => (
+                  <button
+                    key={p.id ?? "none"}
+                    onClick={() => { onMoveToProject(c.id, p.id); setMenu(null); }}
+                    className={`${menuItem} ${(c.projectId ?? null) === p.id ? "text-[var(--txt)]" : "text-[var(--txt-dim)]"}`}
+                  >
+                    <span className="truncate">{p.name}</span>
+                    {(c.projectId ?? null) === p.id && <span className="text-[var(--txt-faint)]">✓</span>}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                <button onClick={() => { onTogglePin(c.id); setMenu(null); }} className={`${menuItem} text-[var(--txt)]`}>
+                  {c.pinned ? "Unpin" : "Pin"}
+                </button>
+                <button onClick={() => { startRename(c); setMenu(null); }} className={`${menuItem} text-[var(--txt)]`}>
+                  Rename
+                </button>
+                <button onClick={() => { onToggleMute(c.id); setMenu(null); }} className={`${menuItem} text-[var(--txt)]`}>
+                  {c.muted ? "Unmute notifications" : "Mute notifications"}
+                </button>
+                <div className="my-1 border-t border-[var(--bd-soft)]" />
+                <button onClick={() => setMenu({ ...menu, moving: true })} className={`${menuItem} text-[var(--txt)]`}>
+                  Move to project
+                  <span className="text-[var(--txt-faint)]">›</span>
+                </button>
+                <div className="my-1 border-t border-[var(--bd-soft)]" />
+                <button
+                  onClick={async () => {
+                    setMenu(null);
+                    if (await confirmDialog(`Delete "${c.title}"? This can't be undone.`)) onDelete(c.id);
+                  }}
+                  className={`${menuItem} text-red-400`}
+                >
+                  Delete
+                </button>
+              </>
             )}
           </div>
         </>
       )}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onTogglePin(c.id);
-        }}
-        className="ml-1.5 text-[11px] opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] transition-opacity"
-        title={c.pinned ? "Unpin" : "Pin to top"}
-      >
-        {c.pinned ? "unpin" : "☆"}
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          startRename(c);
-        }}
-        className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-1.5 transition-opacity"
-        title="Rename"
-      >
-        ✎
-      </button>
-      <button
-        onClick={async (e) => {
-          e.stopPropagation();
-          if (await confirmDialog(`Delete "${c.title}"? This can't be undone.`)) onDelete(c.id);
-        }}
-        className="opacity-0 group-hover:opacity-100 text-[var(--txt-faint)] hover:text-[var(--txt)] ml-1.5 transition-opacity"
-        title="Delete"
-      >
-        ×
-      </button>
     </div>
   );
 
@@ -386,12 +420,34 @@ export default function Sidebar({
             </div>
           </div>
         )}
-        {sections.map((s) => (
-          <div key={s.label}>
-            <p className="px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">{s.label}</p>
-            <div className="space-y-0.5">{s.items.map(renderChat)}</div>
-          </div>
-        ))}
+        {sections.map((s) => {
+          const folded = collapsed.includes(s.key) && !s.items.some((c) => c.id === activeId);
+          return (
+            <div key={s.key}>
+              <div className="group flex items-center px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">
+                <button
+                  onClick={() => toggleGroup(s.key)}
+                  className="min-w-0 flex-1 truncate text-left hover:text-[var(--txt)]"
+                  title={s.folder || s.label}
+                >
+                  {s.label}
+                  {folded && <span className="ml-1.5">{s.items.length}</span>}
+                </button>
+                {s.folder !== undefined && onNewIn && (
+                  <button
+                    onClick={() => onNewIn(s.projectId ?? null, s.folder || undefined)}
+                    className="shrink-0 opacity-0 hover:text-[var(--txt)] group-hover:opacity-100 transition-opacity"
+                    title={`New chat in ${s.label}`}
+                    aria-label={`New chat in ${s.label}`}
+                  >
+                    <IconPlus />
+                  </button>
+                )}
+              </div>
+              {!folded && <div className="space-y-0.5">{s.items.map(renderChat)}</div>}
+            </div>
+          );
+        })}
         {conversations.length === 0 && <p className="px-2 py-6 text-center text-xs text-[var(--txt-faint)]">No chats yet</p>}
         {conversations.length > 0 && filtered.length === 0 && (
           <p className="px-2 py-6 text-center text-xs text-[var(--txt-faint)]">No chats match</p>
