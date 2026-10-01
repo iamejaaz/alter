@@ -2,6 +2,25 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capability for the main window",
-  "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-start-dragging","dialog:default", "dialog:allow-save", "dialog:allow-confirm", "dialog:allow-ask", "dialog:allow-message", "autostart:allow-enable", "autostart:allow-disable", "autostart:allow-is-enabled", "global-shortcut:allow-register", "global-shortcut:allow-unregister", "global-shortcut:allow-is-registered"]
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "dialog:default",
+    "dialog:allow-save",
+    "dialog:allow-confirm",
+    "dialog:allow-ask",
+    "dialog:allow-message",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered",
+    "updater:default",
+    "process:default",
+    "process:allow-restart"
+  ]
 }
