@@ -39,7 +39,11 @@ export async function checkForUpdate(quiet = false): Promise<void> {
     if (pending) set({ phase: "available", version: pending.version, notes: pending.body ?? "" });
     else if (!quiet) set({ phase: "current" });
   } catch (e) {
-    if (!quiet) set({ phase: "error", error: e instanceof Error ? e.message : String(e) });
+    const raw = e instanceof Error ? e.message : String(e);
+    const error = /release JSON|404|not found/i.test(raw)
+      ? "no release information is published yet. If a release is on its way, try again in a few minutes."
+      : raw;
+    if (!quiet) set({ phase: "error", error });
   }
 }
 
