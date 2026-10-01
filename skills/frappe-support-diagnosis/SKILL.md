@@ -271,6 +271,10 @@ line names the button (**Create PR** / **Continue in Alter**), never "I opened a
 PR". A handoff carries the whole diagnosis, so the next run continues it rather
 than re-triaging.
 
+## Writing to the customer
+
+A diagnosis is for the maintainer. A reply is for the customer, and it is a different piece of writing: load the `plain-writing` skill before drafting one, show the exact text, and post it only after a yes.
+
 ## Anti-patterns
 
 - ❌ Diagnosing from the ticket `description` alone. The real ask is in the

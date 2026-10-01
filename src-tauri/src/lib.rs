@@ -1772,10 +1772,12 @@ fn install_bundled_skills() {
     let scripts = dir.join("scripts");
     let review = std::path::Path::new(&home).join(".claude/skills/frappe-pr-review");
     let review_scripts = review.join("scripts");
-    if std::fs::create_dir_all(&scripts).is_err() || std::fs::create_dir_all(&review_scripts).is_err() {
+    let writing = std::path::Path::new(&home).join(".claude/skills/plain-writing");
+    if std::fs::create_dir_all(&scripts).is_err() || std::fs::create_dir_all(&review_scripts).is_err() || std::fs::create_dir_all(&writing).is_err() {
         return;
     }
-    let files: [(std::path::PathBuf, &str, bool); 10] = [
+    let files: [(std::path::PathBuf, &str, bool); 11] = [
+        (writing.join("SKILL.md"), include_str!("../../skills/plain-writing/SKILL.md"), false),
         (dir.join("SKILL.md"), include_str!("../../skills/frappe-support-diagnosis/SKILL.md"), false),
         (dir.join("prompts.json"), include_str!("../../skills/frappe-support-diagnosis/prompts.json"), false),
         (scripts.join("context.py"), include_str!("../../skills/frappe-support-diagnosis/scripts/context.py"), true),

@@ -1133,6 +1133,17 @@ fn skill_dir() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".claude/skills/frappe-support-diagnosis"))
 }
 
+fn reply_voice(fallback: &str) -> String {
+    let body = skill_dir()
+        .and_then(|d| std::fs::read_to_string(d.with_file_name("plain-writing").join("SKILL.md")).ok())
+        .map(|raw| raw.splitn(3, "---").nth(2).unwrap_or(&raw).trim().to_string())
+        .unwrap_or_default();
+    if body.is_empty() {
+        return fallback.to_string();
+    }
+    format!("HOW TO WRITE IT, follow this exactly:\n\n{body}\n\n{fallback}")
+}
+
 fn load_prompts() -> Result<serde_json::Value, String> {
     let p = skill_dir().ok_or("no HOME")?.join("prompts.json");
     let raw = std::fs::read_to_string(&p).map_err(|_| "prompts.json not installed — install the support skill".to_string())?;
@@ -1292,7 +1303,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let resuming = req.resume.as_deref().map(|s| !s.is_empty()).unwrap_or(false) && matches!(req.verb.as_str(), "followup" | "deepen");
             let transcript = if resuming { "" } else { req.transcript.as_str() };
             let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
-            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &req.voice), ("transcript", transcript), ("question", &req.question), ("skill", &skill), ("issue", &req.issue)];
+            let voice = if req.voice.is_empty() { String::new() } else { reply_voice(&req.voice) };
+            let vars: Vec<(&str, &str)> = vec![("ticket", &ticket), ("site", &site), ("voice", &voice), ("transcript", transcript), ("question", &req.question), ("skill", &skill), ("issue", &req.issue)];
             let (system, mut prompt, mode): (String, String, Option<String>) = match req.verb.as_str() {
                 "summarize" | "diagnose" | "draft" | "deepen" | "followup" | "pr_reply" => (
                     fill(&join_lines(&prompts["system"]), &vars),

@@ -45,8 +45,8 @@
     "prompt": "HD Ticket {ticket}. Push the prepared fix branch and open the PR.{transcript}\n\nYou:"
   },
   "handoff": {
-    "fresh": "Use the frappe-support-diagnosis skill. HD Ticket {ticket} on {site}. FIRST decide if it's even a bug — the bar is HIGH (a real malfunction: crash / data loss / wrong result / broken contract), NOT \"the framework doesn't do X automatically\" (that's a customisation). If it's not a bug, give the real answer and stop. Only for a real bug: run scripts/context.py once, find the code across all apps at the customer's branch head, triage versions, reproduce on a bench. If a fix is warranted, implement it on a fresh local branch off develop and COMMIT — then STOP and show the diff for review. Do NOT push and do NOT open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md).",
-    "continue": "HD Ticket {ticket} on {site} — I already triaged this in the support panel. Diagnosis so far:{transcript}\n\n---\nContinue from this — do NOT re-triage from scratch. First sanity-check the verdict: is it really a bug (high bar — a real malfunction, NOT \"doesn't auto-do X\" which is a customisation)? If it's not a bug, say so and give the real answer. If it IS a bug and still unconfirmed, do the smallest confirmation next (across-versions.sh at their branch head, reproduce on a bench if reachable). If a fix is warranted: implement it on a fresh local branch off develop and COMMIT, then STOP and show the diff — do NOT push or open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md)."
+    "fresh": "Use the frappe-support-diagnosis skill. HD Ticket {ticket} on {site}. FIRST decide if it's even a bug — the bar is HIGH (a real malfunction: crash / data loss / wrong result / broken contract), NOT \"the framework doesn't do X automatically\" (that's a customisation). If it's not a bug, give the real answer and stop. Only for a real bug: run scripts/context.py once, find the code across all apps at the customer's branch head, triage versions, reproduce on a bench. If a fix is warranted, implement it on a fresh local branch off develop and COMMIT — then STOP and show the diff for review. Do NOT push and do NOT open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md). Anything you write to the customer follows the `plain-writing` skill: load it before drafting, show me the exact text, and wait for my yes before you post it.",
+    "continue": "HD Ticket {ticket} on {site} — I already triaged this in the support panel. Diagnosis so far:{transcript}\n\n---\nContinue from this — do NOT re-triage from scratch. First sanity-check the verdict: is it really a bug (high bar — a real malfunction, NOT \"doesn't auto-do X\" which is a customisation)? If it's not a bug, say so and give the real answer. If it IS a bug and still unconfirmed, do the smallest confirmation next (across-versions.sh at their branch head, reproduce on a bench if reachable). If a fix is warranted: implement it on a fresh local branch off develop and COMMIT, then STOP and show the diff — do NOT push or open a PR without me confirming. Follow my standing preferences (~/.claude/CLAUDE.md). Anything you write to the customer follows the `plain-writing` skill: load it before drafting, show me the exact text, and wait for my yes before you post it."
   },
   "budgets": {
     "_about": "Safety-net --max-turns per verb; the prompt budget is the real limit.",
@@ -59,7 +59,7 @@
     "followup": 6,
     "issue": 80,
     "issue_push": 15,
-    "pr_reply": 4,
+    "pr_reply": 6,
     "prfix": 80,
     "prfix_push": 15
   },
