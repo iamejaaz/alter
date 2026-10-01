@@ -75,68 +75,91 @@ function Permission({ ask, onAnswer }: { ask: ToolAsk; onAnswer: (a: Answer) => 
   );
 }
 
+const SKIPPED = "Skipped. Use your best judgment and say what you assumed.";
+
 function Questions({ ask, onAnswer }: { ask: ToolAsk; onAnswer: (a: Answer) => void }) {
   const qs = ask.questions ?? [];
+  const [at, setAt] = useState(0);
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState<Record<string, string>>({});
-  const value = (q: string) => [...(picked[q] ?? []), ...(other[q]?.trim() ? [other[q].trim()] : [])].join(", ");
-  const submit = (extra?: Record<string, string[]>) => {
-    const all = { ...picked, ...extra };
+  const q = qs[at];
+  const last = at === qs.length - 1;
+  const value = (key: string, p = picked, o = other) => [...(p[key] ?? []), ...(o[key]?.trim() ? [o[key].trim()] : [])].join(", ");
+  const finish = (p: Record<string, string[]>, o: Record<string, string>) => {
+    if (!last) return setAt(at + 1);
     const answers: Record<string, string> = {};
-    for (const q of qs) answers[q.question] = [...(all[q.question] ?? []), ...(other[q.question]?.trim() ? [other[q.question].trim()] : [])].join(", ");
+    for (const x of qs) answers[x.question] = value(x.question, p, o) || SKIPPED;
+    if (qs.every((x) => answers[x.question] === SKIPPED)) return onAnswer({ behavior: "deny", message: "The user skipped every question. Use your best judgment and say what you assumed." });
     onAnswer({ behavior: "allow", updatedInput: { ...ask.input, answers } });
   };
-  const quick = qs.length === 1 && !qs[0].multiSelect;
-  const ready = qs.every((q) => value(q.question));
+  const advance = (p = picked, o = other) => {
+    if (value(q.question, p, o)) finish(p, o);
+  };
+  const skip = () => {
+    const p = { ...picked, [q.question]: [] };
+    const o = { ...other, [q.question]: "" };
+    setPicked(p);
+    setOther(o);
+    finish(p, o);
+  };
+  if (!q) return null;
   return (
     <>
-      {qs.map((q) => (
-        <div key={q.question} className="mb-2 last:mb-0">
-          <p className="text-[13px] text-[var(--txt)]">{q.question}</p>
-          <div className="mt-1.5 flex flex-col gap-1">
-            {q.options.map((o) => {
-              const on = (picked[q.question] ?? []).includes(o.label);
-              return (
-                <button
-                  key={o.label}
-                  onClick={() => {
-                    if (quick) return submit({ [q.question]: [o.label] });
-                    setPicked((p) => {
-                      const cur = p[q.question] ?? [];
-                      const next = q.multiSelect ? (on ? cur.filter((x) => x !== o.label) : [...cur, o.label]) : [o.label];
-                      return { ...p, [q.question]: next };
-                    });
-                    if (!q.multiSelect) setOther((x) => ({ ...x, [q.question]: "" }));
-                  }}
-                  className={`rounded-md border px-2.5 py-1.5 text-left text-[12px] transition-colors ${
-                    on ? "border-[var(--txt-dim)] bg-[var(--panel-2)] text-[var(--txt)]" : "border-[var(--bd-soft)] text-[var(--txt)] hover:bg-[var(--panel-2)]"
-                  }`}
-                >
-                  {o.label}
-                  {o.description && <span className="block text-[11px] text-[var(--txt-faint)]">{o.description}</span>}
-                </button>
-              );
-            })}
-            <input
-              value={other[q.question] ?? ""}
-              onChange={(e) => {
-                setOther((x) => ({ ...x, [q.question]: e.target.value }));
-                if (!q.multiSelect) setPicked((p) => ({ ...p, [q.question]: [] }));
+      {qs.length > 1 && (
+        <p className="mb-1 text-[11px] text-[var(--txt-faint)]">
+          Question {at + 1} of {qs.length}
+        </p>
+      )}
+      <p className="text-[13px] text-[var(--txt)]">{q.question}</p>
+      <div className="mt-1.5 flex flex-col gap-1">
+        {q.options.map((o) => {
+          const on = (picked[q.question] ?? []).includes(o.label);
+          return (
+            <button
+              key={o.label}
+              onClick={() => {
+                const cur = picked[q.question] ?? [];
+                const next = { ...picked, [q.question]: q.multiSelect ? (on ? cur.filter((x) => x !== o.label) : [...cur, o.label]) : [o.label] };
+                setPicked(next);
+                if (q.multiSelect) return;
+                const typed = { ...other, [q.question]: "" };
+                setOther(typed);
+                advance(next, typed);
               }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && ready) submit();
-              }}
-              placeholder="Something else…"
-              className="rounded-md border border-[var(--bd-soft)] bg-transparent px-2.5 py-1.5 text-[12px] text-[var(--txt)] placeholder:text-[var(--txt-faint)] focus:border-[var(--bd)] focus:outline-none"
-            />
-          </div>
-        </div>
-      ))}
+              className={`rounded-md border px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                on ? "border-[var(--txt-dim)] bg-[var(--panel-2)] text-[var(--txt)]" : "border-[var(--bd-soft)] text-[var(--txt)] hover:bg-[var(--panel-2)]"
+              }`}
+            >
+              {o.label}
+              {o.description && <span className="block text-[11px] text-[var(--txt-faint)]">{o.description}</span>}
+            </button>
+          );
+        })}
+        <input
+          key={q.question}
+          autoFocus={at > 0}
+          value={other[q.question] ?? ""}
+          onChange={(e) => {
+            setOther((x) => ({ ...x, [q.question]: e.target.value }));
+            if (!q.multiSelect) setPicked((p) => ({ ...p, [q.question]: [] }));
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") advance();
+          }}
+          placeholder="Something else…"
+          className="rounded-md border border-[var(--bd-soft)] bg-transparent px-2.5 py-1.5 text-[12px] text-[var(--txt)] placeholder:text-[var(--txt-faint)] focus:border-[var(--bd)] focus:outline-none"
+        />
+      </div>
       <div className="mt-2 flex items-center gap-1.5">
-        <button className={primary} disabled={!ready} onClick={() => submit()}>
-          Send answer
+        <button className={primary} disabled={!value(q.question)} onClick={() => advance()}>
+          {last ? "Send answer" : "Next"}
         </button>
-        <button className={plain} onClick={() => onAnswer({ behavior: "deny", message: "The user skipped the question. Use your best judgment and say what you assumed." })}>
+        {at > 0 && (
+          <button className={plain} onClick={() => setAt(at - 1)}>
+            Back
+          </button>
+        )}
+        <button className={plain} onClick={skip}>
           Skip
         </button>
       </div>
