@@ -4,7 +4,7 @@
 (() => {
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue, draggable } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue, floating } = window.ALTER;
 
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
@@ -744,52 +744,9 @@ function openPanel() {
       </div>
     </div>
     <div id="alter-panel-body"></div>
-    <div id="alter-panel-foot"></div>
-    <div class="alter-grip" data-grip="x" title="Drag to resize"></div>
-    <div class="alter-grip" data-grip="y" title="Drag to resize"></div>
-    <div class="alter-grip" data-grip="xy" title="Drag to resize"></div>`;
+    <div id="alter-panel-foot"></div>`;
   document.body.appendChild(el);
-  // The panel is anchored bottom-right, so it grows up and to the left. Size is
-  // remembered per browser, since a long review is unreadable at the default.
-  const applySize = (w, h) => {
-    el.style.width = Math.min(Math.max(340, w), window.innerWidth - 40) + "px";
-    el.style.height = Math.min(Math.max(220, h), window.innerHeight - 100) + "px";
-    el.style.maxHeight = "none";
-  };
-  const saveSize = () => {
-    try {
-      localStorage.setItem("alter_panel_size", JSON.stringify({ w: el.offsetWidth, h: el.offsetHeight }));
-    } catch (_) {}
-  };
-  const restoreSize = () => {
-    try {
-      const s = JSON.parse(localStorage.getItem("alter_panel_size") || "null");
-      if (s && s.w && s.h) applySize(s.w, s.h);
-    } catch (_) {}
-  };
-  restoreSize();
-  draggable(el, el.querySelector("#alter-panel-head"), "alter_panel_pos");
-  // Anchored bottom-right, so the left edge widens it and the top edge makes it
-  // taller. The corner between them does both.
-  el.querySelectorAll(".alter-grip").forEach((grip) =>
-    grip.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      const axis = grip.dataset.grip;
-      const r = el.getBoundingClientRect();
-      const x0 = e.clientX, y0 = e.clientY, w0 = r.width, h0 = r.height;
-      el.classList.add("alter-resizing");
-      const move = (ev) =>
-        applySize(axis === "y" ? w0 : w0 + (x0 - ev.clientX), axis === "x" ? h0 : h0 + (y0 - ev.clientY));
-      const up = () => {
-        document.removeEventListener("pointermove", move);
-        document.removeEventListener("pointerup", up);
-        el.classList.remove("alter-resizing");
-        saveSize();
-      };
-      document.addEventListener("pointermove", move);
-      document.addEventListener("pointerup", up);
-    })
-  );
+  const float = floating(el, el.querySelector("#alter-panel-head"), "alter_panel_box");
 
   el.querySelector("#alter-copy").addEventListener("click", () => {
     const b = el.querySelector("#alter-copy");
@@ -802,14 +759,7 @@ function openPanel() {
   });
   el.querySelector("#alter-min").addEventListener("click", () => {
     const min = el.classList.toggle("alter-collapsed");
-    // A dragged size lives in the inline style, which outranks the collapsed
-    // rule — so minimising has to drop it, and expanding puts it back.
-    if (min) {
-      el.style.height = "";
-      el.style.maxHeight = "";
-    } else {
-      restoreSize();
-    }
+    float.collapse(min);
     el.querySelector("#alter-min").textContent = min ? "▴" : "▾";
     el.querySelector("#alter-min").title = min ? "Expand" : "Minimize";
   });

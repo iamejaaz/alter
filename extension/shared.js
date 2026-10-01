@@ -78,44 +78,111 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return { exclusive, ask, render, clear };
   }
 
-  function draggable(el, handle, key) {
-    let want = null;
-    const place = () => {
-      if (!want) return;
-      const view = document.documentElement;
-      const r = el.getBoundingClientRect();
-      el.style.right = Math.min(Math.max(0, want.right), Math.max(0, view.clientWidth - r.width)) + "px";
-      el.style.bottom = Math.min(Math.max(0, want.bottom), Math.max(0, view.clientHeight - r.height)) + "px";
-    };
+  const GRIPS = {
+    n: "left:14px;right:14px;top:0;height:6px;cursor:ns-resize",
+    s: "left:14px;right:14px;bottom:0;height:6px;cursor:ns-resize",
+    w: "top:14px;bottom:14px;left:0;width:6px;cursor:ew-resize",
+    e: "top:14px;bottom:14px;right:0;width:6px;cursor:ew-resize",
+    nw: "left:0;top:0;width:14px;height:14px;cursor:nwse-resize",
+    se: "right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize",
+    ne: "right:0;top:0;width:14px;height:14px;cursor:nesw-resize",
+    sw: "left:0;bottom:0;width:14px;height:14px;cursor:nesw-resize",
+  };
+
+  function floating(el, handle, key) {
+    const MIN_W = 340, MIN_H = 220;
+    const view = document.documentElement;
+    let st = {};
     try {
-      want = JSON.parse(localStorage.getItem(key) || "null");
+      st = JSON.parse(localStorage.getItem(key) || "null") || {};
     } catch (_) {}
+    const save = () => {
+      try {
+        localStorage.setItem(key, JSON.stringify(st));
+      } catch (_) {}
+    };
+    const clamp = (v, lo, hi) => Math.min(Math.max(lo, v), Math.max(lo, hi));
+    const size = () => {
+      if (st.w) el.style.width = clamp(st.w, MIN_W, view.clientWidth) + "px";
+      if (st.h) {
+        el.style.height = clamp(st.h, MIN_H, view.clientHeight) + "px";
+        el.style.maxHeight = "none";
+      }
+    };
+    const place = () => {
+      if (st.right == null) return;
+      const r = el.getBoundingClientRect();
+      el.style.right = clamp(st.right, 0, view.clientWidth - r.width) + "px";
+      el.style.bottom = clamp(st.bottom, 0, view.clientHeight - r.height) + "px";
+    };
+    const track = (e, move) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const from = { x: e.clientX, y: e.clientY, w: r.width, h: r.height, right: view.clientWidth - r.right, bottom: view.clientHeight - r.bottom };
+      const on = (ev) => move(from, ev.clientX - from.x, ev.clientY - from.y);
+      const up = () => {
+        document.removeEventListener("pointermove", on);
+        document.removeEventListener("pointerup", up);
+        if (st.right != null) {
+          st.right = parseFloat(el.style.right) || 0;
+          st.bottom = parseFloat(el.style.bottom) || 0;
+        }
+        save();
+      };
+      document.addEventListener("pointermove", on);
+      document.addEventListener("pointerup", up);
+    };
+
+    el.style.boxSizing = "border-box";
     handle.style.cursor = "move";
     handle.addEventListener("pointerdown", (e) => {
       if (e.button !== 0 || e.target.closest("button")) return;
-      e.preventDefault();
-      const view = document.documentElement;
-      const r = el.getBoundingClientRect();
-      const x0 = e.clientX, y0 = e.clientY, right0 = view.clientWidth - r.right, bottom0 = view.clientHeight - r.bottom;
-      const move = (ev) => {
-        want = { right: right0 - (ev.clientX - x0), bottom: bottom0 - (ev.clientY - y0) };
+      track(e, (from, dx, dy) => {
+        st.right = from.right - dx;
+        st.bottom = from.bottom - dy;
         place();
-      };
-      const up = () => {
-        document.removeEventListener("pointermove", move);
-        document.removeEventListener("pointerup", up);
-        if (!want) return;
-        want = { right: parseFloat(el.style.right) || 0, bottom: parseFloat(el.style.bottom) || 0 };
-        try {
-          localStorage.setItem(key, JSON.stringify(want));
-        } catch (_) {}
-      };
-      document.addEventListener("pointermove", move);
-      document.addEventListener("pointerup", up);
+      });
     });
+
+    Object.entries(GRIPS).forEach(([dir, css]) => {
+      const grip = document.createElement("div");
+      grip.className = "alter-grip";
+      grip.style.cssText = "position:absolute;z-index:3;" + css;
+      grip.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        track(e, (from, dx, dy) => {
+          if (/[ew]/.test(dir)) {
+            const east = dir.includes("e");
+            st.w = clamp(from.w + (east ? dx : -dx), MIN_W, east ? from.w + from.right : view.clientWidth - from.right);
+            st.right = from.right - (east ? st.w - from.w : 0);
+            if (st.bottom == null) st.bottom = from.bottom;
+          }
+          if (/[ns]/.test(dir)) {
+            const south = dir.includes("s");
+            st.h = clamp(from.h + (south ? dy : -dy), MIN_H, south ? from.h + from.bottom : view.clientHeight - from.bottom);
+            st.bottom = from.bottom - (south ? st.h - from.h : 0);
+            if (st.right == null) st.right = from.right;
+          }
+          size();
+          place();
+        });
+      });
+      el.appendChild(grip);
+    });
+
     new ResizeObserver(place).observe(el);
     window.addEventListener("resize", () => el.isConnected && place());
+    size();
     place();
+    return {
+      collapse(on) {
+        if (on) {
+          el.style.height = "";
+          el.style.maxHeight = "";
+        } else size();
+      },
+    };
   }
 
   function mini(md) {
@@ -231,5 +298,5 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return (j && Array.isArray(j.resolve) ? j.resolve : []).filter((x) => typeof x === "string" && x.startsWith("PRRT_"));
   }
 
-  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom, send, askQueue, draggable };
+  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom, send, askQueue, floating };
 })();

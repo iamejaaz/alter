@@ -15,7 +15,7 @@ const SITE = location.host;
 const SUPPORT_MODEL = "sonnet";
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REPLY_VOICE, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue, draggable } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REPLY_VOICE, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue, floating } = window.ALTER;
 
 function ticketId() {
   const m = location.pathname.match(/\/helpdesk\/tickets\/(\d+)/);
@@ -625,9 +625,10 @@ function openPanel(verb) {
       <div id="sup-body"></div>
       <div id="sup-foot"></div>`;
     document.body.appendChild(el);
-    draggable(el, el.querySelector("#sup-head"), "alter_sup_pos");
+    const float = floating(el, el.querySelector("#sup-head"), "alter_sup_box");
     el.querySelector("#sup-min").addEventListener("click", () => {
       const min = el.classList.toggle("sup-collapsed");
+      float.collapse(min);
       el.querySelector("#sup-min").textContent = min ? "▢" : "–";
       el.querySelector("#sup-min").title = min ? "Expand" : "Minimize";
     });

@@ -281,6 +281,8 @@
   color: #a1a1aa;
 }
 .alter-verdict-pill {
+  flex: none;
+  white-space: nowrap;
   padding: 2px 9px;
   border-radius: 999px;
   font-weight: 600;
@@ -328,9 +330,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.alter-card-head .alter-verdict-pill {
-  flex: none;
 }
 .alter-finding {
   padding: 8px 10px;
@@ -392,36 +391,6 @@
 #alter-panel.alter-collapsed #alter-panel-body,
 #alter-panel.alter-collapsed #alter-panel-foot { display: none; }
 
-/* Resize grips. Anchored bottom-right, so the top and left edges are the ones
-   that grow the panel. No decoration at all: the cursor is the only affordance. */
-.alter-grip {
-  position: absolute;
-  z-index: 3;
-}
-.alter-grip[data-grip="x"] {
-  left: 0;
-  top: 18px;
-  bottom: 0;
-  width: 8px;
-  cursor: ew-resize;
-}
-.alter-grip[data-grip="y"] {
-  left: 18px;
-  right: 0;
-  top: 0;
-  height: 8px;
-  cursor: ns-resize;
-}
-.alter-grip[data-grip="xy"] {
-  left: 0;
-  top: 0;
-  width: 18px;
-  height: 18px;
-  cursor: nwse-resize;
-}
-#alter-panel.alter-resizing {
-  user-select: none;
-}
 #alter-panel.alter-collapsed .alter-grip {
   display: none;
 }

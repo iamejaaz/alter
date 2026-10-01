@@ -63,6 +63,8 @@
   color: #e4e4e7;
 }
 #sup-body {
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 10px 14px;
   overflow-y: auto;
   word-break: break-word;
@@ -419,6 +421,7 @@
 #sup-panel.sup-collapsed { height: auto; max-height: none; }
 #sup-panel.sup-collapsed #sup-body,
 #sup-panel.sup-collapsed #sup-foot { display: none; }
+#sup-panel.sup-collapsed .alter-grip { display: none; }
 
 #sup-panel .sup-ctx { font-size: 12px; line-height: 1.5; border: 1px solid var(--sup-bd, rgba(128,128,128,.25)); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; opacity: .9; }
 #sup-panel .sup-ctx-row { display: flex; gap: 6px; flex-wrap: wrap; }
