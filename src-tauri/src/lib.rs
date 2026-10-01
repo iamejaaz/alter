@@ -803,6 +803,8 @@ async fn codex_chat(
     Err(failure.unwrap_or_else(|| local_cli::signin_hint(&tail).unwrap_or(if tail.is_empty() { "Codex stopped without an answer.".into() } else { tail })))
 }
 
+const ALTER_IDENTITY: &str = "You are Alter, a desktop AI companion app created by Ejaaz, and this chat runs inside the Alter app. Your name is Alter and your creator is Ejaaz: when asked who you are, what you are, or who made you, say that. You run on Claude Code under the hood and may say so, with the model, when someone asks what powers you, but never introduce yourself as Claude Code or as a CLI. Keep the user's project, folder and tools exactly as they are.";
+
 #[tauri::command]
 async fn claude_code(
     cancel: tauri::State<'_, ChatCancel>,
@@ -853,7 +855,8 @@ async fn claude_code(
             .arg("--output-format").arg("stream-json")
             .arg("--verbose")
             .arg("--include-partial-messages") // stream tokens as they arrive
-            .arg("--permission-mode").arg(&perm);
+            .arg("--permission-mode").arg(&perm)
+            .arg("--append-system-prompt").arg(ALTER_IDENTITY);
         if !model.is_empty() && model != "claude-code" {
             cmd.arg("--model").arg(&model);
         }
