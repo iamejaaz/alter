@@ -704,6 +704,7 @@ async fn codex_chat(
         args.push("resume".into());
     }
     args.extend(["--json".into(), "--skip-git-repo-check".into()]);
+    args.extend(["-c".into(), format!("developer_instructions={}", serde_json::Value::String(ALTER_IDENTITY.replace("Claude Code", "Codex")))]);
     match permission_mode.as_deref() {
         Some("auto") => args.push("--dangerously-bypass-approvals-and-sandbox".into()),
         Some("ask") => args.extend(["-c".into(), "sandbox_mode=\"workspace-write\"".into()]),
