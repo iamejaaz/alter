@@ -9,7 +9,6 @@ import { Chevron } from "./Icons";
 import ProjectsEditor from "./ProjectsEditor";
 import Switch from "./Switch";
 import { confirmDialog } from "../lib/confirm";
-import { checkForUpdate, installUpdate, useUpdate } from "../lib/updater";
 
 function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   const [status, setStatus] = useState<CliStatus | null>(null);
@@ -123,54 +122,6 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
       <p className="text-[11px] text-[var(--txt-faint)]">
         Runs the <span className="font-mono">{kind}</span> CLI with your {kind === "claude" ? "Claude" : "ChatGPT"} plan, so there is no key or URL here.
       </p>
-    </div>
-  );
-}
-
-function UpdateRow() {
-  const u = useUpdate();
-  useEffect(() => {
-    if (u.phase === "idle") void checkForUpdate(true);
-  }, []);
-  const busy = u.phase === "checking" || u.phase === "downloading";
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] text-[var(--txt)]">
-          Alter {u.current}
-          {u.phase === "available" && <span className="text-[var(--txt-dim)]"> · {u.version} is available</span>}
-        </p>
-        <p className={`text-[11px] ${u.phase === "error" ? "text-red-400" : "text-[var(--txt-faint)]"}`}>
-          {u.phase === "checking"
-            ? "Checking for updates…"
-            : u.phase === "current"
-              ? "You're on the latest version."
-              : u.phase === "available"
-                ? (u.notes || "Updating downloads the new version and restarts Alter.").slice(0, 160)
-                : u.phase === "downloading"
-                  ? `Downloading… ${u.progress ?? 0}%. Alter restarts when it's done.`
-                  : u.phase === "error"
-                    ? `Couldn't check for updates: ${u.error}`
-                    : "Alter checks for updates when it starts and every few hours."}
-        </p>
-      </div>
-      {u.phase === "available" || u.phase === "downloading" ? (
-        <button
-          onClick={() => void installUpdate()}
-          disabled={busy}
-          className="shrink-0 rounded-lg bg-[var(--txt)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] disabled:opacity-70"
-        >
-          {u.phase === "downloading" ? "Updating…" : "Update Alter"}
-        </button>
-      ) : (
-        <button
-          onClick={() => void checkForUpdate()}
-          disabled={busy}
-          className="shrink-0 rounded-lg border border-[var(--bd)] px-3 py-1.5 text-xs text-[var(--txt)] hover:bg-[var(--panel-2)] disabled:opacity-50"
-        >
-          Check for updates
-        </button>
-      )}
     </div>
   );
 }
@@ -380,7 +331,6 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
 
         {tab === "general" && (
           <div className="space-y-3">
-            <UpdateRow />
             <div className="flex items-center gap-3 rounded-lg border border-[var(--bd-soft)] px-3 py-2">
               <Switch on={light} onChange={toggleTheme} />
               <p className="text-[13px] text-[var(--txt)]">Light theme</p>

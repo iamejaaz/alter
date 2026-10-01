@@ -95,7 +95,6 @@ import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { extractPdfText } from "./lib/pdf";
 import { confirmDialog } from "./lib/confirm";
-import { checkForUpdate } from "./lib/updater";
 import {
   Attachment,
   Conversation,
@@ -1880,11 +1879,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const t = window.setTimeout(() => composerRef.current?.focus(), 50);
     return () => clearTimeout(t);
   }, [activeId, view]);
-  useEffect(() => {
-    void checkForUpdate(true);
-    const t = window.setInterval(() => void checkForUpdate(true), 6 * 3600_000);
-    return () => clearInterval(t);
-  }, []);
   const [bgRuns, setBgRuns] = useState<BackgroundRun[]>([]);
   useEffect(() => {
     let gone = false;

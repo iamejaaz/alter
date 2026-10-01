@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Conversation, Project, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
-import { installUpdate, useUpdate } from "../lib/updater";
 import Logo from "./Logo";
 import { IconClock, IconFolder, IconPlus, IconPuzzle, IconSearch, IconSettings, IconSparkles } from "./Icons";
 
@@ -74,7 +73,6 @@ export default function Sidebar({
   onOpenSkills,
   onOpenPalette,
 }: Props) {
-  const update = useUpdate();
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
@@ -385,18 +383,6 @@ export default function Sidebar({
         )}
       </nav>
 
-      {(update.phase === "available" || update.phase === "downloading") && (
-        <div className="mx-2 mb-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-2.5 py-2">
-          <p className="text-[12px] text-[var(--txt)]">Alter {update.version} is available</p>
-          <button
-            onClick={() => void installUpdate()}
-            disabled={update.phase === "downloading"}
-            className="mt-1.5 w-full rounded-md bg-[var(--txt)] px-2 py-1 text-[12px] font-medium text-[var(--bg)] disabled:opacity-70"
-          >
-            {update.phase === "downloading" ? `Updating… ${update.progress ?? 0}%` : "Update Alter"}
-          </button>
-        </div>
-      )}
       <div className="border-t border-[var(--bd-soft)] px-2 py-2">
         <div className="space-y-0.5">
           {[
