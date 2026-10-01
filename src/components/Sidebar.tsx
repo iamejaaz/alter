@@ -19,6 +19,7 @@ interface Props {
   backgroundRuns?: BackgroundRun[];
   onOpenUrl?: (url: string) => void;
   onStopRun?: (runId: string) => void;
+  onDismissRun?: (runId?: string) => void;
   conversations: Conversation[];
   activeId: string | null;
   routines: Routine[];
@@ -51,6 +52,7 @@ export default function Sidebar({
   backgroundRuns = [],
   onOpenUrl,
   onStopRun,
+  onDismissRun,
   conversations,
   activeId,
   routines,
@@ -301,9 +303,16 @@ export default function Sidebar({
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
         {!q && backgroundRuns.length > 0 && (
           <div>
-            <p className="px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">
-              {backgroundRuns.some((r) => !r.done) ? `Running now · ${backgroundRuns.filter((r) => !r.done).length}` : "Recent reviews"}
-            </p>
+            <div className="group flex items-center px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">
+              <span className="flex-1">
+                {backgroundRuns.some((r) => !r.done) ? `Running now · ${backgroundRuns.filter((r) => !r.done).length}` : "Recent runs"}
+              </span>
+              {backgroundRuns.some((r) => r.done) && (
+                <button onClick={() => onDismissRun?.()} className="hidden hover:text-[var(--txt)] group-hover:block">
+                  Clear
+                </button>
+              )}
+            </div>
             <div className="space-y-0.5">
               {backgroundRuns.map((r) => (
                 <div
@@ -324,17 +333,16 @@ export default function Sidebar({
                     {!r.done && <span className="block truncate text-[11px] text-[var(--txt-faint)]">{r.step || "Starting"}</span>}
                   </span>
                   <span className="shrink-0 text-[11px] tabular-nums text-[var(--txt-faint)] group-hover:hidden">{since(r.startedAt)}</span>
-                  {!r.done && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onStopRun?.(r.runId);
-                      }}
-                      className="hidden shrink-0 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] group-hover:block"
-                    >
-                      Stop
-                    </button>
-                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (r.done) onDismissRun?.(r.runId);
+                      else onStopRun?.(r.runId);
+                    }}
+                    className="hidden shrink-0 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] group-hover:block"
+                  >
+                    {r.done ? "Remove" : "Stop"}
+                  </button>
                 </div>
               ))}
             </div>

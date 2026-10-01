@@ -519,6 +519,11 @@ fn bridge_cancel(state: tauri::State<'_, bridge::BridgeState>, run_id: String) -
 }
 
 #[tauri::command]
+fn bridge_dismiss(state: tauri::State<'_, bridge::BridgeState>, run_id: Option<String>) {
+    bridge::dismiss_runs(&state, run_id.as_deref())
+}
+
+#[tauri::command]
 fn notify(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
     app.notification().builder().title(title).body(body).show().map_err(|e| e.to_string())
@@ -1714,6 +1719,7 @@ pub fn run() {
             local_cli::codex_check,
             bridge_runs,
             bridge_cancel,
+            bridge_dismiss,
             file_read_full,
             file_remove,
             snapshot_save,

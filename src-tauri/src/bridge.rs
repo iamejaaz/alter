@@ -76,6 +76,15 @@ fn tag_run(state: &BridgeState, run_id: &str, label: String, url: String, kind: 
     }
 }
 
+pub fn dismiss_runs(state: &BridgeState, run_id: Option<&str>) {
+    let mut map = state.progress.lock().unwrap_or_else(|e| e.into_inner());
+    for (id, p) in map.iter_mut() {
+        if p.done && run_id.map(|r| r == id).unwrap_or(true) {
+            p.label.clear();
+        }
+    }
+}
+
 pub fn runs_snapshot(state: &BridgeState) -> Vec<serde_json::Value> {
     let map = state.progress.lock().unwrap_or_else(|e| e.into_inner());
     let mut out: Vec<serde_json::Value> = map

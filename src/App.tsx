@@ -2076,6 +2076,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           void invoke("bridge_cancel", { runId }).catch(() => {});
           setBgRuns((l) => l.map((r) => (r.runId === runId ? { ...r, done: true, error: "Stopped" } : r)));
         }}
+        onDismissRun={(runId) => {
+          void invoke("bridge_dismiss", { runId: runId ?? null }).catch(() => {});
+          setBgRuns((l) => l.filter((r) => (runId ? r.runId !== runId : !r.done)));
+        }}
         onOpenSettings={() => setShowSettings(true)}
         onOpenExtension={() => setShowSettings(true, "extension")}
         onOpenRoutines={() => setView("routines")}
