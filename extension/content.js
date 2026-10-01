@@ -4,7 +4,7 @@
 (() => {
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue, floating } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue, floating, foldSteps } = window.ALTER;
 
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
@@ -522,6 +522,7 @@ function pollRun(el, runId, opts) {
         done = true;
         cleanup();
         workEl.remove();
+        foldSteps(stepsEl, "alter-checked");
         const ans = document.createElement("div");
         ans.className = "alter-answer";
         const clean = displayText(p.text || "") ?? (p.text || "");

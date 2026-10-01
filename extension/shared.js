@@ -185,6 +185,17 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     };
   }
 
+  function foldSteps(stepsEl, className) {
+    const n = stepsEl.children.length;
+    if (!n) return;
+    const fold = document.createElement("details");
+    if (className) fold.className = className;
+    const label = document.createElement("summary");
+    label.textContent = `Worked through ${n} step${n === 1 ? "" : "s"}`;
+    stepsEl.replaceWith(fold);
+    fold.append(label, stepsEl);
+  }
+
   function mini(md) {
     const blocks = [];
     let s = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
@@ -298,5 +309,5 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return (j && Array.isArray(j.resolve) ? j.resolve : []).filter((x) => typeof x === "string" && x.startsWith("PRRT_"));
   }
 
-  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom, send, askQueue, floating };
+  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom, send, askQueue, floating, foldSteps };
 })();

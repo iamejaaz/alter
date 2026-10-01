@@ -15,7 +15,7 @@ const SITE = location.host;
 const SUPPORT_MODEL = "sonnet";
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REPLY_VOICE, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue, floating } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REPLY_VOICE, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue, floating, foldSteps } = window.ALTER;
 
 function ticketId() {
   const m = location.pathname.match(/\/helpdesk\/tickets\/(\d+)/);
@@ -431,6 +431,7 @@ function pollRun(el, runId, opts) {
         done = true;
         cleanup();
         workEl.remove();
+        foldSteps(stepsEl);
         const body = document.getElementById("sup-body");
         const wasAtBottom = nearBottom(body);
         const ans = document.createElement("div");
