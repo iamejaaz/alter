@@ -183,7 +183,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [planOpen, setPlanOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [agents, setAgents] = useState<Record<string, AgentRun[]>>({});
-  const [agentsOpen, setAgentsOpen] = useState(true);
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
@@ -2455,52 +2455,34 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </button>
               </div>
             )}
-            {!!active && !!agents[active.id]?.length && (() => {
+            {!!active && agents[active.id]?.some((x) => x.status === "running") && (() => {
               const list = agents[active.id];
-              const running = list.filter((x) => x.status === "running").length;
-              const failed = list.filter((x) => x.status === "failed").length;
-              const head = running
-                ? `${running} ${running === 1 ? "agent" : "agents"} running`
-                : `${list.length} ${list.length === 1 ? "agent" : "agents"} finished`;
+              const live = list.filter((x) => x.status === "running");
+              const detail = (x: AgentRun) => {
+                const t = x.status === "running" ? x.step || "starting" : x.summary || x.status;
+                return t === x.desc ? "" : t;
+              };
               return (
-                <div className="mb-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] text-[12px]">
-                  <div className="flex items-center gap-2 px-2.5 py-1.5">
-                    <button onClick={() => setAgentsOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                      {running > 0 && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--txt-dim)]" />}
-                      <span className="shrink-0 text-[var(--txt)]">{head}</span>
-                      {failed > 0 && <span className="shrink-0 text-red-400">{failed} failed</span>}
-                      {!agentsOpen && <span className="truncate text-[var(--txt-dim)]">{list.map((x) => x.desc).join(" · ")}</span>}
-                    </button>
-                    {!running && (
-                      <button
-                        onClick={() => setAgents((a) => ({ ...a, [active.id]: [] }))}
-                        className="text-[var(--txt-faint)] hover:text-[var(--txt)]"
-                        title="Hide"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
+                <div className="mb-1.5 px-1 text-[12px]">
+                  <button
+                    onClick={() => setAgentsOpen((v) => !v)}
+                    className="flex max-w-full items-center gap-2 text-left text-[var(--txt-dim)] hover:text-[var(--txt)]"
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--txt-dim)]" />
+                    <span className="shrink-0">
+                      {live.length} background {live.length === 1 ? "task" : "tasks"}
+                    </span>
+                    {!agentsOpen && <span className="truncate text-[var(--txt-faint)]">{live.map((x) => x.desc || x.type || "Agent").join(" · ")}</span>}
+                  </button>
                   {agentsOpen && (
-                    <ul className="border-t border-[var(--bd-soft)] px-2.5 py-1.5">
+                    <ul className="mt-1 pl-3.5">
                       {list.map((x) => (
-                        <li key={x.id} className="flex items-baseline gap-2 py-0.5" title={x.summary || x.step || ""}>
-                          <span
-                            className={`w-3 shrink-0 text-center ${
-                              x.status === "running" ? "text-[var(--txt-dim)]" : x.status === "failed" ? "text-red-400" : "text-[var(--txt-faint)]"
-                            }`}
-                          >
-                            {x.status === "running" ? "●" : x.status === "completed" ? "✓" : x.status === "failed" ? "✕" : "–"}
+                        <li key={x.id} className="flex items-baseline gap-2 py-0.5">
+                          <span className={`shrink-0 ${x.status === "running" ? "text-[var(--txt)]" : "text-[var(--txt-faint)]"}`}>
+                            {x.status === "completed" ? "✓ " : x.status === "failed" ? "✕ " : ""}
+                            {x.desc || x.type || "Agent"}
                           </span>
-                          <span className={`shrink-0 ${x.status === "running" ? "text-[var(--txt)]" : "text-[var(--txt-dim)]"}`}>{x.desc || x.type || "Agent"}</span>
-                          <span className="min-w-0 truncate text-[var(--txt-faint)]">
-                            {x.status === "running" ? x.step || "starting" : x.summary || x.status}
-                          </span>
-                          {typeof x.tools === "number" && (
-                            <span className="ml-auto shrink-0 tabular-nums text-[var(--txt-faint)]">
-                              {x.tools} {x.tools === 1 ? "step" : "steps"}
-                            </span>
-                          )}
+                          <span className="min-w-0 truncate text-[var(--txt-faint)]">{detail(x)}</span>
                         </li>
                       ))}
                     </ul>
