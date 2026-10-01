@@ -431,6 +431,24 @@ export interface AgentRun {
 const agentStatus = (s: unknown): AgentRun["status"] =>
   s === "completed" ? "completed" : s === "failed" || s === "error" ? "failed" : s === "killed" || s === "stopped" || s === "cancelled" ? "stopped" : "running";
 
+export interface AskQuestion {
+  question: string;
+  header?: string;
+  multiSelect?: boolean;
+  options: { label: string; description?: string }[];
+}
+export interface ToolAsk {
+  id: string;
+  tool: string;
+  input: Record<string, unknown>;
+  description?: string;
+  suggestions: Record<string, unknown>[];
+  questions?: AskQuestion[];
+}
+export function answerAsk(convId: string, requestId: string, response: Record<string, unknown>) {
+  return invoke("claude_respond", { convId, requestId, response }).catch(() => {});
+}
+
 export async function claudeCodeChat(
   prompt: string,
   images: { mediaType: string; data: string }[],
@@ -445,7 +463,8 @@ export async function claudeCodeChat(
   signal: AbortSignal,
   onSession?: (sid: string) => void,
   onPr?: (url: string) => void,
-  onAgents?: (agents: AgentRun[]) => void
+  onAgents?: (agents: AgentRun[]) => void,
+  onAsk?: (ask: ToolAsk | null, cancelledId?: string) => void
 ): Promise<{ content: string; sessionId: string | null; costUsd: number | null; tokens: number | null }> {
   let streamed = ""; // text of the current segment (reset at each tool boundary)
   let result = ""; // authoritative final answer from the result event
@@ -467,6 +486,26 @@ export async function claudeCodeChat(
       if (ev.session_id && ev.session_id !== sid) {
         sid = ev.session_id;
         onSession?.(sid!);
+      }
+
+      if (ev.type === "control_request" && ev.request?.subtype === "can_use_tool") {
+        const r = ev.request;
+        const input = r.input && typeof r.input === "object" ? r.input : {};
+        const ask: ToolAsk = {
+          id: String(ev.request_id),
+          tool: String(r.tool_name ?? "tool"),
+          input,
+          description: typeof r.description === "string" ? r.description : undefined,
+          suggestions: Array.isArray(r.permission_suggestions) ? r.permission_suggestions : [],
+          questions: r.tool_name === "AskUserQuestion" && Array.isArray(input.questions) ? input.questions : undefined,
+        };
+        if (onAsk) onAsk(ask);
+        else void answerAsk(convId, ask.id, { behavior: "deny", message: "No one is available to approve this." });
+        return;
+      }
+      if (ev.type === "control_cancel_request") {
+        onAsk?.(null, String(ev.request_id));
+        return;
       }
 
       if (ev.type === "system" && typeof ev.subtype === "string" && ev.subtype.startsWith("task_") && ev.task_id) {

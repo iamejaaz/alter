@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Sidebar, { BackgroundRun } from "./components/Sidebar";
+import AskCard from "./components/AskCard";
 import SettingsPanel, { SettingsTab } from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
 import ComposerSelect from "./components/ComposerSelect";
@@ -73,6 +74,8 @@ import {
   buildHistory,
   buildSystemPrompt,
   AgentRun,
+  ToolAsk,
+  answerAsk,
   ChatResult,
   claudeClose,
   claudeCodeChat,
@@ -184,6 +187,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [signingIn, setSigningIn] = useState(false);
   const [agents, setAgents] = useState<Record<string, AgentRun[]>>({});
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [asks, setAsks] = useState<Record<string, ToolAsk[]>>({});
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
   const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
@@ -955,6 +959,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           .filter((i) => i.data);
         if (!ccPrompt.trim() && ccImages.length) ccPrompt = "(see attached image)";
         setAgents((a) => ({ ...a, [convId!]: [] }));
+        setAsks((a) => ({ ...a, [convId!]: [] }));
         const writeDelta = (partial: string) =>
             updateConversation(convId!, (c) => ({
               ...c,
@@ -1007,7 +1012,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           settings.model,
           settings.effort ?? null,
           // Map Alter's mode to Claude Code's permission mode.
-          { auto: "bypassPermissions", ask: "acceptEdits", plan: "plan", chat: "default" }[
+          { auto: "bypassPermissions", ask: "default", plan: "plan", chat: "default" }[
             settings.mode ?? "auto"
           ],
           writeDelta,
@@ -1023,7 +1028,24 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               prs: (c.prs ?? []).includes(key) ? c.prs : [...(c.prs ?? []), key],
             }));
           },
-          (list) => setAgents((a) => ({ ...a, [convId!]: list }))
+          (list) => setAgents((a) => ({ ...a, [convId!]: list })),
+          (ask, cancelledId) => {
+            if (!ask) return setAsks((a) => ({ ...a, [convId!]: (a[convId!] ?? []).filter((x) => x.id !== cancelledId) }));
+            if (settings.mode === "chat" && !ask.questions) {
+              void answerAsk(convId!, ask.id, {
+                behavior: "deny",
+                message: "Alter is in Chat only mode, so this is switched off. Tell the user to pick Ask first or Auto to allow it.",
+              });
+              return;
+            }
+            setAsks((a) => ({ ...a, [convId!]: [...(a[convId!] ?? []), ask] }));
+            const viewing = convId === activeIdRef.current && document.hasFocus();
+            if (viewing) return;
+            updateConversation(convId!, (c) => ({ ...c, unread: true }));
+            const conv = convsRef.current.find((c) => c.id === convId);
+            if (!conv?.muted)
+              void invoke("notify", { title: conv?.title || "Alter", body: ask.questions ? "Has a question for you." : "Needs your permission to continue." }).catch(() => {});
+          }
         );
         updateConversation(convId, (c) => ({
           ...c,
@@ -1047,6 +1069,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }));
         }
       } finally {
+        setAsks((a) => ({ ...a, [convId!]: [] }));
         endStream();
       }
       return;
@@ -2455,6 +2478,17 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </button>
               </div>
             )}
+            {!!active &&
+              (asks[active.id] ?? []).map((ask) => (
+                <AskCard
+                  key={ask.id}
+                  ask={ask}
+                  onAnswer={(response) => {
+                    void answerAsk(active.id, ask.id, response);
+                    setAsks((a) => ({ ...a, [active.id]: (a[active.id] ?? []).filter((x) => x.id !== ask.id) }));
+                  }}
+                />
+              ))}
             {!!active && agents[active.id]?.some((x) => x.status === "running") && (() => {
               const list = agents[active.id];
               const live = list.filter((x) => x.status === "running");

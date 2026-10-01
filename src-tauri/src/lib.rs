@@ -143,6 +143,7 @@ type ClaudeSlot = std::sync::Arc<tokio::sync::Mutex<Option<ClaudeProc>>>;
 pub struct ClaudeState {
     slots: tokio::sync::Mutex<std::collections::HashMap<String, ClaudeSlot>>,
     interrupts: Mutex<HashSet<String>>,
+    replies: Mutex<std::collections::HashMap<String, Vec<String>>>,
 }
 
 // Upper bound on idle warm processes; the least recently used idle one is killed
@@ -159,6 +160,14 @@ impl ClaudeState {
         if let Ok(mut s) = self.interrupts.lock() {
             s.insert(conv_id.to_string());
         }
+    }
+    fn push_reply(&self, conv_id: &str, line: String) {
+        if let Ok(mut m) = self.replies.lock() {
+            m.entry(conv_id.to_string()).or_default().push(line);
+        }
+    }
+    fn take_replies(&self, conv_id: &str) -> Vec<String> {
+        self.replies.lock().ok().and_then(|mut m| m.remove(conv_id)).unwrap_or_default()
     }
     fn take_interrupt(&self, conv_id: &str) -> bool {
         self.interrupts.lock().map(|mut s| s.remove(conv_id)).unwrap_or(false)
@@ -210,6 +219,16 @@ impl ClaudeState {
 
 // Soft interrupt: ask the running turn to stop at the CLI's next boundary. The
 // process and its session survive, so the next message continues with full context.
+#[tauri::command]
+fn claude_respond(procs: tauri::State<'_, ClaudeState>, conv_id: String, request_id: String, response: serde_json::Value) {
+    let line = serde_json::json!({
+        "type": "control_response",
+        "response": { "subtype": "success", "request_id": request_id, "response": response }
+    })
+    .to_string();
+    procs.push_reply(&conv_id, line);
+}
+
 #[tauri::command]
 fn claude_interrupt(procs: tauri::State<'_, ClaudeState>, conv_id: String) {
     procs.request_interrupt(&conv_id);
@@ -832,6 +851,7 @@ async fn claude_code(
     use tokio::process::Command;
     cancel.clear(&conv_id);
     procs.take_interrupt(&conv_id);
+    procs.take_replies(&conv_id);
 
     let model = model.unwrap_or_default();
     let cwd = cwd.unwrap_or_default();
@@ -864,7 +884,8 @@ async fn claude_code(
             .arg("--output-format").arg("stream-json")
             .arg("--verbose")
             .arg("--include-partial-messages") // stream tokens as they arrive
-            .arg("--permission-mode").arg(&perm);
+            .arg("--permission-mode").arg(&perm)
+            .arg("--permission-prompt-tool").arg("stdio");
         if let Some(id) = identity.as_deref().filter(|i| !i.is_empty()) {
             cmd.arg("--append-system-prompt").arg(id);
         }
@@ -950,6 +971,7 @@ async fn claude_code(
     let mut pending_bg: usize = 0;
     let mut notified: u32 = 0;
     let mut results: u32 = 0;
+    let mut awaiting: usize = 0;
     loop {
         if cancel.is_cancelled(&conv_id) {
             if let Some(mut old) = guard.take() {
@@ -980,10 +1002,23 @@ async fn claude_code(
             break;
         }
         let p = guard.as_mut().unwrap();
+        for mut reply in procs.take_replies(&conv_id) {
+            reply.push('\n');
+            let _ = p.stdin.write_all(reply.as_bytes()).await;
+            let _ = p.stdin.flush().await;
+            awaiting = awaiting.saturating_sub(1);
+            last_output = std::time::Instant::now();
+        }
         match tokio::time::timeout(std::time::Duration::from_millis(100), p.rx.recv()).await {
             Ok(Some(line)) => {
                 last_output = std::time::Instant::now();
                 warned_at = 0;
+                if line.contains("\"subtype\":\"can_use_tool\"") && line.contains("\"type\":\"control_request\"") {
+                    awaiting += 1;
+                }
+                if line.contains("\"type\":\"control_cancel_request\"") {
+                    awaiting = awaiting.saturating_sub(1);
+                }
                 if line.contains("\"subtype\":\"background_tasks_changed\"") {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
                         pending_bg = v.get("tasks").and_then(|t| t.as_array()).map_or(0, |a| a.len());
@@ -1014,6 +1049,10 @@ async fn claude_code(
             }
             Err(_) => {
                 // 100ms tick — re-check cancel, and surface (never kill) a long silence.
+                if awaiting > 0 {
+                    last_output = std::time::Instant::now();
+                    continue;
+                }
                 let idle = last_output.elapsed().as_secs();
                 if results > 0 && pending_bg == 0 && idle >= 20 {
                     p.last_used = std::time::Instant::now();
@@ -1742,6 +1781,7 @@ pub fn run() {
             claude_code,
             claude_close,
             claude_interrupt,
+            claude_respond,
             import_frappe_credentials,
             read_user_memory,
             append_user_memory,
