@@ -78,6 +78,46 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return { exclusive, ask, render, clear };
   }
 
+  function draggable(el, handle, key) {
+    let want = null;
+    const place = () => {
+      if (!want) return;
+      const view = document.documentElement;
+      const r = el.getBoundingClientRect();
+      el.style.right = Math.min(Math.max(0, want.right), Math.max(0, view.clientWidth - r.width)) + "px";
+      el.style.bottom = Math.min(Math.max(0, want.bottom), Math.max(0, view.clientHeight - r.height)) + "px";
+    };
+    try {
+      want = JSON.parse(localStorage.getItem(key) || "null");
+    } catch (_) {}
+    handle.style.cursor = "move";
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.target.closest("button")) return;
+      e.preventDefault();
+      const view = document.documentElement;
+      const r = el.getBoundingClientRect();
+      const x0 = e.clientX, y0 = e.clientY, right0 = view.clientWidth - r.right, bottom0 = view.clientHeight - r.bottom;
+      const move = (ev) => {
+        want = { right: right0 - (ev.clientX - x0), bottom: bottom0 - (ev.clientY - y0) };
+        place();
+      };
+      const up = () => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        if (!want) return;
+        want = { right: parseFloat(el.style.right) || 0, bottom: parseFloat(el.style.bottom) || 0 };
+        try {
+          localStorage.setItem(key, JSON.stringify(want));
+        } catch (_) {}
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    });
+    new ResizeObserver(place).observe(el);
+    window.addEventListener("resize", () => el.isConnected && place());
+    place();
+  }
+
   function mini(md) {
     const blocks = [];
     let s = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
@@ -191,5 +231,5 @@ globalThis.ALTER = globalThis.ALTER || (() => {
     return (j && Array.isArray(j.resolve) ? j.resolve : []).filter((x) => typeof x === "string" && x.startsWith("PRRT_"));
   }
 
-  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom, send, askQueue };
+  return { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom, send, askQueue, draggable };
 })();

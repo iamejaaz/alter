@@ -4,7 +4,7 @@
 (() => {
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
-const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue } = window.ALTER;
+const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom, send, askQueue, draggable } = window.ALTER;
 
 function prParts() {
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
@@ -768,6 +768,7 @@ function openPanel() {
     } catch (_) {}
   };
   restoreSize();
+  draggable(el, el.querySelector("#alter-panel-head"), "alter_panel_pos");
   // Anchored bottom-right, so the left edge widens it and the top edge makes it
   // taller. The corner between them does both.
   el.querySelectorAll(".alter-grip").forEach((grip) =>
