@@ -23,6 +23,7 @@ export interface Message {
   peer?: { name: string; dir: "in" | "out"; status?: string; msgId?: string }; // exchanged with a Claude Code session, not the model
   quote?: string; // the passage of an earlier answer this message replies to
   handoff?: { id: string; title: string; summary: string };
+  needsClaudeCode?: boolean;
 }
 
 export interface PlanItem {

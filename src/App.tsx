@@ -81,6 +81,8 @@ import {
   streamChat,
 } from "./lib/api";
 
+const NEEDS_TERMINAL = /\b(pull requests?|PRs?|github|gh|sub-?agents?|agents?|terminal|bash|shell|git|bench|commit|push|run (the |a )?(command|tests?|script))\b/i;
+
 const slugify = (s: string) =>
   s
     .toLowerCase()
@@ -1206,8 +1208,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         });
         return;
       }
+      const ccConnection = (settings.connections ?? []).find((c) => isClaudeCodeUrl(c.baseUrl));
+      let deadEnd = false;
       if (!full && !controller.signal.aborted) {
-        if (cappedOut) {
+        if (!finished && !cappedOut && !images.length && ccConnection && NEEDS_TERMINAL.test(typed)) {
+          deadEnd = true;
+          full =
+            "I ran out of steps. This connection has no terminal, GitHub access or sub-agents, and this task needs them. Claude Code has all three.";
+        } else if (cappedOut) {
           full =
             "Stopped — the model kept running tools for over 90 seconds without finishing. Try a sharper request, or switch to a stronger model.";
         } else if (images.length) {
@@ -1222,7 +1230,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       const { clean, found } = extractMemories(full);
       updateConversation(convId, (c) => {
         const msgs = c.messages.slice(0, -1);
-        if (clean || full) msgs.push({ role: "assistant", content: clean || full });
+        if (clean || full) msgs.push({ role: "assistant", content: clean || full, ...(deadEnd ? { needsClaudeCode: true } : {}) });
         return { ...c, messages: msgs };
       });
       if (found.length) {
@@ -1503,6 +1511,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       : !settings.model
         ? "Pick a model"
         : null;
+  const ccConn = connections.find((c) => isClaudeCodeUrl(c.baseUrl));
+  const retryOnClaudeCode = (msgIndex: number) => {
+    if (!ccConn || !active) return;
+    const ask = active.messages.slice(0, msgIndex).reverse().find((m) => m.role === "user" && m.content)?.content;
+    switchConnection(ccConn.id);
+    if (ask) setTimeout(() => void sendRef.current({ text: ask, targetConvId: active.id }), 0);
+  };
+  const terminalHint = !!ccConn && !isClaudeCodeUrl(settings.baseUrl) && !active?.peer && NEEDS_TERMINAL.test(input);
   const switchConnection = (id: string) => {
     const conn = connections.find((c) => c.id === id);
     if (!conn) return;
@@ -1818,7 +1834,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     let gone = false;
     let timer = 0;
     const poll = async () => {
-      const list = await invoke<BackgroundRun[]>("bridge_runs").catch(() => [] as BackgroundRun[]);
+      const got = await invoke<BackgroundRun[]>("bridge_runs").catch(() => []);
+      const list = Array.isArray(got) ? got : [];
       if (gone) return;
       const hour = Date.now() - 3600_000;
       const running = list.filter((r) => !r.done);
@@ -2280,6 +2297,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                         <span className="block py-1" />
                       )}
                       {m.content && (
+                        <>
+                        {m.needsClaudeCode && ccConn && (
+                          <button
+                            onClick={() => retryOnClaudeCode(i)}
+                            className="mt-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-1.5 text-[12px] text-[var(--txt)] hover:bg-[var(--panel-2)]"
+                          >
+                            Retry on Claude Code
+                          </button>
+                        )}
                         <div className="mt-1.5 flex items-center gap-3 select-none">
                           <button
                             onClick={() => navigator.clipboard.writeText(m.content)}
@@ -2297,6 +2323,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                             </button>
                           ))}
                         </div>
+                        </>
                       )}
                     </div>
                   </div>
@@ -2349,6 +2376,17 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 <span className="line-clamp-2 min-w-0 flex-1 border-l-2 border-[var(--bd)] pl-2">{quote}</span>
                 <button onClick={() => setQuote(null)} className="shrink-0 text-[var(--txt-faint)] hover:text-[var(--txt)]" title="Drop the quote">
                   ×
+                </button>
+              </div>
+            )}
+            {terminalHint && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1.5 text-[12px] text-[var(--txt-dim)]">
+                <span className="min-w-0 flex-1">This looks like it needs GitHub or a terminal. Only Claude Code has those here.</span>
+                <button
+                  onClick={() => ccConn && switchConnection(ccConn.id)}
+                  className="shrink-0 rounded-md border border-[var(--bd)] px-2 py-0.5 text-[var(--txt)] hover:bg-[var(--panel-2)]"
+                >
+                  Use Claude Code
                 </button>
               </div>
             )}
