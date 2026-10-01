@@ -2,12 +2,71 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
-import { isClaudeCodeUrl, MemoryItem, Project, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
-import { testConnection } from "../lib/api";
+import { isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
+import { cliLogin, cliStatus, CliStatus, testConnection } from "../lib/api";
 import { Chevron } from "./Icons";
 import ProjectsEditor from "./ProjectsEditor";
 import Switch from "./Switch";
 import { confirmDialog } from "../lib/confirm";
+
+function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
+  const [status, setStatus] = useState<CliStatus | null>(null);
+  const [opening, setOpening] = useState(false);
+  const name = kind === "claude" ? "Claude Code" : "Codex";
+  useEffect(() => {
+    let gone = false;
+    const load = () => void cliStatus(kind).then((s) => !gone && setStatus(s)).catch(() => {});
+    load();
+    window.addEventListener("focus", load);
+    return () => {
+      gone = true;
+      window.removeEventListener("focus", load);
+    };
+  }, [kind]);
+  const signIn = async () => {
+    setOpening(true);
+    await cliLogin(kind).catch(() => {});
+    setTimeout(() => setOpening(false), 1500);
+  };
+  return (
+    <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2.5 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <p className="flex-1 text-[13px] text-[var(--txt)]">{name} on this Mac</p>
+        {status?.installed && (
+          <button
+            onClick={signIn}
+            disabled={opening}
+            className="rounded-md border border-[var(--bd)] px-2.5 py-1 text-[12px] text-[var(--txt)] hover:bg-[var(--panel-2)] disabled:opacity-50"
+          >
+            {opening ? "Opening Terminal…" : status.signedIn ? "Sign in again" : "Sign in"}
+          </button>
+        )}
+      </div>
+      {!status ? (
+        <p className="text-[11px] text-[var(--txt-faint)]">Checking…</p>
+      ) : !status.installed ? (
+        <p className="text-[11px] text-red-400">
+          {kind === "claude"
+            ? "Claude Code isn't installed. Install it from claude.com/code, then come back here and sign in."
+            : "Codex isn't installed. Install the Codex app from openai.com/codex, then come back here and sign in."}
+        </p>
+      ) : (
+        <p className="text-[11px] text-[var(--txt-dim)]">
+          <span className={status.signedIn === false ? "text-red-400" : "text-green-400"}>
+            {status.signedIn === false ? "Not signed in" : status.account ? `Signed in · ${status.account}` : "Signed in"}
+          </span>
+          {" · "}
+          {status.version}
+        </p>
+      )}
+      <p className="text-[11px] text-[var(--txt-faint)]">
+        Runs the <span className="font-mono">{kind}</span> CLI with your {kind === "claude" ? "Claude" : "ChatGPT"} plan, so there is no key or URL here.
+        Sign in opens Terminal on the login command; finish there and come back.
+        {kind === "codex" ? " Codex can report signed in after its login expires, so Test connection makes a real request." : ""}
+      </p>
+    </div>
+  );
+}
 
 export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension";
 
@@ -71,7 +130,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
       const msg = await testConnection(draft);
       setTestResult({ ok: true, msg });
     } catch (e) {
-      setTestResult({ ok: false, msg: String(e) });
+      setTestResult({ ok: false, msg: e instanceof Error ? e.message : String(e) });
     } finally {
       setTesting(false);
     }
@@ -154,6 +213,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     const preset = PROVIDER_PRESETS[name];
     if (!preset) return;
     const [baseUrl, model] = [preset.baseUrl, preset.models[0]];
+    name = name.replace(/ \(local\)$/, "");
     if (!draft.baseUrl && !draft.model) {
       setDraft({
         ...draft,
@@ -313,15 +373,8 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 ))}
               </div>
             </div>
-            {isClaudeCodeUrl(draft.baseUrl) && (
-              <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2">
-                <p className="text-[13px] text-[var(--txt)]">Claude Code on this Mac</p>
-                <p className="text-[11px] text-[var(--txt-faint)]">
-                  Runs the <span className="font-mono">claude</span> CLI with your subscription. No key, no URL, no model to pick here: choose the model per chat from the composer. If a chat says you are signed out, run <span className="font-mono">claude</span> in a terminal and sign in.
-                </p>
-              </div>
-            )}
-            <div className={isClaudeCodeUrl(draft.baseUrl) ? "hidden" : undefined}>
+            {isLocalAgentUrl(draft.baseUrl) && <LocalAgentCard kind={isCodexUrl(draft.baseUrl) ? "codex" : "claude"} />}
+            <div className={isLocalAgentUrl(draft.baseUrl) ? "hidden" : undefined}>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Base URL</label>
               <input
                 value={draft.baseUrl}
@@ -329,7 +382,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 className="w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
               />
             </div>
-            <div className={isClaudeCodeUrl(draft.baseUrl) ? "hidden" : undefined}>
+            <div className={isLocalAgentUrl(draft.baseUrl) ? "hidden" : undefined}>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Model</label>
               <input
                 value={draft.model}
@@ -345,7 +398,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   ))}
               </datalist>
             </div>
-            <div className={isClaudeCodeUrl(draft.baseUrl) ? "hidden" : undefined}>
+            <div className={isLocalAgentUrl(draft.baseUrl) ? "hidden" : undefined}>
               <label className="block text-xs text-[var(--txt-dim)] mb-1.5">API key</label>
               <input
                 type="password"
@@ -359,12 +412,12 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
             <div>
               <button
                 onClick={runTest}
-                disabled={testing || (!draft.apiKey && !isClaudeCodeUrl(draft.baseUrl))}
+                disabled={testing || (!draft.apiKey && !isLocalAgentUrl(draft.baseUrl))}
                 className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] disabled:opacity-40 px-3 py-1.5 text-xs text-[var(--txt)] transition-colors"
               >
                 {testing ? "Testing…" : "Test connection"}
               </button>
-              {!draft.apiKey && !isClaudeCodeUrl(draft.baseUrl) && (
+              {!draft.apiKey && !isLocalAgentUrl(draft.baseUrl) && (
                 <span className="ml-2 text-[11px] text-[var(--txt-faint)]">Enter an API key first.</span>
               )}
               {testResult && (

@@ -1,5 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { isClaudeCodeUrl, MemoryItem, Message, Mode, Settings, Skill, ToolCall } from "./store";
+import { isClaudeCodeUrl, isCodexUrl, MemoryItem, PlanItem, Message, Mode, Settings, Skill, ToolCall } from "./store";
 import { TOOL_DEFINITIONS } from "./tools";
 
 const MODE_NOTES: Record<Mode, string> = {
@@ -177,8 +177,31 @@ export async function streamChat(
   return { content: full, toolCalls: toolCalls.filter(Boolean), finishReason, rawTail };
 }
 
+export interface CliStatus {
+  kind: string;
+  installed: boolean;
+  path: string;
+  version: string;
+  signedIn: boolean | null;
+  account: string;
+  loginCommand: string;
+}
+
+export const cliStatus = (kind: "claude" | "codex") => invoke<CliStatus>("cli_status", { kind });
+export const cliLogin = (kind: "claude" | "codex") => invoke<void>("cli_login", { kind });
+
 export async function testConnection(settings: Settings): Promise<string> {
-  if (isClaudeCodeUrl(settings.baseUrl)) return invoke<string>("claude_version");
+  if (isClaudeCodeUrl(settings.baseUrl)) {
+    const s = await cliStatus("claude");
+    if (!s.installed) throw new Error("Claude Code isn't installed. Install it from claude.com/code, then click Sign in.");
+    if (s.signedIn === false) throw new Error("Claude Code is installed but not signed in. Click Sign in.");
+    return `Claude Code ready · ${s.version}${s.account ? ` · ${s.account}` : ""}`;
+  }
+  if (isCodexUrl(settings.baseUrl)) {
+    const s = await cliStatus("codex");
+    if (!s.installed) throw new Error("Codex isn't installed. Install the Codex app or the codex CLI, then click Sign in.");
+    return invoke<string>("codex_check");
+  }
   const url = settings.baseUrl.replace(/\/$/, "");
   return invoke<string>("test_connection", { url, apiKey: settings.apiKey, model: settings.model });
 }
@@ -275,6 +298,119 @@ export function claudeClose(convId: string): void {
 
 export function claudeInterrupt(convId: string): void {
   void invoke("claude_interrupt", { convId }).catch(() => {});
+}
+
+const codexLabel = (item: Record<string, unknown>): string | null => {
+  const clip = (v: unknown, n = 60) => {
+    const t = String(v ?? "").replace(/\s+/g, " ").trim();
+    return t.length > n ? t.slice(0, n) + "…" : t;
+  };
+  switch (item.type) {
+    case "command_execution": {
+      const cmd = String(item.command ?? "").replace(/^\/bin\/(ba|z)?sh -lc ['"]?|['"]$/g, "");
+      return `Bash: ${clip(cmd)}`;
+    }
+    case "file_change": {
+      const changes = Array.isArray(item.changes) ? (item.changes as { path?: string; kind?: string }[]) : [];
+      return changes
+        .map((c) => `${c.kind === "add" ? "Write" : c.kind === "delete" ? "Delete" : "Edit"} ${String(c.path ?? "").split("/").slice(-2).join("/")}`)
+        .join("\n") || "Edit files";
+    }
+    case "mcp_tool_call":
+      return `${item.server ?? "mcp"}.${item.tool ?? "tool"}`;
+    case "web_search":
+      return `Search "${clip(item.query, 48)}"`;
+    case "error":
+      return `Error: ${clip(item.message, 80)}`;
+    default:
+      return null;
+  }
+};
+
+export async function codexChat(
+  prompt: string,
+  images: { mediaType: string; data: string }[],
+  cwd: string | null,
+  convId: string,
+  threadId: string | null,
+  model: string | null,
+  effort: string | null,
+  permissionMode: string | null,
+  onDelta: (text: string) => void,
+  onActivity: (label: string) => void,
+  signal: AbortSignal,
+  onThread?: (id: string) => void,
+  onPlan?: (items: PlanItem[]) => void
+): Promise<{ content: string; threadId: string | null; tokens: number | null }> {
+  let streamed = "";
+  let last = "";
+  let thread = threadId;
+  let tokens: number | null = null;
+  const shown = new Set<string>();
+  const smoother = makeSmoother(onDelta);
+
+  const channel = new Channel<string>();
+  channel.onmessage = (line: string) => {
+    try {
+      const ev = JSON.parse(line);
+      if (ev.type === "thread.started" && ev.thread_id) {
+        thread = String(ev.thread_id);
+        onThread?.(thread);
+        return;
+      }
+      if (ev.type === "turn.completed") {
+        const u = ev.usage ?? {};
+        tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0);
+        return;
+      }
+      const item = ev.item as Record<string, unknown> | undefined;
+      if (!item || typeof item !== "object") return;
+      if (item.type === "agent_message") {
+        if (ev.type === "item.completed" && typeof item.text === "string") {
+          streamed = item.text;
+          last = item.text;
+          smoother.push(streamed);
+        }
+        return;
+      }
+      if (item.type === "todo_list" && Array.isArray(item.items)) {
+        const todos = item.items as { text?: string; completed?: boolean }[];
+        let current = false;
+        onPlan?.(
+          todos.map((t) => {
+            const status: PlanItem["status"] = t.completed ? "done" : current ? "pending" : "in_progress";
+            if (!t.completed) current = true;
+            return { text: String(t.text ?? ""), status };
+          })
+        );
+        return;
+      }
+      const id = String(item.id ?? "");
+      const wantStart = item.type === "command_execution" || item.type === "mcp_tool_call" || item.type === "web_search";
+      if ((wantStart && ev.type === "item.started") || (!wantStart && ev.type === "item.completed")) {
+        if (id && shown.has(id)) return;
+        const label = codexLabel(item);
+        if (!label) return;
+        if (id) shown.add(id);
+        if (streamed) onDelta(streamed);
+        for (const l of label.split("\n")) onActivity(l);
+        streamed = "";
+        smoother.reset();
+      }
+    } catch {
+      /* ignore non-JSON lines */
+    }
+  };
+
+  const onAbort = () => void invoke("cancel_chat", { id: convId }).catch(() => {});
+  signal.addEventListener("abort", onAbort);
+  try {
+    await invoke("codex_chat", { prompt, images, cwd, convId, sessionId: threadId, model, effort, permissionMode, onChunk: channel });
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+  await smoother.finish();
+  return { content: streamed || last, threadId: thread, tokens };
 }
 
 export interface AgentRun {

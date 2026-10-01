@@ -35,6 +35,7 @@ fn list_dir(path: String) -> Result<Vec<String>, String> {
 }
 
 mod bridge;
+mod local_cli;
 mod browser;
 mod peers;
 
@@ -613,23 +614,6 @@ async fn complete_once(
     }
 }
 
-#[tauri::command]
-fn claude_version() -> Result<String, String> {
-    use std::process::Command;
-    let out = Command::new("claude")
-        .arg("--version")
-        .output()
-        .map_err(|e| format!("Couldn't run the `claude` CLI — is Claude Code installed and on your PATH? ({e})"))?;
-    if out.status.success() {
-        Ok(format!(
-            "Claude Code ready — {}",
-            String::from_utf8_lossy(&out.stdout).trim()
-        ))
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-    }
-}
-
 #[derive(serde::Serialize)]
 struct FrappeCreds {
     site: String,
@@ -696,6 +680,127 @@ fn import_frappe_credentials(profile: Option<String>) -> Result<FrappeCreds, Str
         api_key: api_key.to_string(),
         api_secret: api_secret.to_string(),
     })
+}
+
+#[tauri::command]
+async fn codex_chat(
+    cancel: tauri::State<'_, ChatCancel>,
+    prompt: String,
+    cwd: Option<String>,
+    conv_id: String,
+    session_id: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
+    permission_mode: Option<String>,
+    images: Option<Vec<ImageAttachment>>,
+    on_chunk: tauri::ipc::Channel<String>,
+) -> Result<(), String> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    cancel.clear(&conv_id);
+    let bin = local_cli::find("codex").ok_or("Codex isn't installed. Install the Codex app or the codex CLI, then sign in.")?;
+    let mut args: Vec<String> = vec!["exec".into()];
+    let resume = session_id.filter(|s| !s.is_empty());
+    if resume.is_some() {
+        args.push("resume".into());
+    }
+    args.extend(["--json".into(), "--skip-git-repo-check".into()]);
+    match permission_mode.as_deref() {
+        Some("auto") => args.push("--dangerously-bypass-approvals-and-sandbox".into()),
+        Some("ask") => args.extend(["-c".into(), "sandbox_mode=\"workspace-write\"".into()]),
+        _ => args.extend(["-c".into(), "sandbox_mode=\"read-only\"".into()]),
+    }
+    if let Some(m) = model.filter(|m| !m.is_empty() && m != "codex") {
+        args.extend(["-m".into(), m]);
+    }
+    if let Some(e) = effort.filter(|e| !e.is_empty()) {
+        let level = match e.as_str() {
+            "low" => "low",
+            "medium" => "medium",
+            _ => "high",
+        };
+        args.extend(["-c".into(), format!("model_reasoning_effort=\"{level}\"")]);
+    }
+    let mut temp_images = Vec::new();
+    for (i, img) in images.unwrap_or_default().iter().enumerate() {
+        let ext = img.media_type.rsplit('/').next().unwrap_or("png");
+        let Some(bytes) = bridge::base64_decode(&img.data) else { continue };
+        let path = std::env::temp_dir().join(format!("alter-codex-{conv_id}-{i}.{ext}"));
+        if std::fs::write(&path, bytes).is_ok() {
+            args.extend(["-i".into(), path.display().to_string()]);
+            temp_images.push(path);
+        }
+    }
+    if let Some(sid) = &resume {
+        args.push(sid.clone());
+    }
+    args.push(prompt);
+
+    let dir = cwd
+        .filter(|d| std::path::Path::new(d).is_dir())
+        .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/".into()));
+    let mut child = tokio::process::Command::new(&bin)
+        .args(&args)
+        .current_dir(&dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("Couldn't start Codex ({e})"))?;
+    let stdout = child.stdout.take().ok_or("Codex gave no output stream")?;
+    let stderr = child.stderr.take();
+    let err_task = tokio::spawn(async move {
+        let mut tail = String::new();
+        if let Some(e) = stderr {
+            let mut lines = BufReader::new(e).lines();
+            while let Ok(Some(l)) = lines.next_line().await {
+                tail = l;
+            }
+        }
+        tail
+    });
+    let mut lines = BufReader::new(stdout).lines();
+    let mut finished = false;
+    let mut failure: Option<String> = None;
+    loop {
+        if cancel.is_cancelled(&conv_id) {
+            let _ = child.kill().await;
+            break;
+        }
+        match tokio::time::timeout(std::time::Duration::from_millis(100), lines.next_line()).await {
+            Ok(Ok(Some(line))) => {
+                if line.contains("\"turn.completed\"") {
+                    finished = true;
+                }
+                if line.contains("\"turn.failed\"") || line.starts_with("{\"type\":\"error\"") {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                        let msg = v
+                            .get("message")
+                            .or_else(|| v.get("error").and_then(|e| e.get("message")))
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("Codex failed.")
+                            .to_string();
+                        failure = Some(local_cli::signin_hint(&msg).unwrap_or(msg));
+                    }
+                }
+                if !line.trim().is_empty() {
+                    let _ = on_chunk.send(line);
+                }
+            }
+            Ok(Ok(None)) => break,
+            Ok(Err(e)) => return Err(e.to_string()),
+            Err(_) => continue,
+        }
+    }
+    let _ = child.wait().await;
+    let tail = err_task.await.unwrap_or_default();
+    for p in temp_images {
+        let _ = std::fs::remove_file(p);
+    }
+    if cancel.is_cancelled(&conv_id) || finished {
+        return Ok(());
+    }
+    Err(failure.unwrap_or_else(|| local_cli::signin_hint(&tail).unwrap_or(if tail.is_empty() { "Codex stopped without an answer.".into() } else { tail })))
 }
 
 #[tauri::command]
@@ -1593,6 +1698,10 @@ pub fn run() {
             read_file,
             write_file,
             notify,
+            codex_chat,
+            local_cli::cli_status,
+            local_cli::cli_login,
+            local_cli::codex_check,
             bridge_runs,
             bridge_cancel,
             file_read_full,
@@ -1617,7 +1726,6 @@ pub fn run() {
             claude_code,
             claude_close,
             claude_interrupt,
-            claude_version,
             import_frappe_credentials,
             read_user_memory,
             append_user_memory,

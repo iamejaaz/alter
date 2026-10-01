@@ -77,6 +77,7 @@ import {
   claudeClose,
   claudeCodeChat,
   claudeInterrupt,
+  codexChat,
   extractMemories,
   streamChat,
 } from "./lib/api";
@@ -104,6 +105,8 @@ import {
   Settings,
   Skill,
   isClaudeCodeUrl,
+  isCodexUrl,
+  isLocalAgentUrl,
   newId,
   scheduleLabel,
   storage,
@@ -599,6 +602,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const list = s.connections ?? settings.connections ?? [];
     const c = list.find((x) => x.id === s.activeConnectionId);
     if (c && isClaudeCodeUrl(c.baseUrl)) return "Claude Code";
+    if (c && isCodexUrl(c.baseUrl)) return "Codex";
     const model = s.model.includes("/") ? s.model.split("/").pop() : s.model;
     return c && c.name !== "Default" ? `${c.name} · ${model}` : model || "model";
   };
@@ -791,12 +795,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       interrupt(targetId, false);
       return;
     }
-    if (!settings.apiKey && !isClaudeCodeUrl(settings.baseUrl)) {
+    if (!settings.apiKey && !isLocalAgentUrl(settings.baseUrl)) {
       setError("Add a connection in Settings to start chatting.");
       setShowSettings(true);
       return;
     }
-    if (!settings.model && !isClaudeCodeUrl(settings.baseUrl)) {
+    if (!settings.model && !isLocalAgentUrl(settings.baseUrl)) {
       setError("Pick a model for this connection in Settings.");
       setShowSettings(true);
       return;
@@ -918,9 +922,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     // Claude Code (local): drive the `claude` CLI instead of an HTTP provider.
     // Claude Code is its own agent (own tools + folder access), so Alter just
     // sends the user's message and shows the reply — no HTTP, no Alter tool loop.
-    if (isClaudeCodeUrl(settings.baseUrl)) {
+    if (isLocalAgentUrl(settings.baseUrl)) {
       try {
-        const prior = conversations.find((c) => c.id === convId)?.claudeSessionId ?? null;
+        const onCodex = isCodexUrl(settings.baseUrl);
+        const here = conversations.find((c) => c.id === convId);
+        const prior = (onCodex ? here?.codexThreadId : here?.claudeSessionId) ?? null;
         // Teach-once: inject Alter's remembered facts into a new Claude Code session,
         // so what you told Alter applies here too (Claude Code already loads its own
         // CLAUDE.md + memory automatically).
@@ -942,24 +948,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           .filter((i) => i.data);
         if (!ccPrompt.trim() && ccImages.length) ccPrompt = "(see attached image)";
         setAgents((a) => ({ ...a, [convId!]: [] }));
-        const { content, sessionId, costUsd, tokens } = await claudeCodeChat(
-          ccPrompt,
-          ccImages,
-          folder,
-          convId,
-          prior,
-          settings.model,
-          settings.effort ?? null,
-          // Map Alter's mode to Claude Code's permission mode.
-          { auto: "bypassPermissions", ask: "acceptEdits", plan: "plan", chat: "default" }[
-            settings.mode ?? "auto"
-          ],
-          (partial) =>
+        const writeDelta = (partial: string) =>
             updateConversation(convId!, (c) => ({
               ...c,
               messages: [...c.messages.slice(0, -1), { role: "assistant", content: partial }],
-            })),
-          (label) =>
+            }));
+        const writeStep = (label: string) =>
             updateConversation(convId!, (c) => {
               const msgs = [...c.messages];
               const last = msgs[msgs.length - 1];
@@ -972,7 +966,45 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 msgs.push(step, { role: "assistant", content: "" } as Message);
               }
               return { ...c, messages: msgs };
-            }),
+            });
+        if (onCodex) {
+          const r = await codexChat(
+            ccPrompt,
+            ccImages,
+            folder,
+            convId,
+            prior,
+            settings.model,
+            settings.effort ?? null,
+            settings.mode ?? "auto",
+            writeDelta,
+            writeStep,
+            controller.signal,
+            (tid) => updateConversation(convId!, (c) => ({ ...c, codexThreadId: tid })),
+            (plan) => updateConversation(convId!, (c) => ({ ...c, plan: plan.length ? plan : undefined }))
+          );
+          updateConversation(convId, (c) => ({
+            ...c,
+            codexThreadId: r.threadId ?? c.codexThreadId,
+            lastTokens: r.tokens ?? c.lastTokens,
+            messages: [...c.messages.slice(0, -1), ...(r.content ? [{ role: "assistant", content: r.content } as Message] : [])],
+          }));
+          return;
+        }
+        const { content, sessionId, costUsd, tokens } = await claudeCodeChat(
+          ccPrompt,
+          ccImages,
+          folder,
+          convId,
+          prior,
+          settings.model,
+          settings.effort ?? null,
+          // Map Alter's mode to Claude Code's permission mode.
+          { auto: "bypassPermissions", ask: "acceptEdits", plan: "plan", chat: "default" }[
+            settings.mode ?? "auto"
+          ],
+          writeDelta,
+          writeStep,
           controller.signal,
           (sid) => updateConversation(convId!, (c) => ({ ...c, claudeSessionId: sid })),
           (url) => {
@@ -1020,7 +1052,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       ...(settings.connections ?? [])
         // Skip Claude Code — it isn't an HTTP endpoint; calling it via streamChat
         // builds an invalid `claude-code://local/chat/completions` URL.
-        .filter((c) => c.id !== settings.activeConnectionId && !isClaudeCodeUrl(c.baseUrl))
+        .filter((c) => c.id !== settings.activeConnectionId && !isLocalAgentUrl(c.baseUrl))
         .map((c) => ({ ...settings, baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, activeConnectionId: c.id })),
     ];
     let activeSettings = settings;
@@ -1276,7 +1308,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     if (!abortsRef.current[cid]) return;
     interruptsRef.current[cid] = true;
     if (isClaudeCodeUrl(settings.baseUrl)) claudeInterrupt(cid);
-    else if (immediate) streamCtlsRef.current[cid]?.abort();
+    else if (isCodexUrl(settings.baseUrl)) {
+      if (immediate) abortsRef.current[cid]?.abort();
+    } else if (immediate) streamCtlsRef.current[cid]?.abort();
   };
 
   // Auto-send queued messages once their conversation finishes generating.
@@ -1506,7 +1540,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     ? Math.round(active.messages.reduce((n, m) => n + (m.content?.length ?? 0), 0) / 4)
     : 0;
   const connections = settings.connections ?? [];
-  const setupNeeded = isClaudeCodeUrl(settings.baseUrl)
+  const setupNeeded = isLocalAgentUrl(settings.baseUrl)
     ? null
     : !settings.apiKey
       ? "Connect a model"
@@ -1862,7 +1896,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     if (left <= 0) return stop(`Auto reply paused after ${AUTO_TURNS} turns. Turn it on again to continue.`);
     const conn = (settings.connections ?? []).find((k) => k.id === (c.connectionId ?? settings.activeConnectionId));
     if (!conn) return stop("Auto reply needs a connection on this chat.");
-    if (isClaudeCodeUrl(conn.baseUrl)) {
+    if (isLocalAgentUrl(conn.baseUrl)) {
       const incoming = [...c.messages].reverse().find((m) => m.peer?.dir === "in")?.content ?? "";
       updateConversation(c.id, (x) => (x.peer ? { ...x, peer: { ...x.peer, left: left - 1 } } : x));
       try {
@@ -1981,7 +2015,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     })),
     ...connections.map((c) => ({
       id: `conn-${c.id}`,
-      label: isClaudeCodeUrl(c.baseUrl) ? "Claude Code" : c.name,
+      label: isClaudeCodeUrl(c.baseUrl) ? "Claude Code" : isCodexUrl(c.baseUrl) ? "Codex" : c.name,
       hint: c.id === settings.activeConnectionId ? "current" : undefined,
       section: "Connections",
       run: () => switchConnection(c.id),
@@ -2778,7 +2812,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   title={settings.model}
                   options={connections.map((c) => {
                     const short = c.model ? (c.model.includes("/") ? c.model.split("/").pop() : c.model) : "(no model)";
-                    const label = isClaudeCodeUrl(c.baseUrl) ? "Claude Code" : c.name === "Default" ? short : `${c.name} · ${short}`;
+                    const label = isClaudeCodeUrl(c.baseUrl)
+                      ? "Claude Code"
+                      : isCodexUrl(c.baseUrl)
+                        ? c.model && c.model !== "codex" ? `Codex · ${c.model}` : "Codex"
+                        : c.name === "Default"
+                          ? short
+                          : `${c.name} · ${short}`;
                     return { value: c.id, label: label ?? "" };
                   })}
                 />

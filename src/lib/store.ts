@@ -44,6 +44,7 @@ export interface Conversation {
   messages: Message[];
   createdAt: number;
   claudeSessionId?: string; // Claude Code (local) session, for conversation continuity
+  codexThreadId?: string;
   connectionId?: string; // which connection this chat uses (per-chat, not global)
   model?: string; // resolved model for this chat (e.g. Claude Code sub-model)
   effort?: Effort;
@@ -74,6 +75,9 @@ export interface Project {
 // Sentinel base URL that routes a connection to the local `claude` CLI instead of HTTP.
 export const CLAUDE_CODE_URL = "claude-code://local";
 export const isClaudeCodeUrl = (u: string) => u.startsWith("claude-code");
+export const CODEX_URL = "codex://local";
+export const isCodexUrl = (u: string) => u.startsWith("codex://");
+export const isLocalAgentUrl = (u: string) => isClaudeCodeUrl(u) || isCodexUrl(u);
 
 export type Mode = "auto" | "ask" | "plan" | "chat";
 
@@ -153,10 +157,6 @@ export const PROVIDER_PRESETS: Record<string, { baseUrl: string; models: string[
     baseUrl: "https://api.deepseek.com",
     models: ["deepseek-chat", "deepseek-reasoner"],
   },
-  Moonshot: {
-    baseUrl: "https://api.moonshot.ai/v1",
-    models: ["kimi-k2-turbo-preview", "moonshot-v1-8k"],
-  },
   Gemini: {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     // gemini-flash-latest: free tier + vision. pro-preview needs billing.
@@ -175,6 +175,10 @@ export const PROVIDER_PRESETS: Record<string, { baseUrl: string; models: string[
   "Claude Code (local)": {
     baseUrl: CLAUDE_CODE_URL,
     models: ["claude-code"],
+  },
+  "Codex (local)": {
+    baseUrl: CODEX_URL,
+    models: ["codex"],
   },
 };
 
@@ -223,7 +227,11 @@ export const storage = {
     // Heal stale labels: a Claude Code connection has one fixed identity, so its
     // name can never legitimately read like some other provider/model.
     s.connections = s.connections.map((c) =>
-      isClaudeCodeUrl(c.baseUrl) && c.name !== "Claude Code" ? { ...c, name: "Claude Code", model: "claude-code" } : c
+      isClaudeCodeUrl(c.baseUrl) && c.name !== "Claude Code"
+        ? { ...c, name: "Claude Code", model: "claude-code" }
+        : isCodexUrl(c.baseUrl) && c.name !== "Codex"
+          ? { ...c, name: "Codex", model: c.model || "codex" }
+          : c
     );
     return s;
   },
