@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Settings, newId } from "../lib/store";
-import { cliLogin, cliStatus, CliStatus, testConnection } from "../lib/api";
+import { listen } from "@tauri-apps/api/event";
+import { cliLogin, cliLoginTerminal, cliStatus, CliStatus, codexCheck, testConnection } from "../lib/api";
 import { Chevron } from "./Icons";
 import ProjectsEditor from "./ProjectsEditor";
 import Switch from "./Switch";
@@ -11,23 +12,49 @@ import { confirmDialog } from "../lib/confirm";
 
 function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   const [status, setStatus] = useState<CliStatus | null>(null);
-  const [opening, setOpening] = useState(false);
+  const [live, setLive] = useState<{ ok: boolean; msg: string } | "checking" | null>(null);
+  const [signing, setSigning] = useState(false);
+  const [loginUrl, setLoginUrl] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
   const name = kind === "claude" ? "Claude Code" : "Codex";
+  const load = async () => {
+    const s = await cliStatus(kind).catch(() => null);
+    setStatus(s);
+    if (kind === "codex" && s?.installed) {
+      setLive("checking");
+      await codexCheck()
+        .then((msg) => setLive({ ok: true, msg }))
+        .catch((e) => setLive({ ok: false, msg: e instanceof Error ? e.message : String(e) }));
+    }
+  };
   useEffect(() => {
-    let gone = false;
-    const load = () => void cliStatus(kind).then((s) => !gone && setStatus(s)).catch(() => {});
-    load();
-    window.addEventListener("focus", load);
+    void load();
+    const onFocus = () => void cliStatus(kind).then(setStatus).catch(() => {});
+    window.addEventListener("focus", onFocus);
+    let un: (() => void) | undefined;
+    void listen<{ kind: string; url: string }>("alter://cli-login-url", (e) => {
+      if (e.payload.kind === kind) setLoginUrl(e.payload.url);
+    }).then((u) => (un = u));
     return () => {
-      gone = true;
-      window.removeEventListener("focus", load);
+      window.removeEventListener("focus", onFocus);
+      un?.();
     };
   }, [kind]);
   const signIn = async () => {
-    setOpening(true);
-    await cliLogin(kind).catch(() => {});
-    setTimeout(() => setOpening(false), 1500);
+    setSigning(true);
+    setProblem(null);
+    setLoginUrl(null);
+    try {
+      await cliLogin(kind);
+      await load();
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSigning(false);
+    }
   };
+  const expired = kind === "codex" && live !== "checking" && live !== null && !live.ok;
+  const signedIn = status?.signedIn !== false && !expired;
   return (
     <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2.5 space-y-1.5">
       <div className="flex items-center gap-2">
@@ -35,10 +62,12 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
         {status?.installed && (
           <button
             onClick={signIn}
-            disabled={opening}
-            className="rounded-md border border-[var(--bd)] px-2.5 py-1 text-[12px] text-[var(--txt)] hover:bg-[var(--panel-2)] disabled:opacity-50"
+            disabled={signing}
+            className={`rounded-md border px-2.5 py-1 text-[12px] disabled:opacity-60 ${
+              signedIn ? "border-[var(--bd)] text-[var(--txt)] hover:bg-[var(--panel-2)]" : "border-[var(--txt-dim)] bg-[var(--panel-2)] text-[var(--txt)]"
+            }`}
           >
-            {opening ? "Opening Terminal…" : status.signedIn ? "Sign in again" : "Sign in"}
+            {signing ? "Waiting for your browser…" : signedIn ? "Sign in again" : "Sign in"}
           </button>
         )}
       </div>
@@ -52,17 +81,45 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
         </p>
       ) : (
         <p className="text-[11px] text-[var(--txt-dim)]">
-          <span className={status.signedIn === false ? "text-red-400" : "text-green-400"}>
-            {status.signedIn === false ? "Not signed in" : status.account ? `Signed in · ${status.account}` : "Signed in"}
+          <span className={signedIn ? (live === "checking" ? "text-[var(--txt-dim)]" : "text-green-400") : "text-red-400"}>
+            {status.signedIn === false
+              ? "Not signed in"
+              : expired
+                ? "Login expired"
+                : live === "checking"
+                  ? "Checking the login…"
+                  : status.account
+                    ? `Signed in · ${status.account}`
+                    : "Signed in"}
           </span>
           {" · "}
           {status.version}
         </p>
       )}
+      {signing && (
+        <p className="text-[11px] text-[var(--txt-dim)]">
+          Finish signing in in your browser, then come back here.
+          {loginUrl && (
+            <>
+              {" "}
+              <button onClick={() => void invoke("open_external", { url: loginUrl })} className="underline hover:text-[var(--txt)]">
+                Open the sign in page
+              </button>{" "}
+              if it didn't open.
+            </>
+          )}
+        </p>
+      )}
+      {problem && (
+        <p className="text-[11px] text-red-400">
+          {problem}{" "}
+          <button onClick={() => void cliLoginTerminal(kind)} className="underline hover:text-red-300">
+            Sign in from Terminal instead
+          </button>
+        </p>
+      )}
       <p className="text-[11px] text-[var(--txt-faint)]">
         Runs the <span className="font-mono">{kind}</span> CLI with your {kind === "claude" ? "Claude" : "ChatGPT"} plan, so there is no key or URL here.
-        Sign in opens Terminal on the login command; finish there and come back.
-        {kind === "codex" ? " Codex can report signed in after its login expires, so Test connection makes a real request." : ""}
       </p>
     </div>
   );

@@ -1701,6 +1701,7 @@ pub fn run() {
             codex_chat,
             local_cli::cli_status,
             local_cli::cli_login,
+            local_cli::cli_login_terminal,
             local_cli::codex_check,
             bridge_runs,
             bridge_cancel,

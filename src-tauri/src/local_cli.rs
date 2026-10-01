@@ -96,7 +96,7 @@ pub fn cli_status(kind: String) -> CliStatus {
 }
 
 #[tauri::command]
-pub fn cli_login(kind: String) -> Result<(), String> {
+pub fn cli_login_terminal(kind: String) -> Result<(), String> {
     let name = if kind == "codex" { "codex" } else { "claude" };
     let bin = find(name).ok_or_else(|| format!("The {name} CLI isn't installed."))?;
     let sub = if name == "claude" { "auth login" } else { "login" };
@@ -111,10 +111,70 @@ pub fn cli_login(kind: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub async fn cli_login(app: tauri::AppHandle, kind: String) -> Result<String, String> {
+    use tauri::Emitter;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    let name = if kind == "codex" { "codex" } else { "claude" };
+    let bin = find(name).ok_or_else(|| format!("The {name} CLI isn't installed."))?;
+    let args: &[&str] = if name == "claude" { &["auth", "login", "--claudeai"] } else { &["login"] };
+    let mut child = tokio::process::Command::new(&bin)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("Couldn't start the {name} login ({e})"))?;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let mut out = BufReader::new(child.stdout.take().ok_or("no output")?).lines();
+    let mut err = BufReader::new(child.stderr.take().ok_or("no output")?).lines();
+    let tx2 = tx.clone();
+    tokio::spawn(async move {
+        while let Ok(Some(l)) = out.next_line().await {
+            let _ = tx.send(l);
+        }
+    });
+    tokio::spawn(async move {
+        while let Ok(Some(l)) = err.next_line().await {
+            let _ = tx2.send(l);
+        }
+    });
+    let mut tail = String::new();
+    let mut sent_url = false;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(300);
+    loop {
+        match tokio::time::timeout_at(deadline, rx.recv()).await {
+            Err(_) => {
+                let _ = child.kill().await;
+                return Err("Sign in timed out after 5 minutes. Try again.".into());
+            }
+            Ok(None) => break,
+            Ok(Some(line)) => {
+                if !sent_url {
+                    if let Some(url) = line.split_whitespace().find(|w| w.starts_with("https://")) {
+                        sent_url = true;
+                        let _ = app.emit("alter://cli-login-url", serde_json::json!({ "kind": kind, "url": url }));
+                    }
+                }
+                if !line.trim().is_empty() {
+                    tail = line;
+                }
+            }
+        }
+    }
+    let status = child.wait().await.map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(format!("Signed {name} in."))
+    } else {
+        Err(if tail.is_empty() { "Sign in didn't finish.".into() } else { tail })
+    }
+}
+
 pub fn signin_hint(msg: &str) -> Option<String> {
     let m = msg.to_lowercase();
     (m.contains("sign in") || m.contains("log in") || m.contains("logged in") || m.contains("401") || m.contains("unauthorized") || m.contains("access token"))
-        .then(|| "Codex isn't signed in, or its login expired. Open Settings → Connections → Codex and click Sign in.".to_string())
+        .then(|| "Codex isn't signed in, or its login expired. Sign in to continue.".to_string())
 }
 
 #[tauri::command]

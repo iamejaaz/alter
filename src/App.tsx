@@ -77,6 +77,7 @@ import {
   claudeClose,
   claudeCodeChat,
   claudeInterrupt,
+  cliLogin,
   codexChat,
   extractMemories,
   streamChat,
@@ -180,6 +181,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [input, setInput] = useState("");
   const [showChanges, setShowChanges] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const [agents, setAgents] = useState<Record<string, AgentRun[]>>({});
   const [agentsOpen, setAgentsOpen] = useState(true);
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
@@ -608,6 +610,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   };
   // Turn raw provider errors into plain-English guidance.
   const humanizeError = (raw: string): string => {
+    if (
+      isLocalAgentUrl(settings.baseUrl) &&
+      /\/login|not (signed|logged) in|isn't signed in|sign in|log in|invalid api key|oauth|access token|\b401\b|unauthor/i.test(raw)
+    )
+      return `${isCodexUrl(settings.baseUrl) ? "Codex" : "Claude Code"} isn't signed in, or its login expired. Sign in to continue.`;
     const limit = raw.match(/(?:session|usage)\s+limit[^\n.]*?(resets?[^\n.]*)/i);
     if (limit || /hit your (?:session|usage|weekly) limit|limit reached/i.test(raw))
       return `Claude Code session limit reached${
@@ -2395,9 +2402,31 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         <div className="px-4 pb-4 pt-1">
           <div className="max-w-3xl mx-auto">
             {((activeId && convErrors[activeId]) || error) && (
-              <p className="mb-2 rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-xs text-red-300">
-                {(activeId && convErrors[activeId]) || error}
-              </p>
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-xs text-red-300">
+                <span className="min-w-0 flex-1">{(activeId && convErrors[activeId]) || error}</span>
+                {/Sign in to continue/.test((activeId && convErrors[activeId]) || error || "") && (
+                  <button
+                    disabled={signingIn}
+                    onClick={async () => {
+                      const kind = isCodexUrl(settings.baseUrl) ? "codex" : "claude";
+                      setSigningIn(true);
+                      try {
+                        await cliLogin(kind);
+                        if (activeId) setConvError(activeId, null);
+                        setError(null);
+                        setInfo(`${kind === "codex" ? "Codex" : "Claude Code"} is signed in. Send your message again.`);
+                      } catch (e) {
+                        if (activeId) setConvError(activeId, e instanceof Error ? e.message : String(e));
+                      } finally {
+                        setSigningIn(false);
+                      }
+                    }}
+                    className="shrink-0 rounded-md border border-red-800 px-2.5 py-1 text-red-200 hover:bg-red-900/40 disabled:opacity-60"
+                  >
+                    {signingIn ? "Finish in your browser…" : "Sign in"}
+                  </button>
+                )}
+              </div>
             )}
             {((activeId && convInfos[activeId]) || info) && (
               <p className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-2 text-xs text-[var(--txt-dim)]">

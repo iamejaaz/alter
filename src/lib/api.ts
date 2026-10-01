@@ -188,7 +188,9 @@ export interface CliStatus {
 }
 
 export const cliStatus = (kind: "claude" | "codex") => invoke<CliStatus>("cli_status", { kind });
-export const cliLogin = (kind: "claude" | "codex") => invoke<void>("cli_login", { kind });
+export const cliLogin = (kind: "claude" | "codex") => invoke<string>("cli_login", { kind });
+export const cliLoginTerminal = (kind: "claude" | "codex") => invoke<void>("cli_login_terminal", { kind });
+export const codexCheck = () => invoke<string>("codex_check");
 
 export async function testConnection(settings: Settings): Promise<string> {
   if (isClaudeCodeUrl(settings.baseUrl)) {
