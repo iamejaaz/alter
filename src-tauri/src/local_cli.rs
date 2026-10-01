@@ -173,6 +173,9 @@ pub async fn cli_login(app: tauri::AppHandle, kind: String) -> Result<String, St
 
 pub fn signin_hint(msg: &str) -> Option<String> {
     let m = msg.to_lowercase();
+    if m.contains("not supported when using codex with a chatgpt account") || m.contains("do not have access to it") {
+        return Some("This ChatGPT account can't use Codex. Codex needs a ChatGPT Plus, Pro, Team or Enterprise plan, or sign in with a different account.".into());
+    }
     (m.contains("sign in") || m.contains("log in") || m.contains("logged in") || m.contains("401") || m.contains("unauthorized") || m.contains("access token"))
         .then(|| "Codex isn't signed in, or its login expired. Sign in to continue.".to_string())
 }
@@ -195,7 +198,7 @@ pub async fn codex_check() -> Result<String, String> {
     for line in text.lines() {
         let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
         let kind = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
-        if kind == "error" || kind == "turn.failed" {
+        if kind == "turn.failed" || (kind == "error" && !v.get("message").and_then(|x| x.as_str()).unwrap_or("").starts_with("Reconnecting")) {
             let msg = v
                 .get("message")
                 .or_else(|| v.get("error").and_then(|e| e.get("message")))

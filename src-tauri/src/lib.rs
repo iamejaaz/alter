@@ -772,7 +772,7 @@ async fn codex_chat(
                 if line.contains("\"turn.completed\"") {
                     finished = true;
                 }
-                if line.contains("\"turn.failed\"") || line.starts_with("{\"type\":\"error\"") {
+                if line.contains("\"turn.failed\"") || (line.starts_with("{\"type\":\"error\"") && !line.contains("Reconnecting")) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
                         let msg = v
                             .get("message")
