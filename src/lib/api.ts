@@ -37,6 +37,8 @@ export function buildSystemPrompt(memories: MemoryItem[], mode: Mode = "auto", s
     const list = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
     prompt += `\n\nThe user has these saved skills. When a request matches one, call use_skill with its exact name to load its full instructions, then follow them:\n${list}`;
   }
+  prompt +=
+    "\n\nYou have no terminal, no git or GitHub access, and no sub-agents here. Only when a request truly needs one of those to be done, such as reading or acting on real PRs, running commands or tests, or committing, say in one short line that it needs Claude Code and end your reply with [needs-claude-code]. Writing or drafting text about PRs, code or GitHub needs none of that, so just do it.";
   if (mode !== "chat")
     prompt +=
       "\n\nFor a task with three or more real steps, call update_plan first with the steps, then call it again as each step starts, finishes or gets blocked. Skip it for questions and quick tasks.";

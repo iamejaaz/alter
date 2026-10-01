@@ -81,8 +81,6 @@ import {
   streamChat,
 } from "./lib/api";
 
-const NEEDS_TERMINAL = /\b(pull requests?|PRs?|github|gh|sub-?agents?|agents?|terminal|bash|shell|git|bench|commit|push|run (the |a )?(command|tests?|script))\b/i;
-
 const slugify = (s: string) =>
   s
     .toLowerCase()
@@ -1211,10 +1209,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       const ccConnection = (settings.connections ?? []).find((c) => isClaudeCodeUrl(c.baseUrl));
       let deadEnd = false;
       if (!full && !controller.signal.aborted) {
-        if (!finished && !cappedOut && !images.length && ccConnection && NEEDS_TERMINAL.test(typed)) {
+        if (!finished && !cappedOut && !images.length && ccConnection) {
           deadEnd = true;
           full =
-            "I ran out of steps. This connection has no terminal, GitHub access or sub-agents, and this task needs them. Claude Code has all three.";
+            "I ran out of steps before finishing. If this needs a terminal, GitHub or sub-agents, this connection doesn't have them, and Claude Code does.";
         } else if (cappedOut) {
           full =
             "Stopped — the model kept running tools for over 90 seconds without finishing. Try a sharper request, or switch to a stronger model.";
@@ -1226,6 +1224,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         } else {
           full = `(The model returned an empty response${lastFinish ? `, finish_reason ${lastFinish}` : ""}.)${lastRaw ? `\n\n\`\`\`\n${lastRaw}\n\`\`\`` : ""}`;
         }
+      }
+      if (full.includes("[needs-claude-code]")) {
+        full = full.replace(/\s*\[needs-claude-code\]\s*/g, " ").trim();
+        if (ccConnection) deadEnd = true;
       }
       const { clean, found } = extractMemories(full);
       updateConversation(convId, (c) => {
@@ -1518,7 +1520,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     switchConnection(ccConn.id);
     if (ask) setTimeout(() => void sendRef.current({ text: ask, targetConvId: active.id }), 0);
   };
-  const terminalHint = !!ccConn && !isClaudeCodeUrl(settings.baseUrl) && !active?.peer && NEEDS_TERMINAL.test(input);
   const switchConnection = (id: string) => {
     const conn = connections.find((c) => c.id === id);
     if (!conn) return;
@@ -2376,17 +2377,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 <span className="line-clamp-2 min-w-0 flex-1 border-l-2 border-[var(--bd)] pl-2">{quote}</span>
                 <button onClick={() => setQuote(null)} className="shrink-0 text-[var(--txt-faint)] hover:text-[var(--txt)]" title="Drop the quote">
                   ×
-                </button>
-              </div>
-            )}
-            {terminalHint && (
-              <div className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1.5 text-[12px] text-[var(--txt-dim)]">
-                <span className="min-w-0 flex-1">This looks like it needs GitHub or a terminal. Only Claude Code has those here.</span>
-                <button
-                  onClick={() => ccConn && switchConnection(ccConn.id)}
-                  className="shrink-0 rounded-md border border-[var(--bd)] px-2 py-0.5 text-[var(--txt)] hover:bg-[var(--panel-2)]"
-                >
-                  Use Claude Code
                 </button>
               </div>
             )}
