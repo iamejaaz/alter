@@ -172,7 +172,7 @@ async function followUp(q) {
   const isIssue = session.kind === "issue";
   const domain = isIssue
     ? "The work here is a fix you prepared on a local branch for a GitHub issue; you may read the branch with git and cite file:line."
-    : `The work here is your review of GitHub PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}. Every question is about that PR: read it with \`gh pr view\` and \`gh pr diff\` when you need a fact, and never answer from the state of the local checkout. Cite file:line when the question is about the code. This panel is read-only, so you cannot edit, commit or push: when asked to change the PR, say exactly what to change, and say that making the change needs an Alter chat.`;
+    : `The work here is your review of GitHub PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}. Every question is about that PR: read it with \`gh pr view\` and \`gh pr diff\` when you need a fact, and never answer from the state of the local checkout. Cite file:line when the question is about the code. This panel is read-only, so you cannot edit, commit or push: when asked to change the PR, say exactly what to change, and say that the "Fix this PR" button below prepares it.`;
   const wantsReply = REPLY_INTENT.test(q);
   const system = wantsReply
     ? `${domain} ${FOLLOWUP_SYSTEM} You are drafting a PR REVIEW COMMENT to post on GitHub, in your OWN terse review voice from memory (not a customer reply): plain, direct, your exact phrasing. ${COMMENT_VOICE} ${ANCHOR_FORMAT} Output ONLY the comment.`
@@ -209,6 +209,46 @@ const VERIFY_SYSTEM = [
   "Steps, batched into as few calls as possible: 1) record the current branch (rev-parse --abbrev-ref HEAD) and refuse to continue if `git status --short` is dirty. 2) fetch + checkout the PR: git -C <path> fetch upstream pull/<num>/head:pr-<num> && git -C <path> checkout pr-<num> (fall back to origin if there is no upstream remote). 3) if there are schema/patch changes, `bench --site <repro site> migrate`. 4) run the change — prefer the PR's OWN tests (`bench --site <repro site> run-tests --module <touched module>` — call `bench` bare from the bench root you are already in, never by absolute path, never with `cd`, never wrapped in `timeout`; if the site says testing is disabled, run `bench --site <repro site> set-config allow_tests true` once); else Write a script into YOUR SCRATCHPAD DIRECTORY (the path in your system prompt; nowhere else) that exercises the changed path, asserts the outcome and rolls back, and run it ONLY through `{skill}/scripts/repro.sh develop <that path>` — never `env/bin/python`, never `bench console` directly, both are denied. 5) ALWAYS restore in the same run: `git -C <path> checkout <original-branch>` and delete pr-<num>, leaving the bench exactly as found — never end with the PR branch checked out.",
   "Output: **Verified** — works on <version> (what you ran + the result), or **Failed** — what broke (paste the error), or **Couldn't verify** — why (no repro bench, no tests to run, etc.). Terse and honest — NEVER claim verified without actually running something.",
 ].join(" ");
+
+async function fixPr() {
+  if (!session) return;
+  appendBlock("user").textContent = "Fix this PR";
+  const p = session.parts;
+  const t = `\n\nReview:\n${withoutJsonFence(session.review)}` + session.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
+  const block = appendBlock("assistant");
+  const a = await streamAgent(block, {
+    connectionId: session.connectionId,
+    includeMemory: true,
+    model: session.model,
+    mode: "pr",
+    support: { ticket: p.num, verb: "prfix", site: "github.com", issue: `${p.owner}/${p.repo}#${p.num}`, transcript: t },
+    label: "Fix PR",
+  });
+  session.transcript.push({ q: "Fix this PR", a });
+  session.fixPrepared = /Commit:\s*`?[0-9a-f]{7,40}/i.test(a || "");
+  renderFooter();
+}
+
+async function pushPrFix() {
+  if (!session || !session.fixPrepared) return;
+  const p = session.parts;
+  const dest = `${p.owner}/${p.repo}#${p.num}`;
+  if (!(await panelConfirm(`Push the prepared commit onto the branch of <b>${escapeHtml(dest)}</b>. This is public.`, "Push"))) return;
+  appendBlock("user").textContent = "Push to PR";
+  const t = session.transcript.slice(-1).map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
+  const block = appendBlock("assistant");
+  const a = await streamAgent(block, {
+    connectionId: session.connectionId,
+    includeMemory: true,
+    model: session.model,
+    mode: "pr-push",
+    support: { ticket: p.num, verb: "prfix_push", site: "github.com", issue: dest, transcript: t },
+    label: "Push to PR",
+  });
+  session.transcript.push({ q: "Push to PR", a });
+  session.fixPrepared = !a;
+  renderFooter();
+}
 
 async function verifyOnBench() {
   if (!session) return;
@@ -823,11 +863,11 @@ function setStatus(text, isError) {
 
 // The one irreversible step gets its confirm inside the panel, showing what
 // posts, where, and as whom, instead of a browser dialog.
-function panelConfirm(summary) {
+function panelConfirm(summary, yes = "Post") {
   const note = document.querySelector("#alter-foot-note");
   if (!note) return Promise.resolve(false);
   return new Promise((resolve) => {
-    note.innerHTML = `<div class="alter-confirm"><div>${summary}</div><div class="alter-confirm-btns"><button id="alter-confirm-yes">Post</button><button id="alter-confirm-no" class="alter-ghost">Cancel</button></div></div>`;
+    note.innerHTML = `<div class="alter-confirm"><div>${summary}</div><div class="alter-confirm-btns"><button id="alter-confirm-yes">${yes}</button><button id="alter-confirm-no" class="alter-ghost">Cancel</button></div></div>`;
     note.scrollIntoView({ block: "nearest" });
     const done = (v) => {
       note.innerHTML = "";
@@ -862,7 +902,9 @@ function renderFooter() {
       ? '<button id="alter-push">Push &amp; open PR</button>'
       : ""
     : session && session.review
-      ? '<button id="alter-post-review" class="alter-primary">Preview comments</button><button id="alter-verify" hidden>Verify on bench</button>'
+      ? `<button id="alter-post-review" class="alter-primary">Preview comments</button>${
+          session.fixPrepared ? '<button id="alter-pr-push">Push to PR</button>' : '<button id="alter-pr-fix">Fix this PR</button>'
+        }<button id="alter-verify" hidden>Verify on bench</button>`
       : "";
   foot.innerHTML = `
     <div id="alter-foot-btns">${btns}</div>
@@ -872,6 +914,16 @@ function renderFooter() {
       <button id="alter-ask-send">Send</button>
     </div>
     <div id="alter-foot-note"></div>`;
+  const busyRun = (id, fn) => {
+    const b = foot.querySelector(id);
+    if (b)
+      b.addEventListener("click", () => {
+        b.disabled = true;
+        queue.exclusive(fn).finally(() => b.isConnected && (b.disabled = false));
+      });
+  };
+  busyRun("#alter-pr-fix", fixPr);
+  busyRun("#alter-pr-push", pushPrFix);
   const pushBtn = foot.querySelector("#alter-push");
   if (pushBtn) pushBtn.addEventListener("click", (e) => { e.target.disabled = true; pushIssueFix(); });
   const verifyBtn = foot.querySelector("#alter-verify");

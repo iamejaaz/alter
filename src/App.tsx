@@ -139,9 +139,10 @@ export default function App() {
     () => localStorage.getItem("alter.activeProject")
   );
   const [skills, setSkills] = useState<Skill[]>(() => storage.loadSkills());
-  const [view, setView] = useState<"chat" | "routines" | "skills" | "settings">(
-    storage.loadSettings().apiKey ? "chat" : "settings"
-  );
+  const [view, setView] = useState<"chat" | "routines" | "skills" | "settings">(() => {
+    const s = storage.loadSettings();
+    return s.apiKey || isLocalAgentUrl(s.baseUrl) ? "chat" : "settings";
+  });
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
   const setShowSettings = (v: boolean, tab?: SettingsTab) => {

@@ -313,7 +313,7 @@ fn pr_disallowed_tools() -> String {
 fn pr_push_allowed_tools() -> String {
     let mut t: Vec<String> = ["Read", "Grep", "Glob"].iter().map(|s| s.to_string()).collect();
     for g in [
-        "git status", "git diff", "git log", "git show", "git branch", "git push",
+        "git status", "git diff", "git log", "git show", "git branch", "git push", "git switch",
         "gh pr create", "gh pr view", "gh pr list", "gh repo view",
     ] {
         t.push(format!("Bash({g}:*)"));
@@ -637,6 +637,13 @@ fn spawn_agent_run(
         cmd.arg("--disallowedTools").arg(agent_disallowed_tools());
     }
     cmd.arg("--permission-mode").arg("default");
+    if !is_pr_push {
+        cmd.env("GIT_CONFIG_COUNT", "3");
+        for (i, prefix) in ["https://", "git@", "ssh://"].iter().enumerate() {
+            cmd.env(format!("GIT_CONFIG_KEY_{i}"), "url.blocked://alter-no-push/.pushInsteadOf");
+            cmd.env(format!("GIT_CONFIG_VALUE_{i}"), prefix);
+        }
+    }
     // Safety net only: the prompt's tool budget is the real limit. A run that
     // hits this ends with what it has instead of looping.
     if let Some(n) = max_turns {
@@ -1296,6 +1303,8 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 "pr_push" => (fill(&join_lines(&prompts["pr_push"]["system"]), &vars), fill(prompts["pr_push"]["prompt"].as_str().unwrap_or(""), &vars), Some("pr-push".into())),
                 "issue" => (fill(&join_lines(&prompts["issue"]["system"]), &vars), fill(prompts["issue"]["prompt"].as_str().unwrap_or(""), &vars), Some("pr".into())),
                 "issue_push" => (fill(&join_lines(&prompts["pr_push"]["system"]), &vars), fill(prompts["issue"]["push_prompt"].as_str().unwrap_or(""), &vars), Some("pr-push".into())),
+                "prfix" => (fill(&join_lines(&prompts["prfix"]["system"]), &vars), fill(prompts["prfix"]["prompt"].as_str().unwrap_or(""), &vars), Some("pr".into())),
+                "prfix_push" => (fill(&join_lines(&prompts["prfix"]["push_system"]), &vars), fill(prompts["prfix"]["push_prompt"].as_str().unwrap_or(""), &vars), Some("pr-push".into())),
                 "handoff" => {
                     let key = if req.transcript.trim().is_empty() { "fresh" } else { "continue" };
                     (String::new(), fill(prompts["handoff"][key].as_str().unwrap_or(""), &vars), None)
@@ -1353,9 +1362,13 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 "followup" | "ask" => "Follow-up",
                 "handoff" => "Handoff",
                 "pr" => "Create PR",
+                "issue" => "Fix issue",
+                "prfix" => "Fix PR",
+                "issue_push" | "prfix_push" => "Push",
                 other => other,
             };
-            tag_run(&state, &run_id, format!("Ticket {} · {}", req.ticket, verb), req.url.clone(), "support".into());
+            let label = if req.site == "github.com" { format!("{verb} {}", req.issue) } else { format!("Ticket {} · {}", req.ticket, verb) };
+            tag_run(&state, &run_id, label, req.url.clone(), "support".into());
             (200, serde_json::json!({ "ok": true, "runId": run_id }).to_string())
         }
         (tiny_http::Method::Post, "/run") => {
