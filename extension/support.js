@@ -17,7 +17,59 @@ const SUPPORT_MODEL = "sonnet";
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
 const { escapeHtml, humanizeErr, mini, REPLY_VOICE, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
 
-const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
+const RELOADED = "The Alter extension was updated. Refresh this page to keep using it.";
+const send = (msg) =>
+  new Promise((res) => {
+    try {
+      chrome.runtime.sendMessage(msg, (r) => res(chrome.runtime.lastError ? { ok: false, error: chrome.runtime.lastError.message } : r));
+    } catch (_) {
+      res({ ok: false, error: RELOADED, reloaded: true });
+    }
+  });
+
+let lock = Promise.resolve();
+const exclusive = (fn) => {
+  const p = lock.then(fn);
+  lock = p.catch(() => {});
+  return p;
+};
+
+const queued = [];
+let askImages = [];
+function renderQueue() {
+  const el = document.getElementById("sup-queue");
+  if (!el) return;
+  el.innerHTML = "";
+  queued.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "sup-step sup-step-say sup-queued";
+    const text = document.createElement("span");
+    text.textContent = "Queued: " + item.q;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.textContent = "Remove";
+    x.addEventListener("click", () => {
+      const i = queued.indexOf(item);
+      if (i >= 0) queued.splice(i, 1);
+      renderQueue();
+    });
+    row.append(text, x);
+    el.appendChild(row);
+  });
+}
+function ask(q, images) {
+  if (!supSession) return;
+  const item = { q, images };
+  queued.push(item);
+  renderQueue();
+  exclusive(() => {
+    const i = queued.indexOf(item);
+    if (i < 0 || !supSession) return;
+    queued.splice(i, 1);
+    renderQueue();
+    return followUp(q, images);
+  });
+}
 
 function ticketId() {
   const m = location.pathname.match(/\/helpdesk\/tickets\/(\d+)/);
@@ -81,7 +133,7 @@ async function runVerb(verb) {
   const btns = document.querySelectorAll("#sup-actions .sup-btn");
   btns.forEach((b) => (b.disabled = true));
   try {
-    await runVerbInner(verb);
+    await exclusive(() => runVerbInner(verb));
   } finally {
     supRunning = false;
     btns.forEach((b) => b.isConnected && (b.disabled = false));
@@ -110,6 +162,7 @@ async function runVerbInner(verb) {
   };
   // One deterministic bundle (~2s) shown as a card and handed to the agent, so it
   // spends no tool calls re-reading the thread. Falls back to the agent doing it.
+  renderFooter();
   await loadContext(id);
   const block = appendBlock("assistant");
   const raw = await streamAgent(block, {
@@ -349,6 +402,7 @@ function pollRun(el, runId, opts) {
     let done = false;
     let poll = null;
     let shown = 0;
+    let lastStepAt = t0;
 
     const cleanup = () => {
       clearInterval(tick);
@@ -358,11 +412,14 @@ function pollRun(el, runId, opts) {
       if (ticket) clearActiveRun(ticket);
     };
     const tick = setInterval(() => {
-      if (!done) elapsedEl.textContent = `Working… ${Math.round((Date.now() - t0) / 1000)}s`;
+      if (done) return;
+      const quiet = shown && Date.now() - lastStepAt > 5000;
+      elapsedEl.textContent = `${quiet ? "Thinking" : "Working"}… ${Math.round((Date.now() - t0) / 1000)}s`;
     }, 1000);
 
     const renderSteps = (steps) => {
       if (steps.length <= shown) return;
+      lastStepAt = Date.now();
       // Only follow the stream to the bottom if the user is already there — if
       // they scrolled up to read, don't yank them back down on each new step.
       pinToBottom(document.getElementById("sup-body"), () => {
@@ -405,14 +462,9 @@ function pollRun(el, runId, opts) {
     const doPoll = async () => {
       if (done) return;
       const r = await send({ type: "agent-poll", runId });
+      if (r && r.reloaded) return fail(r.error);
       if (!r || !r.ok || !r.data) {
-        // Transient — keep polling, but give up after ~20s of silence so the
-        // spinner can't run forever once Alter has quit.
-        if (++misses >= 15) {
-          done = true;
-          cleanup();
-          fail("Lost contact with Alter — is the app still running?");
-        }
+        if (++misses >= 15) fail("Lost contact with Alter. Check the app is running, then run this again.");
         return;
       }
       misses = 0;
@@ -420,10 +472,10 @@ function pollRun(el, runId, opts) {
       if (p.sessionId && supSession) supSession.sessionId = p.sessionId;
       renderSteps(p.steps || []);
       if (p.done) {
+        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run — run it again." : p.error);
+        if (!(p.text || "").trim()) return fail("The model returned an empty reply. Try again.");
         done = true;
         cleanup();
-        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run — run it again." : p.error);
-        if (!(p.text || "").trim()) return fail("The model returned an empty reply — try again.");
         workEl.remove();
         const body = document.getElementById("sup-body");
         const wasAtBottom = nearBottom(body);
@@ -591,7 +643,6 @@ function ensureButtons() {
   [
     ["Summarize", "summarize"],
     ["Diagnose", "diagnose"],
-    ["Draft reply", "draft"],
   ].forEach(([label, verb]) => {
     const b = document.createElement("button");
     b.className = "sup-btn";
@@ -629,6 +680,7 @@ function openPanel(verb) {
       if (activeRun) activeRun.stop();
     });
     el.querySelector("#sup-close").addEventListener("click", () => {
+      queued.length = 0;
       if (activeRun) activeRun.stop();
       el.remove();
       supSession = null;
@@ -658,6 +710,9 @@ function appendBlock(cls) {
 
 function renderFooter() {
   const foot = document.querySelector("#sup-foot");
+  const prev = foot.querySelector("#sup-ask");
+  const draft = prev ? prev.value : "";
+  const hadFocus = !!prev && document.activeElement === prev;
   foot.innerHTML = `
     <div id="sup-foot-actions">
       <div class="sup-menu-wrap">
@@ -671,6 +726,7 @@ function renderFooter() {
       ${supSession && supSession.fixPrepared ? '<button id="sup-pr-push">Push &amp; open PR</button>' : ""}
       ${supSession && supSession.prUrl ? '<button id="sup-pr-reply">✉️ Draft reply about the PR</button>' : ""}
     </div>
+    <div id="sup-queue"></div>
     <div id="sup-foot-ask"><div id="sup-ask-wrap"><div id="sup-ask-images"></div><textarea id="sup-ask" rows="1" placeholder="Ask a follow-up…" title="Enter to send · Shift+Enter for a new line · paste a screenshot to attach it"></textarea></div><button id="sup-ask-send">Send</button></div>`;
   const menu = foot.querySelector("#sup-menu");
   foot.querySelector("#sup-continue").addEventListener("click", (e) => {
@@ -683,23 +739,22 @@ function renderFooter() {
       const act = b.dataset.act;
       if (act === "alter") openInAlter();
       else if (act === "assistant") openInAssistant();
-      else if (act === "pr") runPr();
+      else if (act === "pr") exclusive(runPr);
     })
   );
   const pushBtn = foot.querySelector("#sup-pr-push");
-  if (pushBtn) pushBtn.addEventListener("click", () => runPrPush());
+  if (pushBtn) pushBtn.addEventListener("click", () => exclusive(runPrPush));
   const replyBtn = foot.querySelector("#sup-pr-reply");
-  if (replyBtn) replyBtn.addEventListener("click", (e) => { e.target.disabled = true; runPrReply().finally(() => { if (e.target.isConnected) e.target.disabled = false; }); });
+  if (replyBtn) replyBtn.addEventListener("click", (e) => { e.target.disabled = true; exclusive(runPrReply).finally(() => { if (e.target.isConnected) e.target.disabled = false; }); });
   const input = foot.querySelector("#sup-ask");
   const imagesEl = foot.querySelector("#sup-ask-images");
-  let images = [];
   const grow = () => {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 160) + "px";
   };
   const renderImages = () => {
     imagesEl.innerHTML = "";
-    images.forEach((src, i) => {
+    askImages.forEach((src, i) => {
       const chip = document.createElement("span");
       chip.className = "sup-ask-img";
       const img = document.createElement("img");
@@ -707,22 +762,26 @@ function renderFooter() {
       const x = document.createElement("button");
       x.type = "button";
       x.textContent = "×";
-      x.addEventListener("click", () => { images.splice(i, 1); renderImages(); });
+      x.addEventListener("click", () => { askImages.splice(i, 1); renderImages(); });
       chip.append(img, x);
       imagesEl.appendChild(chip);
     });
-    imagesEl.hidden = images.length === 0;
+    imagesEl.hidden = askImages.length === 0;
   };
   renderImages();
+  renderQueue();
+  input.value = draft;
+  grow();
+  if (hadFocus) input.focus();
   const go = () => {
     const q = input.value.trim();
-    if (!q && !images.length) return;
-    const sent = images;
-    images = [];
+    if (!q && !askImages.length) return;
+    const sent = askImages;
+    askImages = [];
     input.value = "";
     renderImages();
     grow();
-    followUp(q || "See the attached screenshot.", sent);
+    ask(q || "See the attached screenshot.", sent);
   };
   foot.querySelector("#sup-ask-send").addEventListener("click", go);
   input.addEventListener("input", grow);
@@ -747,7 +806,7 @@ function renderFooter() {
     e.preventDefault();
     files.forEach((f) => {
       const r = new FileReader();
-      r.onload = () => { images.push(String(r.result)); renderImages(); };
+      r.onload = () => { askImages.push(String(r.result)); renderImages(); };
       r.readAsDataURL(f);
     });
   });
@@ -769,6 +828,7 @@ setInterval(() => {
     lastTicketId = id;
     const panel = document.getElementById("sup-panel");
     if (panel) {
+      queued.length = 0;
       if (activeRun) activeRun.stop();
       panel.remove();
       supSession = null;

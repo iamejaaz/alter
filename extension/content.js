@@ -3,7 +3,15 @@
 // IIFE-wrapped so its top-level names don't collide with sibling content scripts.
 (() => {
 
-const send = (msg) => new Promise((res) => chrome.runtime.sendMessage(msg, res));
+const RELOADED = "The Alter extension was updated. Refresh this page to keep using it.";
+const send = (msg) =>
+  new Promise((res) => {
+    try {
+      chrome.runtime.sendMessage(msg, (r) => res(chrome.runtime.lastError ? { ok: false, error: chrome.runtime.lastError.message } : r));
+    } catch (_) {
+      res({ ok: false, error: RELOADED, reloaded: true });
+    }
+  });
 
 // Shared helpers + reply voice live in shared.js (window.ALTER) — loaded first.
 const { escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, reviewJson, followupParams, FOLLOWUP_SYSTEM, REPLY_INTENT, nearBottom, stickBottom, pinToBottom } = window.ALTER;
@@ -430,24 +438,19 @@ function pollRun(el, runId, opts) {
     const doPoll = async () => {
       if (done) return;
       const r = await send({ type: "agent-poll", runId });
+      if (r && r.reloaded) return fail(r.error);
       if (!r || !r.ok || !r.data) {
-        // Transient — keep polling, but give up after ~20s of silence so the
-        // spinner can't run forever once Alter has quit.
-        if (++misses >= 15) {
-          done = true;
-          cleanup();
-          fail("Lost contact with Alter — is the app still running?");
-        }
+        if (++misses >= 15) fail("Lost contact with Alter. Check the app is running, then run this again.");
         return;
       }
       misses = 0;
       const p = r.data;
       renderSteps(p.steps || []);
       if (p.done) {
+        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run — run it again." : p.error);
+        if (!(p.text || "").trim()) return fail("The model returned an empty reply. Try again.");
         done = true;
         cleanup();
-        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run — run it again." : p.error);
-        if (!(p.text || "").trim()) return fail("The model returned an empty reply — try again.");
         workEl.remove();
         const ans = document.createElement("div");
         ans.className = "alter-answer";
