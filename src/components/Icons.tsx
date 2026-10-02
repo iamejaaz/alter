@@ -88,3 +88,23 @@ export const IconChevronRight = () => (
     <path d="m9 6 6 6-6 6" />
   </svg>
 );
+
+export const IconPlug = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" {...s}>
+    <path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4" />
+  </svg>
+);
+
+export const IconBookmark = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" {...s}>
+    <path d="M6 3h12v18l-6-4-6 4z" />
+  </svg>
+);
+
+export const IconLifebuoy = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" {...s}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="3.5" />
+    <path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9" />
+  </svg>
+);

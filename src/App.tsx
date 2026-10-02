@@ -129,7 +129,6 @@ interface Peer {
 }
 import RoutinesPage from "./components/RoutinesPage";
 import PrChips from "./components/PrChips";
-import SkillsPage from "./components/SkillsPage";
 import ConfirmHost from "./components/ConfirmHost";
 
 export default function App() {
@@ -142,7 +141,7 @@ export default function App() {
     () => localStorage.getItem("alter.activeProject")
   );
   const [skills, setSkills] = useState<Skill[]>(() => storage.loadSkills());
-  const [view, setView] = useState<"chat" | "routines" | "skills" | "settings">(() => {
+  const [view, setView] = useState<"chat" | "routines" | "settings">(() => {
     const s = storage.loadSettings();
     return s.apiKey || isLocalAgentUrl(s.baseUrl) ? "chat" : "settings";
   });
@@ -2157,7 +2156,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     { id: "settings", label: "Open settings", section: "Actions", run: () => setShowSettings(true) },
     { id: "extension", label: "Browser extension", section: "Actions", run: () => setShowSettings(true, "extension") },
     { id: "routines", label: "Open routines", section: "Actions", run: () => setView("routines") },
-    { id: "skills", label: "Open skills", section: "Actions", run: () => setView("skills") },
+    { id: "skills", label: "Open skills", section: "Actions", run: () => setShowSettings(true, "skills") },
     { id: "projects", label: "Manage projects", section: "Actions", run: () => openProjectSettings() },
     { id: "proj-all", label: "Project: All chats", section: "Projects", run: () => selectProject(null) },
     ...projects.map((p) => ({
@@ -2260,7 +2259,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           const runs = conversations.filter((c) => (c.routineId ? c.routineId === id : c.title === `⏱ ${name}`));
           if (runs.length && !runs.some((c) => c.id === activeId)) openChat(runs[0].id);
         }}
-        onOpenSkills={() => setView("skills")}
+        onOpenSkills={() => setShowSettings(true, "skills")}
         onOpenPalette={() => setShowPalette(true)}
       />
 
@@ -2279,7 +2278,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             parseRoutine={parseRoutine}
           />
         )}
-        {view === "skills" && <SkillsPage skills={skills} onChange={setSkills} onBack={() => setView("chat")} />}
         {view === "settings" && (
           <SettingsPanel
             settings={settings}
@@ -2296,6 +2294,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             onDeleteMemory={(id) => setMemories((prev) => prev.filter((m) => m.id !== id))}
             onAddMemory={(text) => setMemories((prev) => [...prev, { id: newId(), text, createdAt: Date.now() }])}
             onEditMemory={(id, text) => setMemories((prev) => prev.map((m) => (m.id === id ? { ...m, text } : m)))}
+            onImportMemories={(texts) =>
+              setMemories((prev) => [...prev, ...texts.map((text) => ({ id: newId(), text, createdAt: Date.now() }))])
+            }
+            skills={skills}
+            onSkillsChange={setSkills}
             onClose={() => setView("chat")}
             initialTab={settingsTab}
             projectsInitialId={settingsProjectId}
