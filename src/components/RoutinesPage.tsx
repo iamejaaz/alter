@@ -3,6 +3,7 @@ import { Routine, Schedule, Connection, newId, scheduleLabel } from "../lib/stor
 import { confirmDialog } from "../lib/confirm";
 import { Chevron } from "./Icons";
 import Switch from "./Switch";
+import Row, { action, field } from "./SettingsRow";
 
 interface Props {
   routines: Routine[];
@@ -10,7 +11,6 @@ interface Props {
   activeConnectionId?: string;
   onChange: (r: Routine[]) => void;
   onRunNow: (r: Routine) => void;
-  onBack: () => void;
   parseRoutine: (description: string) => Promise<Partial<Routine> | null>;
 }
 
@@ -43,7 +43,6 @@ export default function RoutinesPage({
   activeConnectionId,
   onChange,
   onRunNow,
-  onBack,
   parseRoutine,
 }: Props) {
   const [creating, setCreating] = useState(false);
@@ -82,7 +81,7 @@ export default function RoutinesPage({
     try {
       const parsed = await parseRoutine(desc.trim());
       if (!parsed) {
-        setGenError("Couldn't read a routine from that — try naming the task and a time.");
+        setGenError("Could not read a routine from that. Try naming the task and a time.");
         return;
       }
       const s = parsed.schedule;
@@ -130,171 +129,173 @@ export default function RoutinesPage({
 
   const toggle = (id: string) => onChange(routines.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
   const remove = async (r: Routine) => {
-    if (await confirmDialog(`Delete routine "${r.name}"?`)) onChange(routines.filter((x) => x.id !== r.id));
+    if (!(await confirmDialog(`Delete routine "${r.name}"?`))) return false;
+    onChange(routines.filter((x) => x.id !== r.id));
+    return true;
   };
 
   const toggleDay = (day: number) =>
     setDraft((d) => ({ ...d, days: d.days.includes(day) ? d.days.filter((x) => x !== day) : [...d.days, day] }));
 
-  const input = "w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2.5 py-1.5 text-[13px] focus:outline-none focus:border-indigo-500";
-  const label = "text-[11px] text-[var(--txt-dim)]";
+  const seg = (on: boolean) =>
+    `rounded-md px-2.5 py-1 text-[12px] transition-colors ${on ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-dim)] hover:text-[var(--txt)]"}`;
 
-  return (
-    <div className="absolute inset-0 z-10 flex flex-col bg-[var(--bg)]">
-      <header className="flex min-h-12 items-center gap-3 px-5 border-b border-[var(--bd-soft)]">
-        <button onClick={creating ? () => setCreating(false) : onBack} className="text-[var(--txt-faint)] hover:text-[var(--txt)] text-sm">
-          ←
-        </button>
-        <h1 className="text-[13px] font-semibold">Routines{creating ? " / " : ""}</h1>
-        {creating && <span className="text-[13px] text-[var(--txt-dim)]">{draft.id ? "Edit" : "New routine"}</span>}
-        {!creating && (
-          <button onClick={openNew} className="ml-auto rounded-lg bg-indigo-600 hover:bg-indigo-500 px-2.5 py-1 text-[13px] font-medium">
+  if (!creating)
+    return (
+      <div>
+        <div className="mb-2 flex items-center gap-2">
+          <h1 className="flex-1 text-[17px] font-semibold text-[var(--txt)]">Routines</h1>
+          <button onClick={openNew} className={action}>
             New routine
           </button>
-        )}
-      </header>
+        </div>
+        <p className="pb-2 text-[13px] text-[var(--txt-faint)]">
+          Prompts Alter runs on a schedule while it is open. Each run lands as its own chat under the routine in the sidebar. You can also create one by telling Alter in a chat, like "every weekday at 9am, summarize my open support tickets".
+        </p>
+        {routines.length === 0 && <p className="py-8 text-center text-[13px] text-[var(--txt-faint)]">No routines yet.</p>}
+        {routines.map((r) => (
+          <div key={r.id} className="group flex items-center gap-4 border-b border-[var(--bd-soft)] py-3.5 last:border-b-0">
+            <button onClick={() => openEdit(r)} className="min-w-0 flex-1 text-left">
+              <span className={`block truncate text-[14px] ${r.enabled ? "text-[var(--txt)]" : "text-[var(--txt-dim)]"}`}>{r.name}</span>
+              <span className="mt-0.5 block truncate text-[13px] text-[var(--txt-faint)]">
+                {scheduleLabel(r)}
+                {r.enabled ? "" : " · paused"}
+                {r.lastRun ? ` · last run ${new Date(r.lastRun).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : " · not run yet"}
+              </span>
+            </button>
+            <button
+              onClick={() => onRunNow(r)}
+              className="shrink-0 rounded-md px-2 py-0.5 text-[12px] text-[var(--txt-faint)] opacity-0 hover:bg-[var(--panel-2)] hover:text-[var(--txt)] group-hover:opacity-100"
+            >
+              Run now
+            </button>
+            <Switch on={r.enabled} onChange={() => toggle(r.id)} title={r.enabled ? "Enabled" : "Paused"} />
+          </div>
+        ))}
+      </div>
+    );
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-6 py-6">
-          {!creating ? (
-            <div className="space-y-2">
-              {routines.length === 0 && (
-                <p className="text-[13px] text-[var(--txt-faint)]">No routines yet. Create one — or just tell Alter in chat, e.g. “every weekday at 9am, summarize my open support tickets.”</p>
-              )}
-              {routines.map((r) => (
-                <div key={r.id} className="rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-3 py-2.5">
-                  <div className="flex items-center gap-2.5">
-                    <Switch on={r.enabled} onChange={() => toggle(r.id)} title={r.enabled ? "Enabled" : "Paused"} />
-                    <span className="text-[13px] font-medium flex-1 truncate">{r.name}</span>
-                    <span className="text-[11px] text-[var(--txt-faint)]">{scheduleLabel(r)}</span>
-                    <button onClick={() => onRunNow(r)} className="text-[11px] text-indigo-400 hover:text-indigo-300">Run now</button>
-                    <button onClick={() => openEdit(r)} className="text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]">Edit</button>
-                    <button onClick={() => remove(r)} className="text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)]">×</button>
-                  </div>
-                  <p className="mt-1 text-[12px] text-[var(--txt-dim)] line-clamp-2">{r.prompt}</p>
-                  {r.lastRun && <p className="mt-0.5 text-[10px] text-[var(--txt-faint)]">last run {new Date(r.lastRun).toLocaleString()}</p>}
-                </div>
-              ))}
-            </div>
+  return (
+    <div>
+      <div className="mb-1 flex items-center gap-2">
+        <button onClick={() => setCreating(false)} className="text-[var(--txt-faint)] hover:text-[var(--txt)]" aria-label="Back to routines">
+          ←
+        </button>
+        <h1 className="text-[17px] font-semibold text-[var(--txt)]">{draft.id ? "Edit routine" : "New routine"}</h1>
+      </div>
+      <Row title="Describe it" desc="Write it in plain words and Alter fills in the rest. You can still change every field below.">
+        <div className="flex gap-2">
+          <input
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && generate()}
+            placeholder="every weekday at 9am, summarize my open support tickets"
+            className={`${field} min-w-0 flex-1`}
+          />
+          <button onClick={generate} disabled={generating || !desc.trim()} className={action}>
+            {generating ? "Filling in…" : "Fill in"}
+          </button>
+        </div>
+        {genError && <p className="mt-2 text-[12px] text-red-400">{genError}</p>}
+      </Row>
+      <Row
+        title="Name"
+        control={<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Daily ticket digest" className={`${field} w-72`} />}
+      />
+      <Row title="Instructions" desc="What Alter should do on each run.">
+        <textarea value={draft.prompt} onChange={(e) => setDraft({ ...draft, prompt: e.target.value })} rows={5} className={`${field} resize-none leading-[1.5]`} />
+      </Row>
+      <Row
+        title="Schedule"
+        desc={scheduleLabel({ schedule: buildSchedule(draft), everyMinutes: draft.everyMinutes } as Routine)}
+        control={
+          <div className="flex gap-0.5 rounded-lg border border-[var(--bd)] p-0.5">
+            {(
+              [
+                ["interval", "Every"],
+                ["daily", "Daily"],
+                ["weekly", "Weekly"],
+              ] as const
+            ).map(([k, text]) => (
+              <button key={k} onClick={() => setDraft({ ...draft, kind: k })} className={seg(draft.kind === k)}>
+                {text}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        <div className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--txt-dim)]">
+          {draft.kind === "interval" ? (
+            <>
+              <span>Every</span>
+              <input
+                type="number"
+                min={1}
+                value={draft.everyMinutes}
+                onChange={(e) => setDraft({ ...draft, everyMinutes: Math.max(1, Number(e.target.value)) })}
+                className={`${field} w-20`}
+              />
+              <span>minutes</span>
+            </>
           ) : (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-dashed border-[var(--bd)] p-3">
-                <label className={label}>Describe it in plain English</label>
-                <div className="flex gap-2 mt-1.5">
-                  <input
-                    value={desc}
-                    onChange={(e) => setDesc(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && generate()}
-                    placeholder="every weekday at 9am, summarize my open support tickets"
-                    className={input}
-                  />
-                  <button
-                    onClick={generate}
-                    disabled={generating || !desc.trim()}
-                    className="rounded-lg bg-[var(--panel)] border border-[var(--bd)] px-3 text-[13px] font-medium hover:bg-[var(--input)] disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {generating ? "Generating…" : "Generate"}
-                  </button>
-                </div>
-                {genError && <p className="mt-2 text-[11px] text-red-400">{genError}</p>}
-              </div>
-
-              <div>
-                <label className={label}>Name</label>
-                <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Daily ticket digest" className={`${input} mt-1`} />
-              </div>
-              <div>
-                <label className={label}>Instructions</label>
-                <textarea
-                  value={draft.prompt}
-                  onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
-                  placeholder="What Alter should do each run…"
-                  rows={4}
-                  className={`${input} mt-1 resize-none`}
-                />
-              </div>
-
-              <div>
-                <label className={label}>Schedule</label>
-                <div className="mt-1 flex gap-1 rounded-lg bg-[var(--panel)] p-0.5 w-fit">
-                  {(["interval", "daily", "weekly"] as const).map((k) => (
-                    <button
-                      key={k}
-                      onClick={() => setDraft({ ...draft, kind: k })}
-                      className={`rounded-md px-2.5 py-1 text-[12px] capitalize ${draft.kind === k ? "bg-indigo-600 text-white" : "text-[var(--txt-dim)] hover:text-[var(--txt)]"}`}
-                    >
-                      {k}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-2 flex items-center gap-2 text-[13px]">
-                  {draft.kind === "interval" && (
-                    <>
-                      <span className={label}>Every</span>
-                      <input
-                        type="number"
-                        min={1}
-                        value={draft.everyMinutes}
-                        onChange={(e) => setDraft({ ...draft, everyMinutes: Math.max(1, Number(e.target.value)) })}
-                        className="w-20 rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2 py-1"
-                      />
-                      <span className={label}>minutes</span>
-                    </>
-                  )}
-                  {draft.kind !== "interval" && (
-                    <>
-                      <span className={label}>At</span>
-                      <input
-                        type="time"
-                        value={draft.time}
-                        onChange={(e) => setDraft({ ...draft, time: e.target.value })}
-                        className="rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2 py-1"
-                      />
-                    </>
-                  )}
-                </div>
-                {draft.kind === "weekly" && (
-                  <div className="mt-2 flex gap-1">
-                    {DAYS.map((d, i) => (
-                      <button
-                        key={i}
-                        onClick={() => toggleDay(i)}
-                        className={`rounded-md px-2 py-0.5 text-[12px] ${draft.days.includes(i) ? "bg-indigo-600 text-white" : "bg-[var(--panel)] text-[var(--txt-dim)] hover:text-[var(--txt)]"}`}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {connections.length > 0 && (
-                <div>
-                  <label className={label}>Run on</label>
-                  <div className="relative mt-1">
-                    <select
-                      value={draft.connectionId}
-                      onChange={(e) => setDraft({ ...draft, connectionId: e.target.value })}
-                      className={`${input} appearance-none pr-8 cursor-pointer`}
-                    >
-                      {connections.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                    <Chevron />
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 pt-1">
-                <button onClick={() => setCreating(false)} className="rounded-lg px-3 py-1.5 text-[13px] text-[var(--txt-dim)] hover:text-[var(--txt)]">Cancel</button>
-                <button onClick={save} disabled={!draft.name.trim() || !draft.prompt.trim()} className="ml-auto rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-[13px] font-medium disabled:opacity-50">
-                  {draft.id ? "Save changes" : "Create routine"}
+            <>
+              <span>At</span>
+              <input type="time" value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })} className={`${field} w-auto`} />
+            </>
+          )}
+          {draft.kind === "weekly" && (
+            <div className="ml-2 flex gap-0.5 rounded-lg border border-[var(--bd)] p-0.5">
+              {DAYS.map((d, i) => (
+                <button key={i} onClick={() => toggleDay(i)} className={seg(draft.days.includes(i))}>
+                  {d}
                 </button>
-              </div>
+              ))}
             </div>
           )}
         </div>
+      </Row>
+      {connections.length > 0 && (
+        <Row
+          title="Run on"
+          desc="The connection each run uses."
+          control={
+            <div className="relative w-72">
+              <select value={draft.connectionId} onChange={(e) => setDraft({ ...draft, connectionId: e.target.value })} className={`${field} cursor-pointer appearance-none pr-8`}>
+                {connections.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <Chevron />
+            </div>
+          }
+        />
+      )}
+      {draft.id && (
+        <Row
+          title="Delete routine"
+          desc="Its past runs stay in the sidebar as normal chats."
+          control={
+            <button
+              onClick={async () => {
+                const r = routines.find((x) => x.id === draft.id);
+                if (r && (await remove(r))) setCreating(false);
+              }}
+              className={`${action} text-red-400`}
+            >
+              Delete
+            </button>
+          }
+        />
+      )}
+      <div className="flex items-center justify-end gap-2 pt-4">
+        <button onClick={() => setCreating(false)} className="rounded-lg px-3 py-1.5 text-[13px] text-[var(--txt-dim)] hover:text-[var(--txt)]">
+          Cancel
+        </button>
+        <button onClick={save} disabled={!draft.name.trim() || !draft.prompt.trim()} className={`${action} bg-[var(--panel-2)]`}>
+          {draft.id ? "Save changes" : "Create routine"}
+        </button>
       </div>
     </div>
   );

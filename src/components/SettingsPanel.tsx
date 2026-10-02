@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
-import { isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Settings, Skill, newId } from "../lib/store";
+import { isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Routine, Settings, Skill, newId } from "../lib/store";
 import { listen } from "@tauri-apps/api/event";
 import { cliLogin, cliLoginTerminal, cliStatus, CliStatus, codexCheck, testConnection } from "../lib/api";
-import { IconBookmark, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconSettings, IconSparkles } from "./Icons";
+import { IconBookmark, IconClock, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconSettings, IconSparkles } from "./Icons";
 import SkillsPage from "./SkillsPage";
+import RoutinesPage from "./RoutinesPage";
 import MemoryImport from "./MemoryImport";
 import Row, { action, field } from "./SettingsRow";
 import ProjectsEditor from "./ProjectsEditor";
@@ -127,7 +128,7 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   );
 }
 
-export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills";
+export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills" | "routines";
 
 const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: React.ReactNode }[] }[] = [
   {
@@ -146,7 +147,13 @@ const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: Rea
       { id: "extension", label: "Browser extension", icon: <IconPuzzle /> },
     ],
   },
-  { heading: "Customize", items: [{ id: "skills", label: "Skills", icon: <IconSparkles /> }] },
+  {
+    heading: "Customize",
+    items: [
+      { id: "skills", label: "Skills", icon: <IconSparkles /> },
+      { id: "routines", label: "Routines", icon: <IconClock /> },
+    ],
+  },
 ];
 
 
@@ -162,12 +169,16 @@ interface Props {
   onImportMemories: (texts: string[]) => void;
   skills: Skill[];
   onSkillsChange: (s: Skill[]) => void;
+  routines: Routine[];
+  onRoutinesChange: (r: Routine[]) => void;
+  onRunRoutine: (r: Routine) => void;
+  parseRoutine: (description: string) => Promise<Partial<Routine> | null>;
   onClose: () => void;
   initialTab?: SettingsTab;
   projectsInitialId?: string | null;
 }
 
-export default function SettingsPanel({ settings, memories, projects, onProjectsChange, onSave, onDeleteMemory, onAddMemory, onEditMemory, onImportMemories, skills, onSkillsChange, onClose, initialTab, projectsInitialId }: Props) {
+export default function SettingsPanel({ settings, memories, projects, onProjectsChange, onSave, onDeleteMemory, onAddMemory, onEditMemory, onImportMemories, skills, onSkillsChange, routines, onRoutinesChange, onRunRoutine, parseRoutine, onClose, initialTab, projectsInitialId }: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
   const [newMemory, setNewMemory] = useState("");
   const [tab, setTab] = useState<SettingsTab>(initialTab ?? "connections");
@@ -365,7 +376,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
         </div>
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-10 pb-12">
-            {tab !== "skills" && <h1 className="mb-2 text-[17px] font-semibold text-[var(--txt)]">{title}</h1>}
+            {tab !== "skills" && tab !== "routines" && <h1 className="mb-2 text-[17px] font-semibold text-[var(--txt)]">{title}</h1>}
 
             {tab === "general" && (
               <div>
@@ -738,6 +749,16 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
             )}
 
             {tab === "skills" && <SkillsPage embedded skills={skills} onChange={onSkillsChange} onBack={onClose} />}
+            {tab === "routines" && (
+              <RoutinesPage
+                routines={routines}
+                connections={settings.connections ?? []}
+                activeConnectionId={settings.activeConnectionId}
+                onChange={onRoutinesChange}
+                onRunNow={onRunRoutine}
+                parseRoutine={parseRoutine}
+              />
+            )}
           </div>
         </div>
       </section>

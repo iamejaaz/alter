@@ -127,7 +127,6 @@ interface Peer {
   status: string;
   sessionId: string;
 }
-import RoutinesPage from "./components/RoutinesPage";
 import PrChips from "./components/PrChips";
 import ConfirmHost from "./components/ConfirmHost";
 
@@ -141,7 +140,7 @@ export default function App() {
     () => localStorage.getItem("alter.activeProject")
   );
   const [skills, setSkills] = useState<Skill[]>(() => storage.loadSkills());
-  const [view, setView] = useState<"chat" | "routines" | "settings">(() => {
+  const [view, setView] = useState<"chat" | "settings">(() => {
     const s = storage.loadSettings();
     return s.apiKey || isLocalAgentUrl(s.baseUrl) ? "chat" : "settings";
   });
@@ -832,7 +831,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         const desc = slash ? text.replace(/^\/routine\b/i, "").trim() : text;
         if (slash && !desc) {
           setInput("");
-          setView("routines");
+          setShowSettings(true, "routines");
           return;
         }
         const parsed = await parseRoutine(desc);
@@ -846,7 +845,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }
         } else if (slash) {
           setInput("");
-          setView("routines");
+          setShowSettings(true, "routines");
           return;
         }
       }
@@ -1842,8 +1841,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     { cmd: "/chat", desc: "Chat only, no tools", run: () => applyMode("chat") },
     { cmd: "/folder", desc: "Attach a working folder", run: () => void chooseFolder() },
     { cmd: "/attach", desc: "Attach images or files", run: () => fileInputRef.current?.click() },
-    { cmd: "/routine", desc: "Create a routine from a description", run: () => setView("routines") },
-    { cmd: "/routines", desc: "Open routines", run: () => setView("routines") },
+    { cmd: "/routine", desc: "Create a routine from a description", run: () => setShowSettings(true, "routines") },
+    { cmd: "/routines", desc: "Open routines", run: () => setShowSettings(true, "routines") },
     { cmd: "/settings", desc: "Open settings", run: () => setShowSettings(true) },
     ...skills.map((s) => ({
       cmd: "/" + slugify(s.name),
@@ -2155,7 +2154,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     { id: "new", label: "New chat", hint: "⌘N", section: "Actions", run: () => openChat(null) },
     { id: "settings", label: "Open settings", section: "Actions", run: () => setShowSettings(true) },
     { id: "extension", label: "Browser extension", section: "Actions", run: () => setShowSettings(true, "extension") },
-    { id: "routines", label: "Open routines", section: "Actions", run: () => setView("routines") },
+    { id: "routines", label: "Open routines", section: "Actions", run: () => setShowSettings(true, "routines") },
     { id: "skills", label: "Open skills", section: "Actions", run: () => setShowSettings(true, "skills") },
     { id: "projects", label: "Manage projects", section: "Actions", run: () => openProjectSettings() },
     { id: "proj-all", label: "Project: All chats", section: "Projects", run: () => selectProject(null) },
@@ -2249,7 +2248,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         }}
         onOpenSettings={() => setShowSettings(true)}
         onOpenExtension={() => setShowSettings(true, "extension")}
-        onOpenRoutines={() => setView("routines")}
+        onOpenRoutines={() => setShowSettings(true, "routines")}
         onOpenRuns={(id) => {
           if (runsRoutineId === id) return setRunsRoutineId(null);
           setRunsRoutineId(id);
@@ -2264,20 +2263,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       />
 
       <main className="relative flex-1 flex flex-col min-w-0">
-        {view === "routines" && (
-          <RoutinesPage
-            routines={routines}
-            connections={settings.connections ?? []}
-            activeConnectionId={settings.activeConnectionId}
-            onChange={setRoutines}
-            onRunNow={(r) => {
-              setView("chat");
-              void send({ text: r.prompt, forceNew: true, title: `⏱ ${r.name}`, routineId: r.id });
-            }}
-            onBack={() => setView("chat")}
-            parseRoutine={parseRoutine}
-          />
-        )}
         {view === "settings" && (
           <SettingsPanel
             settings={settings}
@@ -2299,6 +2284,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             }
             skills={skills}
             onSkillsChange={setSkills}
+            routines={routines}
+            onRoutinesChange={setRoutines}
+            onRunRoutine={(r) => {
+              setView("chat");
+              void send({ text: r.prompt, forceNew: true, title: `⏱ ${r.name}`, routineId: r.id });
+            }}
+            parseRoutine={parseRoutine}
             onClose={() => setView("chat")}
             initialTab={settingsTab}
             projectsInitialId={settingsProjectId}
@@ -3174,7 +3166,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             onDelete={deleteConversation}
             onOpenRoutines={() => {
               setRunsRoutineId(null);
-              setView("routines");
+              setShowSettings(true, "routines");
             }}
             onClose={() => setRunsRoutineId(null)}
           />
