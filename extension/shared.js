@@ -112,20 +112,21 @@ globalThis.ALTER = globalThis.ALTER || (() => {
   }
 
   const GRIPS = {
-    n: "left:14px;right:14px;top:0;height:6px;cursor:ns-resize",
-    s: "left:14px;right:14px;bottom:0;height:6px;cursor:ns-resize",
-    w: "top:14px;bottom:14px;left:0;width:6px;cursor:ew-resize",
-    e: "top:14px;bottom:14px;right:0;width:6px;cursor:ew-resize",
-    nw: "left:0;top:0;width:14px;height:14px;cursor:nwse-resize",
-    se: "right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize",
-    ne: "right:0;top:0;width:14px;height:14px;cursor:nesw-resize",
-    sw: "left:0;bottom:0;width:14px;height:14px;cursor:nesw-resize",
+    n: "left:9px;right:9px;top:-5px;height:10px;cursor:ns-resize",
+    s: "left:9px;right:9px;bottom:-5px;height:10px;cursor:ns-resize",
+    w: "top:9px;bottom:9px;left:-5px;width:10px;cursor:ew-resize",
+    e: "top:9px;bottom:9px;right:-5px;width:10px;cursor:ew-resize",
+    nw: "left:-6px;top:-6px;width:18px;height:18px;cursor:nwse-resize",
+    se: "right:-6px;bottom:-6px;width:18px;height:18px;cursor:nwse-resize",
+    ne: "right:-6px;top:-6px;width:18px;height:18px;cursor:nesw-resize",
+    sw: "left:-6px;bottom:-6px;width:18px;height:18px;cursor:nesw-resize",
   };
 
   function floating(el, handle, key) {
     const MIN_W = 340, MIN_H = 220;
     const view = document.documentElement;
     let st = {};
+    let collapsed = false;
     try {
       st = JSON.parse(localStorage.getItem(key) || "null") || {};
     } catch (_) {}
@@ -135,6 +136,25 @@ globalThis.ALTER = globalThis.ALTER || (() => {
       } catch (_) {}
     };
     const clamp = (v, lo, hi) => Math.min(Math.max(lo, v), Math.max(lo, hi));
+
+    const frame = document.createElement("div");
+    frame.className = "alter-frame";
+    frame.style.cssText = "position:fixed;z-index:2147483646;pointer-events:none;";
+    const mark = document.createElement("div");
+    mark.style.cssText =
+      "position:absolute;right:3px;bottom:3px;width:9px;height:9px;opacity:.45;" +
+      "background:linear-gradient(135deg,transparent 0 45%,#a1a1aa 45% 55%,transparent 55% 70%,#a1a1aa 70% 80%,transparent 80%);";
+    frame.appendChild(mark);
+    const sync = () => {
+      if (!el.isConnected) return frame.remove();
+      if (!frame.isConnected) document.body.appendChild(frame);
+      const r = el.getBoundingClientRect();
+      frame.style.display = collapsed || !r.width || !r.height ? "none" : "";
+      frame.style.left = r.left + "px";
+      frame.style.top = r.top + "px";
+      frame.style.width = r.width + "px";
+      frame.style.height = r.height + "px";
+    };
     const size = () => {
       if (st.w) el.style.width = clamp(st.w, MIN_W, view.clientWidth) + "px";
       if (st.h) {
@@ -143,31 +163,42 @@ globalThis.ALTER = globalThis.ALTER || (() => {
       }
     };
     const place = () => {
-      if (st.right == null) return;
-      const r = el.getBoundingClientRect();
-      el.style.right = clamp(st.right, 0, view.clientWidth - r.width) + "px";
-      el.style.bottom = clamp(st.bottom, 0, view.clientHeight - r.height) + "px";
+      if (st.right != null) {
+        const r = el.getBoundingClientRect();
+        el.style.right = clamp(st.right, 0, view.clientWidth - r.width) + "px";
+        el.style.bottom = clamp(st.bottom, 0, view.clientHeight - r.height) + "px";
+      }
+      sync();
     };
     const track = (e, move) => {
       e.preventDefault();
       const r = el.getBoundingClientRect();
       const from = { x: e.clientX, y: e.clientY, w: r.width, h: r.height, right: view.clientWidth - r.right, bottom: view.clientHeight - r.bottom };
+      const cursor = getComputedStyle(e.currentTarget).cursor;
+      const shield = document.createElement("div");
+      shield.style.cssText = "position:fixed;inset:0;z-index:2147483647;cursor:" + cursor;
+      document.body.appendChild(shield);
       const on = (ev) => move(from, ev.clientX - from.x, ev.clientY - from.y);
       const up = () => {
-        document.removeEventListener("pointermove", on);
-        document.removeEventListener("pointerup", up);
+        window.removeEventListener("pointermove", on, true);
+        window.removeEventListener("pointerup", up, true);
+        window.removeEventListener("pointercancel", up, true);
+        shield.remove();
         if (st.right != null) {
           st.right = parseFloat(el.style.right) || 0;
           st.bottom = parseFloat(el.style.bottom) || 0;
         }
         save();
       };
-      document.addEventListener("pointermove", on);
-      document.addEventListener("pointerup", up);
+      window.addEventListener("pointermove", on, true);
+      window.addEventListener("pointerup", up, true);
+      window.addEventListener("pointercancel", up, true);
     };
 
     el.style.boxSizing = "border-box";
     handle.style.cursor = "move";
+    handle.style.userSelect = "none";
+    handle.title = "Drag to move";
     handle.addEventListener("pointerdown", (e) => {
       if (e.button !== 0 || e.target.closest("button")) return;
       track(e, (from, dx, dy) => {
@@ -176,11 +207,18 @@ globalThis.ALTER = globalThis.ALTER || (() => {
         place();
       });
     });
+    handle.addEventListener("dblclick", (e) => {
+      if (e.target.closest("button")) return;
+      st = {};
+      save();
+      ["width", "height", "maxHeight", "right", "bottom"].forEach((k) => (el.style[k] = ""));
+      sync();
+    });
 
     Object.entries(GRIPS).forEach(([dir, css]) => {
       const grip = document.createElement("div");
       grip.className = "alter-grip";
-      grip.style.cssText = "position:absolute;z-index:3;" + css;
+      grip.style.cssText = "position:absolute;pointer-events:auto;touch-action:none;" + css;
       grip.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
@@ -201,19 +239,22 @@ globalThis.ALTER = globalThis.ALTER || (() => {
           place();
         });
       });
-      el.appendChild(grip);
+      frame.appendChild(grip);
     });
 
     new ResizeObserver(place).observe(el);
+    new MutationObserver(sync).observe(document.body, { childList: true });
     window.addEventListener("resize", () => el.isConnected && place());
     size();
     place();
     return {
       collapse(on) {
+        collapsed = on;
         if (on) {
           el.style.height = "";
           el.style.maxHeight = "";
         } else size();
+        place();
       },
     };
   }

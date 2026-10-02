@@ -391,9 +391,6 @@
 #alter-panel.alter-collapsed #alter-panel-body,
 #alter-panel.alter-collapsed #alter-panel-foot { display: none; }
 
-#alter-panel.alter-collapsed .alter-grip {
-  display: none;
-}
 .alter-link {
   background: transparent;
   border: 0;
