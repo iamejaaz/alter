@@ -5,9 +5,10 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Settings, Skill, newId } from "../lib/store";
 import { listen } from "@tauri-apps/api/event";
 import { cliLogin, cliLoginTerminal, cliStatus, CliStatus, codexCheck, testConnection } from "../lib/api";
-import { Chevron, IconBookmark, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconSettings, IconSparkles } from "./Icons";
+import { IconBookmark, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconSettings, IconSparkles } from "./Icons";
 import SkillsPage from "./SkillsPage";
 import MemoryImport from "./MemoryImport";
+import Row, { action, field } from "./SettingsRow";
 import ProjectsEditor from "./ProjectsEditor";
 import Switch from "./Switch";
 import { confirmDialog } from "../lib/confirm";
@@ -59,31 +60,29 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   const expired = kind === "codex" && live !== "checking" && live !== null && !live.ok;
   const signedIn = status?.signedIn !== false && !expired;
   return (
-    <div className="rounded-lg border border-[var(--bd-soft)] px-3 py-2.5 space-y-1.5">
-      <div className="flex items-center gap-2">
-        <p className="flex-1 text-[13px] text-[var(--txt)]">{name} on this Mac</p>
+    <div className="space-y-1 border-b border-[var(--bd-soft)] py-4">
+      <div className="flex items-center gap-6">
+        <p className="flex-1 text-[14px] text-[var(--txt)]">{name} on this Mac</p>
         {status?.installed && (
           <button
             onClick={signIn}
             disabled={signing}
-            className={`rounded-md border px-2.5 py-1 text-[12px] disabled:opacity-60 ${
-              signedIn ? "border-[var(--bd)] text-[var(--txt)] hover:bg-[var(--panel-2)]" : "border-[var(--txt-dim)] bg-[var(--panel-2)] text-[var(--txt)]"
-            }`}
+            className={`${action} ${signedIn ? "" : "border-[var(--txt-dim)] bg-[var(--panel-2)]"}`}
           >
             {signing ? "Waiting for your browser…" : signedIn ? "Sign in again" : "Sign in"}
           </button>
         )}
       </div>
       {!status ? (
-        <p className="text-[11px] text-[var(--txt-faint)]">Checking…</p>
+        <p className="text-[13px] text-[var(--txt-faint)]">Checking…</p>
       ) : !status.installed ? (
-        <p className="text-[11px] text-red-400">
+        <p className="text-[13px] text-red-400">
           {kind === "claude"
             ? "Claude Code isn't installed. Install it from claude.com/code, then come back here and sign in."
             : "Codex isn't installed. Install the Codex app from openai.com/codex, then come back here and sign in."}
         </p>
       ) : (
-        <p className="text-[11px] text-[var(--txt-dim)]">
+        <p className="text-[13px] text-[var(--txt-dim)]">
           <span className={signedIn ? (live === "checking" ? "text-[var(--txt-dim)]" : "text-green-400") : "text-red-400"}>
             {status.signedIn === false
               ? "Not signed in"
@@ -100,7 +99,7 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
         </p>
       )}
       {signing && (
-        <p className="text-[11px] text-[var(--txt-dim)]">
+        <p className="text-[13px] text-[var(--txt-dim)]">
           Finish signing in in your browser, then come back here.
           {loginUrl && (
             <>
@@ -114,14 +113,14 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
         </p>
       )}
       {problem && (
-        <p className="text-[11px] text-red-400">
+        <p className="text-[13px] text-red-400">
           {problem}{" "}
           <button onClick={() => void cliLoginTerminal(kind)} className="underline hover:text-red-300">
             Sign in from Terminal instead
           </button>
         </p>
       )}
-      <p className="text-[11px] text-[var(--txt-faint)]">
+      <p className="text-[13px] text-[var(--txt-faint)]">
         Runs the <span className="font-mono">{kind}</span> CLI with your {kind === "claude" ? "Claude" : "ChatGPT"} plan, so there is no key or URL here.
       </p>
     </div>
@@ -130,7 +129,7 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
 
 export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills";
 
-const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: JSX.Element }[] }[] = [
+const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: React.ReactNode }[] }[] = [
   {
     heading: "Settings",
     items: [
@@ -150,25 +149,6 @@ const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: JSX
   { heading: "Customize", items: [{ id: "skills", label: "Skills", icon: <IconSparkles /> }] },
 ];
 
-const field =
-  "w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-2.5 py-1.5 text-[13px] focus:outline-none focus:border-[var(--txt-faint)]";
-const action =
-  "shrink-0 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-1.5 text-[13px] text-[var(--txt)] hover:bg-[var(--panel-2)] disabled:opacity-40 transition-colors";
-
-function Row({ title, desc, control, children }: { title: string; desc?: React.ReactNode; control?: React.ReactNode; children?: React.ReactNode }) {
-  return (
-    <div className="border-b border-[var(--bd-soft)] py-4 last:border-b-0">
-      <div className="flex items-center gap-6">
-        <div className="min-w-0 flex-1">
-          <p className="text-[14px] text-[var(--txt)]">{title}</p>
-          {desc && <p className="mt-0.5 text-[13px] leading-snug text-[var(--txt-faint)]">{desc}</p>}
-        </div>
-        {control && <div className="shrink-0">{control}</div>}
-      </div>
-      {children && <div className="mt-3">{children}</div>}
-    </div>
-  );
-}
 
 interface Props {
   settings: Settings;
@@ -423,130 +403,137 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
             )}
 
             {tab === "projects" && (
-              <div className="pt-3">
+              <div>
                 <ProjectsEditor projects={projects} onChange={onProjectsChange} initialSelectedId={projectsInitialId} />
         </div>
             )}
 
             {tab === "connections" && (
-              <div className="pt-3">
-                <div className="space-y-4">
-            <div>
-              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Connection</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <select
-                    value={activeId}
-                    onChange={(e) => selectConnection(e.target.value)}
-                    className="appearance-none w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-indigo-500 cursor-pointer"
-                  >
-                    {conns.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-[var(--modal)]">
-                        {c.name}
-                      </option>
+              <div>
+                <p className="pb-2 text-[13px] text-[var(--txt-faint)]">
+                  Where Alter sends your messages. The selected one is used for new chats, and each chat remembers its own.
+                </p>
+                {conns.map((c) => {
+                  const on = c.id === activeId;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => selectConnection(c.id)}
+                      className="flex w-full items-center gap-4 border-b border-[var(--bd-soft)] py-3 text-left"
+                    >
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${on ? "border-[var(--txt)]" : "border-[var(--bd)]"}`}
+                        aria-hidden
+                      >
+                        {on && <span className="h-2 w-2 rounded-full bg-[var(--txt)]" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className={`block truncate text-[14px] ${on ? "text-[var(--txt)]" : "text-[var(--txt-dim)]"}`}>{c.name}</span>
+                        <span className="mt-0.5 block truncate text-[12px] text-[var(--txt-faint)]">
+                          {isLocalAgentUrl(c.baseUrl) ? "Runs on this Mac with your plan" : `${c.model || "no model"} · ${c.baseUrl.replace(/^https?:\/\//, "") || "no URL"}`}
+                        </span>
+                      </span>
+                      {on && <span className="shrink-0 text-[12px] text-[var(--txt-faint)]">Used for new chats</span>}
+                    </button>
+                  );
+                })}
+                <Row title="Add a connection" desc="Start from a provider, or add your own OpenAI compatible endpoint.">
+                  <div className="flex flex-wrap gap-2">
+                    {Object.keys(PROVIDER_PRESETS).map((name) => (
+                      <button key={name} onClick={() => applyPreset(name)} className={action}>
+                        {name.replace(/ \(local\)$/, "")}
+                      </button>
                     ))}
-                  </select>
-                  <Chevron />
-                </div>
-                <button
-                  onClick={addConnection}
-                  className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] px-3 text-sm text-[var(--txt)]"
-                  title="Add a new connection"
-                >
-                  ＋
-                </button>
+                    <button onClick={addConnection} className={action}>
+                      Custom
+                    </button>
+                  </div>
+                </Row>
+
+                <p className="pt-6 pb-1 text-[14px] font-medium text-[var(--txt)]">{activeConn?.name || "Connection"}</p>
+                <Row
+                  title="Name"
+                  control={<input value={activeConn?.name ?? ""} onChange={(e) => renameConnection(e.target.value)} className={`${field} w-72`} />}
+                />
+                {isLocalAgentUrl(draft.baseUrl) ? (
+                  <LocalAgentCard kind={isCodexUrl(draft.baseUrl) ? "codex" : "claude"} />
+                ) : (
+                  <>
+                    <Row
+                      title="Base URL"
+                      control={
+                        <input
+                          value={draft.baseUrl}
+                          onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
+                          placeholder="https://api.example.com/v1"
+                          className={`${field} w-72 font-mono`}
+                        />
+                      }
+                    />
+                    <Row
+                      title="Model"
+                      control={
+                        <>
+                          <input
+                            value={draft.model}
+                            onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+                            list="model-suggestions"
+                            className={`${field} w-72 font-mono`}
+                          />
+                          <datalist id="model-suggestions">
+                            {Object.values(PROVIDER_PRESETS)
+                              .flatMap((p) => p.models)
+                              .map((m) => (
+                                <option key={m} value={m} />
+                              ))}
+                          </datalist>
+                        </>
+                      }
+                    />
+                    <Row
+                      title="API key"
+                      desc="Stored only on this device."
+                      control={
+                        <input
+                          type="password"
+                          value={draft.apiKey}
+                          onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
+                          placeholder="sk-..."
+                          className={`${field} w-72 font-mono`}
+                        />
+                      }
+                    />
+                  </>
+                )}
+                <Row
+                  title="Test connection"
+                  desc={
+                    testResult ? (
+                      <span className={testResult.ok ? "text-green-400" : "text-red-400"}>{testResult.msg}</span>
+                    ) : !draft.apiKey && !isLocalAgentUrl(draft.baseUrl) ? (
+                      "Enter an API key first."
+                    ) : (
+                      "Sends one small request to check it answers."
+                    )
+                  }
+                  control={
+                    <button onClick={runTest} disabled={testing || (!draft.apiKey && !isLocalAgentUrl(draft.baseUrl))} className={action}>
+                      {testing ? "Testing…" : "Test"}
+                    </button>
+                  }
+                />
                 {conns.length > 1 && (
-                  <button
-                    onClick={() => void deleteConnection(activeId)}
-                    className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] px-3 text-sm text-red-400"
-                    title="Delete this connection"
-                  >
-                    Delete
-                  </button>
+                  <Row
+                    title="Delete connection"
+                    desc="Chats that used it keep their history."
+                    control={
+                      <button onClick={() => void deleteConnection(activeId)} className={`${action} text-red-400`}>
+                        Delete
+                      </button>
+                    }
+                  />
                 )}
               </div>
-              <label className="mt-3 block text-xs text-[var(--txt-dim)] mb-1.5">Name</label>
-              <input
-                value={activeConn?.name ?? ""}
-                onChange={(e) => renameConnection(e.target.value)}
-                className="w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Add a connection from a provider</label>
-              <div className="flex flex-wrap gap-2">
-                {Object.keys(PROVIDER_PRESETS).map((name) => (
-                  <button
-                    key={name}
-                    onClick={() => applyPreset(name)}
-                    className="rounded-lg border border-[var(--bd)] px-3 py-1.5 text-sm text-[var(--txt)] transition-colors hover:border-zinc-500"
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {isLocalAgentUrl(draft.baseUrl) && <LocalAgentCard kind={isCodexUrl(draft.baseUrl) ? "codex" : "claude"} />}
-            <div className={isLocalAgentUrl(draft.baseUrl) ? "hidden" : undefined}>
-              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Base URL</label>
-              <input
-                value={draft.baseUrl}
-                onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
-                className="w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-            <div className={isLocalAgentUrl(draft.baseUrl) ? "hidden" : undefined}>
-              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">Model</label>
-              <input
-                value={draft.model}
-                onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-                list="model-suggestions"
-                className="w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-              />
-              <datalist id="model-suggestions">
-                {Object.values(PROVIDER_PRESETS)
-                  .flatMap((p) => p.models)
-                  .map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-              </datalist>
-            </div>
-            <div className={isLocalAgentUrl(draft.baseUrl) ? "hidden" : undefined}>
-              <label className="block text-xs text-[var(--txt-dim)] mb-1.5">API key</label>
-              <input
-                type="password"
-                value={draft.apiKey}
-                onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
-                placeholder="sk-..."
-                className="w-full rounded-lg bg-[var(--input)] border border-[var(--bd)] px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-              />
-              <p className="mt-1.5 text-[11px] text-[var(--txt-faint)]">Stored only on this device.</p>
-            </div>
-            <div>
-              <button
-                onClick={runTest}
-                disabled={testing || (!draft.apiKey && !isLocalAgentUrl(draft.baseUrl))}
-                className="rounded-lg border border-[var(--bd)] hover:bg-[var(--panel-2)] disabled:opacity-40 px-3 py-1.5 text-xs text-[var(--txt)] transition-colors"
-              >
-                {testing ? "Testing…" : "Test connection"}
-              </button>
-              {!draft.apiKey && !isLocalAgentUrl(draft.baseUrl) && (
-                <span className="ml-2 text-[11px] text-[var(--txt-faint)]">Enter an API key first.</span>
-              )}
-              {testResult && (
-                <p
-                  className={`mt-2 text-[11px] rounded-lg px-3 py-2 break-words ${
-                    testResult.ok
-                      ? "bg-green-500/10 text-green-400 border border-green-900/40"
-                      : "bg-red-500/10 text-red-400 border border-red-900/40"
-                  }`}
-                >
-                  {testResult.msg}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
             )}
 
             {tab === "support" && (

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Project, newId } from "../lib/store";
 import { pickFolder } from "../lib/tools";
+import { confirmDialog } from "../lib/confirm";
+import Row, { action, field } from "./SettingsRow";
 
 interface Props {
   projects: Project[];
@@ -18,103 +20,101 @@ export default function ProjectsEditor({ projects, onChange, initialSelectedId }
     onChange([...projects, p]);
     setOpenId(p.id);
   };
-  const remove = (id: string) => {
-    onChange(projects.filter((x) => x.id !== id));
+  const remove = async (p: Project) => {
+    if (!(await confirmDialog(`Delete the project "${p.name}"? Its chats are kept.`))) return;
+    onChange(projects.filter((x) => x.id !== p.id));
     setOpenId(null);
   };
 
   if (!editing)
     return (
-      <div className="space-y-2">
-        <p className="text-[13px] text-[var(--txt-faint)]">
-          A project groups chats under a working folder and shared instructions.
-        </p>
-        <div className="overflow-hidden rounded-lg border border-[var(--bd-soft)]">
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setOpenId(p.id)}
-              className="flex w-full items-center gap-3 border-b border-[var(--bd-soft)] px-3 py-2 text-left last:border-b-0 hover:bg-[var(--panel)] transition-colors"
-            >
-              <span className="shrink-0 text-[13px] text-[var(--txt)]">{p.name}</span>
-              <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-[var(--txt-faint)]">
-                {p.folder ?? ""}
-              </span>
-              <span className="shrink-0 text-[11px] text-[var(--txt-faint)]">›</span>
+      <div>
+        <Row
+          title="New project"
+          desc="A project groups chats under a working folder and shared instructions."
+          control={
+            <button onClick={create} className={action}>
+              New project
             </button>
-          ))}
-          {!projects.length && (
-            <p className="px-3 py-3 text-[13px] text-[var(--txt-faint)]">No projects yet.</p>
-          )}
-        </div>
-        <button
-          onClick={create}
-          className="rounded-lg border border-[var(--bd)] px-3 py-1.5 text-[13px] text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
-        >
-          ＋ New project
-        </button>
+          }
+        />
+        {projects.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setOpenId(p.id)}
+            className="group flex w-full items-center gap-6 border-b border-[var(--bd-soft)] py-3.5 text-left last:border-b-0"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[14px] text-[var(--txt)]">{p.name}</span>
+              <span className="mt-0.5 block truncate font-mono text-[12px] text-[var(--txt-faint)]">
+                {p.folder ?? "No folder"}
+              </span>
+            </span>
+            <span className="shrink-0 text-[var(--txt-faint)] group-hover:text-[var(--txt)]">›</span>
+          </button>
+        ))}
+        {!projects.length && <p className="py-8 text-center text-[13px] text-[var(--txt-faint)]">No projects yet.</p>}
       </div>
     );
 
   return (
-    <div className="space-y-3">
+    <div>
       <button
         onClick={() => setOpenId(null)}
-        className="flex items-center gap-1.5 text-[13px] text-[var(--txt-dim)] hover:text-[var(--txt)] transition-colors"
+        className="mt-1 flex items-center gap-1.5 text-[13px] text-[var(--txt-dim)] hover:text-[var(--txt)] transition-colors"
       >
-        ‹ Projects
+        ‹ All projects
       </button>
-      <div>
-        <label className="mb-1 block text-[11px] text-[var(--txt-dim)]">Name</label>
-        <input
-          value={editing.name}
-          autoFocus
-          onFocus={(e) => editing.name === "New project" && e.target.select()}
-          onChange={(e) => upsert({ ...editing, name: e.target.value })}
-          className="w-full rounded-lg border border-[var(--bd)] bg-[var(--input)] px-2.5 py-1.5 text-[13px] text-[var(--txt)] focus:outline-none focus:border-zinc-500"
-        />
-      </div>
-      <div>
-        <label className="mb-1 block text-[11px] text-[var(--txt-dim)]">Working folder</label>
+      <Row
+        title="Name"
+        control={
+          <input
+            value={editing.name}
+            autoFocus
+            onFocus={(e) => editing.name === "New project" && e.target.select()}
+            onChange={(e) => upsert({ ...editing, name: e.target.value })}
+            className={`${field} w-72`}
+          />
+        }
+      />
+      <Row title="Working folder" desc="Chats in this project run here, and the sidebar groups them under it.">
         <div className="flex gap-2">
           <input
             value={editing.folder ?? ""}
             onChange={(e) => upsert({ ...editing, folder: e.target.value || undefined })}
             placeholder="/path/to/project"
-            className="min-w-0 flex-1 rounded-lg border border-[var(--bd)] bg-[var(--input)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--txt)] focus:outline-none focus:border-zinc-500"
+            className={`${field} min-w-0 flex-1 font-mono`}
           />
           <button
             onClick={async () => {
               try {
                 const dir = await pickFolder();
                 if (dir) upsert({ ...editing, folder: dir });
-              } catch {
-                /* desktop only */
-              }
+              } catch {}
             }}
-            className="shrink-0 rounded-lg border border-[var(--bd)] px-2.5 text-[13px] text-[var(--txt)] hover:bg-[var(--panel-2)] transition-colors"
+            className={action}
           >
-            Browse
+            Choose…
           </button>
         </div>
-      </div>
-      <div>
-        <label className="mb-1 block text-[11px] text-[var(--txt-dim)]">
-          Instructions — added to every chat in this project
-        </label>
+      </Row>
+      <Row title="Instructions" desc="Added to every chat in this project.">
         <textarea
           value={editing.instructions ?? ""}
           onChange={(e) => upsert({ ...editing, instructions: e.target.value || undefined })}
-          placeholder="e.g. This is the frappe monorepo. Prefer FrappeTestCase. Never add code comments."
-          className="h-28 w-full resize-none rounded-lg border border-[var(--bd)] bg-[var(--input)] px-2.5 py-1.5 text-[13px] leading-[1.5] text-[var(--txt)] focus:outline-none focus:border-zinc-500"
+          placeholder="This is the frappe monorepo. Prefer FrappeTestCase."
+          className={`${field} h-32 resize-none leading-[1.5]`}
         />
-      </div>
-      <button
-        onClick={() => remove(editing.id)}
-        className="text-[11px] text-red-400 hover:text-red-300"
-      >
-        Delete project
-      </button>
+      </Row>
+      <Row
+        title="Delete project"
+        desc="Its chats are kept."
+        control={
+          <button onClick={() => void remove(editing)} className={`${action} text-red-400`}>
+            Delete
+          </button>
+        }
+      />
     </div>
   );
 }
