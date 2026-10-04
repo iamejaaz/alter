@@ -40,6 +40,11 @@
       .run-sub { color: #71717a; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
       .run-fail { color: #f87171; }
       .run-stop { width: auto; flex: none; background: transparent; border: 1px solid #34343c; color: #a1a1aa; padding: 2px 8px; font-size: 11px; border-radius: 6px; }
+      .run-x { border: 0; padding: 0 4px; font-size: 14px; line-height: 18px; opacity: 0; }
+      .run:hover .run-x { opacity: 1; }
+      .run-x:hover, .runs-clear:hover { color: #e4e4e7; }
+      .runs-h { display: flex; align-items: center; justify-content: space-between; }
+      .runs-clear { width: auto; flex: none; background: transparent; border: 0; padding: 0; color: #71717a; font-size: 11px; }
     </style>
   </head>
   <body>

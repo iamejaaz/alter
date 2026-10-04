@@ -250,6 +250,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       } else if (msg.type === "runs") {
         const r = await bridge("/runs");
         sendResponse(r.ok && Array.isArray(r.body) ? { ok: true, data: r.body } : { ok: false, error: hint(r) });
+      } else if (msg.type === "dismiss") {
+        const r = await bridge("/dismiss", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runId: msg.runId }),
+        });
+        sendResponse(r.ok ? { ok: true } : { ok: false, error: hint(r) });
       } else if (msg.type === "cancel") {
         const r = await bridge("/cancel", {
           method: "POST",

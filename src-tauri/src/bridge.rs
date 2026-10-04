@@ -86,7 +86,8 @@ pub fn dismiss_runs(state: &BridgeState, run_id: Option<&str>) {
 }
 
 pub fn runs_snapshot(state: &BridgeState) -> Vec<serde_json::Value> {
-    let map = state.progress.lock().unwrap_or_else(|e| e.into_inner());
+    let mut map = state.progress.lock().unwrap_or_else(|e| e.into_inner());
+    prune_progress(&mut map);
     let mut out: Vec<serde_json::Value> = map
         .iter()
         .filter(|(_, p)| !p.label.is_empty())
@@ -781,6 +782,7 @@ fn spawn_agent_run(
                     p.error = Some("The agent stopped without an answer (it may have been stopped or hit the session limit).".to_string());
                 }
                 p.done = true;
+                p.finished_at = Some(std::time::Instant::now());
             }
         }
     });
@@ -1205,6 +1207,11 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
 
     match (method, path) {
         (tiny_http::Method::Get, "/runs") => (200, serde_json::Value::Array(runs_snapshot(&state)).to_string()),
+        (tiny_http::Method::Post, "/dismiss") => {
+            let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+            dismiss_runs(&state, v["runId"].as_str());
+            (200, "{\"ok\":true}".into())
+        }
         (tiny_http::Method::Get, "/connections") => {
             let list: Vec<ConnInfo> = state
                 .conns

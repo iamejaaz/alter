@@ -95,6 +95,17 @@ function runRow(r) {
       loadRuns();
     });
     row.append(stop);
+  } else {
+    const x = document.createElement("button");
+    x.className = "run-stop run-x";
+    x.textContent = "×";
+    x.title = "Remove";
+    x.addEventListener("click", async () => {
+      row.remove();
+      await send({ type: "dismiss", runId: r.runId });
+      loadRuns();
+    });
+    row.append(x);
   }
   return row;
 }
@@ -106,15 +117,25 @@ async function loadRuns() {
   box.innerHTML = "";
   const running = list.filter((x) => !x.done);
   const done = list.filter((x) => x.done).slice(0, 4);
-  const section = (title, items) => {
+  const section = (title, items, clear) => {
     if (!items.length) return;
     const h = document.createElement("div");
     h.className = "runs-h";
     h.textContent = title;
+    if (clear) {
+      const c = document.createElement("button");
+      c.className = "runs-clear";
+      c.textContent = "Clear";
+      c.addEventListener("click", async () => {
+        await send({ type: "dismiss" });
+        loadRuns();
+      });
+      h.append(c);
+    }
     box.append(h, ...items.map(runRow));
   };
   section(running.length ? `Running now · ${running.length}` : "", running);
-  section("Recently finished", done);
+  section("Recently finished", done, true);
   if (running.length) setTimeout(loadRuns, 3000);
 }
 
