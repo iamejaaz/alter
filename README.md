@@ -66,6 +66,10 @@ On first launch open **Settings**, pick a provider preset and paste a key, or ad
 
 Build a bundle with `npm run tauri build`. The `.app` and `.dmg` land in `src-tauri/target/release/bundle/`.
 
+## Docs
+
+Setup, every setting, sign in, the bridge, what each browser agent may do, and a troubleshooting page keyed by error message: [docs/README.md](docs/README.md).
+
 ## Settings worth knowing
 
 ![Settings](docs/settings.png)
