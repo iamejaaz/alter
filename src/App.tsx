@@ -238,6 +238,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dropping, setDropping] = useState(false);
+  const [jobs, setJobs] = useState<Record<string, { since: number; step?: string }>>({});
   const dragDepth = useRef(0);
   const [preview, setPreview] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<ArtifactType | null>(null);
@@ -997,7 +998,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     setStreamingIds((ids) => (ids.includes(convId!) ? ids : [...ids, convId!]));
     setInflight(convId, true);
     const startedAt = Date.now();
+    setJobs((j) => ({ ...j, [convId!]: { since: j[convId!]?.since ?? startedAt } }));
     const endStream = () => {
+      setJobs((j) => {
+        const next = { ...j };
+        delete next[convId!];
+        return next;
+      });
       finishedTurn(convId!, Date.now() - startedAt);
       setInflight(convId!, false);
       setStreamingIds((ids) => ids.filter((x) => x !== convId));
@@ -1057,7 +1064,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               ...c,
               messages: [...c.messages.slice(0, -1), { role: "assistant", content: partial }],
             }));
-        const writeStep = (label: string) =>
+        const writeStep = (label: string) => {
+            setJobs((j) => (j[convId!] ? { ...j, [convId!]: { ...j[convId!], step: label } } : j));
             updateConversation(convId!, (c) => {
               const msgs = [...c.messages];
               const last = msgs[msgs.length - 1];
@@ -1071,6 +1079,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               }
               return { ...c, messages: msgs };
             });
+          };
         if (onCodex) {
           const r = await codexChat(
             ccPrompt,
@@ -1960,8 +1969,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const viewing = cid === activeIdRef.current && document.hasFocus();
     updateConversation(cid, (c) => ({ ...c, lastAt: Date.now(), unread: viewing ? c.unread : true }));
     const conv = convsRef.current.find((c) => c.id === cid);
-    if (document.hasFocus() || ms < 20000 || conv?.muted) return;
-    void invoke("notify", { title: conv?.title || "Alter", body: "Finished. Ready for you." }).catch(() => {});
+    if (viewing || ms < 20000 || conv?.muted) return;
+    const mins = Math.round(ms / 60000);
+    void invoke("notify", { title: conv?.title || "Alter", body: `Finished${mins >= 1 ? ` after ${mins} min` : ""}. Ready for you.` }).catch(() => {});
   };
   useEffect(() => {
     const clear = () => {
@@ -2233,6 +2243,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         activeId={activeId}
         routines={routines}
         scheduledIds={scheduled.map((x) => x.convId)}
+        jobs={jobs}
         streamingIds={streamingIds}
         projects={projects}
         activeProjectId={activeProjectId}

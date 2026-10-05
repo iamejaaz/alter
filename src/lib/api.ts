@@ -308,8 +308,21 @@ function toolLabel(name: string, input: Record<string, unknown>): string {
     case "Task":
     case "Agent":
       return `Agent: ${clip(input.description ?? input.subagent_type, 48)}`;
-    default:
-      return name;
+    default: {
+      const m = name.match(/^mcp__(.+?)__(.+)$/);
+      if (!m) return name;
+      const [, server, tool] = m;
+      const words = tool.replace(/^browser_/, "").replace(/_/g, " ");
+      if (server !== "browser") return `${server}: ${words}`;
+      const site = (u: unknown) => clip(String(u ?? "").replace(/^https?:\/\//, ""), 48);
+      if (tool === "browser_navigate") return `Browser: open ${site(input.url)}`;
+      if (tool === "browser_click") return `Browser: click ${clip(input.element, 40)}`;
+      if (tool === "browser_type") return `Browser: type into ${clip(input.element, 40)}`;
+      if (tool === "browser_take_screenshot") return "Browser: screenshot";
+      if (tool === "browser_snapshot") return "Browser: read the page";
+      if (tool === "browser_wait_for") return "Browser: wait";
+      return `Browser: ${words}`;
+    }
   }
 }
 

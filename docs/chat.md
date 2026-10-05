@@ -29,6 +29,14 @@ If you are on another chat when a card appears, that chat is marked unread and A
 - **Esc** interrupts the running turn at its next step. Work done so far stays in the chat.
 - Typing and sending while a turn runs **queues** the message. It shows as a dashed bubble "Sending at the next step". The running turn is asked to stop at its next step and the queued message is sent when it ends. Remove the bubble with ×.
 
+## Long jobs
+
+A chat keeps running when you switch to another chat or hide the window.
+
+- Its sidebar row shows the current step and how long it has been running, for example `Browser: open labs.google/flow · 3m`. The time refreshes every 15 seconds.
+- Steps from connectors read as `<connector>: <tool>`. Browser steps read as plain actions: open, click, type, screenshot, read the page.
+- When it finishes and you are not looking at that chat, the chat is marked unread, and if it ran for 20 seconds or more Alter sends a notification with how long it took. Mute a chat from its row menu to stop the notification.
+
 ## Send later
 
 The clock beside Send schedules the typed message:

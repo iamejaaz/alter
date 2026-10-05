@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Conversation, Project, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
@@ -25,6 +25,7 @@ interface Props {
   routines: Routine[];
   streamingIds: string[];
   scheduledIds?: string[];
+  jobs?: Record<string, { since: number; step?: string }>;
   projects: Project[];
   activeProjectId: string | null;
   onSelectProject: (id: string | null) => void;
@@ -60,6 +61,7 @@ export default function Sidebar({
   routines,
   streamingIds,
   scheduledIds = [],
+  jobs = {},
   projects,
   activeProjectId,
   onSelectProject,
@@ -80,6 +82,13 @@ export default function Sidebar({
   onOpenPalette,
 }: Props) {
   const [query, setQuery] = useState("");
+  const [, setTick] = useState(0);
+  const running = Object.keys(jobs).length > 0;
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setTick((n) => n + 1), 15000);
+    return () => clearInterval(t);
+  }, [running]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; up: boolean; moving: boolean } | null>(null);
@@ -173,7 +182,7 @@ export default function Sidebar({
   const renderChat = (c: Conversation) => (
     <div
       key={c.id}
-      className={`group relative flex h-7 items-center rounded-lg px-2 text-[13px] cursor-pointer transition-colors ${
+      className={`group relative flex min-h-7 items-center rounded-lg px-2 py-0.5 text-[13px] cursor-pointer transition-colors ${
         c.id === activeId
           ? "bg-[var(--panel-2)] text-[var(--txt)]"
           : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
@@ -199,9 +208,16 @@ export default function Sidebar({
           {streamingIds.includes(c.id) && (
             <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" title="Running" />
           )}
-          <span className={`flex-1 truncate ${c.unread && c.id !== activeId ? "font-medium text-[var(--txt)]" : ""}`}>
-            {c.pinned && <span className="mr-1.5 text-[var(--txt-faint)]">★</span>}
-            {c.title}
+          <span className="min-w-0 flex-1">
+            <span className={`block truncate ${c.unread && c.id !== activeId ? "font-medium text-[var(--txt)]" : ""}`}>
+              {c.pinned && <span className="mr-1.5 text-[var(--txt-faint)]">★</span>}
+              {c.title}
+            </span>
+            {jobs[c.id] && (
+              <span className="block truncate text-[11px] leading-tight text-[var(--txt-faint)]" title={jobs[c.id].step}>
+                {jobs[c.id].step || "Thinking"} · {since(jobs[c.id].since)}
+              </span>
+            )}
           </span>
           {scheduledIds.includes(c.id) && (
             <span className="ml-1 shrink-0 scale-75 text-[var(--txt-faint)]" title="Has a message scheduled to send later">
