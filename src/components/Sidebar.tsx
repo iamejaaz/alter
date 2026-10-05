@@ -86,7 +86,7 @@ export default function Sidebar({
   const running = Object.keys(jobs).length > 0;
   useEffect(() => {
     if (!running) return;
-    const t = setInterval(() => setTick((n) => n + 1), 15000);
+    const t = setInterval(() => setTick((n) => n + 1), 5000);
     return () => clearInterval(t);
   }, [running]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -179,6 +179,7 @@ export default function Sidebar({
   // Every routine shows, even with no run yet, so the sidebar is the routine list.
   const routineRows = routines.map((r) => ({ routine: r, runs: runsByRoutine.get(r.id) ?? [] }));
 
+  const longJob = (id: string) => !!jobs[id] && Date.now() - jobs[id].since >= 10000;
   const renderChat = (c: Conversation) => (
     <div
       key={c.id}
@@ -206,15 +207,18 @@ export default function Sidebar({
       ) : (
         <>
           {streamingIds.includes(c.id) && (
-            <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" title="Running" />
+            <span
+              className={`mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse ${longJob(c.id) ? "self-start mt-[7px]" : ""}`}
+              title="Running"
+            />
           )}
           <span className="min-w-0 flex-1">
             <span className={`block truncate ${c.unread && c.id !== activeId ? "font-medium text-[var(--txt)]" : ""}`}>
               {c.pinned && <span className="mr-1.5 text-[var(--txt-faint)]">★</span>}
               {c.title}
             </span>
-            {jobs[c.id] && (
-              <span className="block truncate text-[11px] leading-tight text-[var(--txt-faint)]" title={jobs[c.id].step}>
+            {longJob(c.id) && (
+              <span className="block truncate pb-0.5 text-[11px] leading-tight text-[var(--txt-faint)]" title={jobs[c.id].step}>
                 {jobs[c.id].step || "Thinking"} · {since(jobs[c.id].since)}
               </span>
             )}

@@ -33,7 +33,7 @@ If you are on another chat when a card appears, that chat is marked unread and A
 
 A chat keeps running when you switch to another chat or hide the window.
 
-- Its sidebar row shows the current step and how long it has been running, for example `Browser: open labs.google/flow · 3m`. The time refreshes every 15 seconds.
+- Once it has run for 10 seconds, its sidebar row shows the current step and how long it has been running, for example `Browser: open labs.google/flow · 3m`. Quick replies keep a one line row. The time refreshes every 5 seconds.
 - Steps from connectors read as `<connector>: <tool>`. Browser steps read as plain actions: open, click, type, screenshot, read the page.
 - When it finishes and you are not looking at that chat, the chat is marked unread, and if it ran for 20 seconds or more Alter sends a notification with how long it took. Mute a chat from its row menu to stop the notification.
 
