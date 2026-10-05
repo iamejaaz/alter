@@ -49,6 +49,13 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 | `/skill` command was sent as plain text | The name did not match a saved skill or a Claude Code skill | Check Settings, Skills, and `~/.claude/skills` |
 | Memory I added is not in `~/.claude/CLAUDE.md` | Only facts extracted from chats are appended there. Added and imported ones stay in Alter | Add the line to CLAUDE.md yourself if Claude Code needs it |
 
+## Media in replies
+
+| Message | Cause | Fix |
+| --- | --- | --- |
+| A reply names an image but nothing shows | The path does not exist, has a space, or the reply gave a bare file name | Ask the model for the full path. Relative paths only work when the chat has a folder |
+| Image box shows broken | The CSP or asset protocol settings in `src-tauri/tauri.conf.json` were changed | Keep `assetProtocol.enable` true and `img-src`/`media-src` allowing `asset:` and `http://asset.localhost` |
+
 ## Agent browser
 
 | Message | Cause | Fix |

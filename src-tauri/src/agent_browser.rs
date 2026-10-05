@@ -212,3 +212,38 @@ pub fn codex_overrides(mcp: &Option<serde_json::Value>) -> Vec<String> {
     }
     out
 }
+
+const IMAGE_EXT: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "svg"];
+const VIDEO_EXT: [&str; 4] = ["mp4", "mov", "webm", "m4v"];
+
+#[tauri::command]
+pub fn media_allow(app: tauri::AppHandle, path: String, base: Option<String>) -> Option<serde_json::Value> {
+    let raw = path.trim();
+    let p = if let Some(rest) = raw.strip_prefix("~/") {
+        home().join(rest)
+    } else if raw.starts_with('/') {
+        PathBuf::from(raw)
+    } else {
+        PathBuf::from(base.filter(|b| !b.is_empty())?).join(raw.trim_start_matches("./"))
+    };
+    let p = p.canonicalize().ok()?;
+    let ext = p.extension()?.to_string_lossy().to_lowercase();
+    let kind = if IMAGE_EXT.contains(&ext.as_str()) {
+        "image"
+    } else if VIDEO_EXT.contains(&ext.as_str()) {
+        "video"
+    } else {
+        return None;
+    };
+    if !p.is_file() {
+        return None;
+    }
+    app.asset_protocol_scope().allow_file(&p).ok()?;
+    Some(serde_json::json!({ "kind": kind, "path": p.display().to_string() }))
+}
+
+#[tauri::command]
+pub fn media_reveal(path: String) -> Result<(), String> {
+    std::process::Command::new("open").arg("-R").arg(&path).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}

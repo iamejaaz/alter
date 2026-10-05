@@ -110,6 +110,14 @@ Attach with the paperclip, paste, or drag files from Finder or another app onto 
 
 Images are saved to disk under the app data folder, PDFs and text files are read in. HTML and SVG the model produces open in the artifact side panel.
 
+## Media in replies
+
+When a reply mentions the path of an image (`png jpg jpeg gif webp svg`) or a video (`mp4 mov webm m4v`) that exists on disk, it shows inline under the reply: images open full size on click, videos play in place, and **Show in Finder** reveals the file.
+
+- Paths can be absolute, start with `~/`, or be relative (`./shot.png`), which resolves against the chat's folder. Web URLs are left alone. Up to 12 per reply. Paths with spaces are not picked up.
+- Files are loaded through Tauri's asset protocol. Its scope starts empty, and each file is allowed one by one only after Alter checks it exists and has a media extension (`media_allow`). Nothing else on disk is readable by the window.
+- With the agent browser on, the model is asked to save into the `media` folder in the app data folder and to print each file's full path, so its screenshots and generated images show up here.
+
 ## Related
 
 - [connections.md](connections.md) for what each connection can do

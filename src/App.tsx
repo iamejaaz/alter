@@ -5,6 +5,7 @@ import SettingsPanel, { SettingsTab } from "./components/SettingsPanel";
 import Markdown from "./components/Markdown";
 import ComposerSelect from "./components/ComposerSelect";
 import SendLater from "./components/SendLater";
+import MediaStrip from "./components/MediaStrip";
 import AttachmentImage from "./components/AttachmentImage";
 import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
@@ -2553,7 +2554,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     <div className="min-w-0">
                       {m.peer && <p className="mb-1 text-[11px] text-[var(--txt-faint)]">From {m.peer.name}</p>}
                       {m.content ? (
-                        <Markdown text={m.content} />
+                        <>
+                          <Markdown text={m.content} />
+                          {!(activeStreaming && i === active.messages.length - 1) && (
+                            <MediaStrip text={m.content} base={active.folder ?? folder} onPreview={setPreview} />
+                          )}
+                        </>
                       ) : activeStreaming ? (
                         <Logo size={16} busy />
                       ) : (

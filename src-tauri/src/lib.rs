@@ -1929,6 +1929,8 @@ pub fn run() {
             browser::browser_close,
             agent_browser::agent_browser_open,
             claude_mcp_servers,
+            agent_browser::media_allow,
+            agent_browser::media_reveal,
             agent_browser::agent_browser_status,
             agent_browser::agent_browser_mcp
         ])
