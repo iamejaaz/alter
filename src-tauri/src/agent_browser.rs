@@ -71,9 +71,28 @@ pub fn cdp_get(path: &str) -> Option<String> {
     let mut s = std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], CDP_PORT).into(), Duration::from_millis(400)).ok()?;
     s.set_read_timeout(Some(Duration::from_secs(3))).ok()?;
     write!(s, "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{CDP_PORT}\r\nConnection: close\r\n\r\n").ok()?;
-    let mut out = String::new();
-    s.read_to_string(&mut out).ok()?;
-    out.split_once("\r\n\r\n").map(|(_, b)| b.to_string())
+    let mut buf: Vec<u8> = Vec::new();
+    let mut chunk = [0u8; 8192];
+    loop {
+        let n = s.read(&mut chunk).ok()?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            let head = String::from_utf8_lossy(&buf[..end]).to_lowercase();
+            let len = head
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)));
+            if let Some(len) = len {
+                if buf.len() >= end + 4 + len {
+                    return Some(String::from_utf8_lossy(&buf[end + 4..end + 4 + len]).to_string());
+                }
+            }
+        }
+    }
+    let text = String::from_utf8_lossy(&buf).to_string();
+    text.split_once("\r\n\r\n").map(|(_, b)| b.to_string())
 }
 
 pub fn ws_url() -> Option<String> {

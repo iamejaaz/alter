@@ -6,6 +6,7 @@ import Markdown from "./components/Markdown";
 import ComposerSelect from "./components/ComposerSelect";
 import SendLater from "./components/SendLater";
 import MediaStrip from "./components/MediaStrip";
+import BrowserPane from "./components/BrowserPane";
 import AttachmentImage from "./components/AttachmentImage";
 import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
@@ -238,6 +239,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dropping, setDropping] = useState(false);
+  const [browserPane, setBrowserPane] = useState(false);
+  const paneDismissed = useRef(false);
   const [jobs, setJobs] = useState<Record<string, { since: number; step?: string }>>({});
   const dragDepth = useRef(0);
   const [preview, setPreview] = useState<string | null>(null);
@@ -1081,6 +1084,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             }));
         const writeStep = (label: string) => {
             setJobs((j) => (j[convId!] ? { ...j, [convId!]: { ...j[convId!], step: label } } : j));
+            if (label.startsWith("Browser:") && convId === activeIdRef.current && !paneDismissed.current) {
+              setArtifact(null);
+              setShowChanges(false);
+              setBrowserPane(true);
+            }
             updateConversation(convId!, (c) => {
               const msgs = [...c.messages];
               const last = msgs[msgs.length - 1];
@@ -2423,6 +2431,23 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             </div>
           )}
           <div className="flex-1" />
+          {settings.agentBrowser !== false && (
+            <button
+              onClick={() => {
+                const open = !browserPane;
+                paneDismissed.current = !open;
+                if (open) {
+                  setArtifact(null);
+                  setShowChanges(false);
+                }
+                setBrowserPane(open);
+              }}
+              className={`rounded-lg px-2.5 py-1.5 text-xs transition-colors ${browserPane ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-dim)] hover:bg-[var(--panel-2)]"}`}
+              title="Show the agent browser next to the chat"
+            >
+              Browser
+            </button>
+          )}
           {active && active.messages.length > 0 && (
             <>
               <button
@@ -3219,6 +3244,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       </main>
 
       {artifact && <ArtifactPanel artifact={artifact} onClose={() => setArtifact(null)} />}
+      {browserPane && !artifact && !showChanges && (
+        <BrowserPane
+          onClose={() => {
+            paneDismissed.current = true;
+            setBrowserPane(false);
+          }}
+        />
+      )}
       {showChanges && !artifact && active && (
         <ChangesPanel
           key={active.id}

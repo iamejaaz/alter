@@ -38,6 +38,7 @@ mod bridge;
 mod local_cli;
 mod browser;
 mod agent_browser;
+mod browser_pane;
 mod peers;
 
 pub(crate) fn html_to_text(html: &str) -> String {
@@ -1863,6 +1864,7 @@ pub fn run() {
         .manage(ChatCancel::default())
         .manage(ClaudeState::default())
         .manage(AskReplies::default())
+        .manage(browser_pane::PaneState::default())
         .manage(bridge::BridgeState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -1931,6 +1933,12 @@ pub fn run() {
             claude_mcp_servers,
             agent_browser::media_allow,
             agent_browser::media_reveal,
+            browser_pane::pane_snapshot,
+            browser_pane::pane_click,
+            browser_pane::pane_type,
+            browser_pane::pane_key,
+            browser_pane::pane_scroll,
+            browser_pane::pane_navigate,
             agent_browser::agent_browser_status,
             agent_browser::agent_browser_mcp
         ])

@@ -66,6 +66,9 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 | `Node is not installed, so the browser connector can't start` | No `npx` in PATH, Homebrew, or `~/.nvm` | Install Node 18 or newer |
 | Tool result `connect ECONNREFUSED 127.0.0.1:9333` | The agent browser was closed after the chat started | Send the message again, or press Open browser in Settings first |
 | The agent says it cannot use the browser | The chat's Claude Code process started before the setting was turned on | Send the message again. A changed connector list restarts the process |
+| Browser pane says `Could not attach to the agent browser's tab.` | The browser was just started or closed its last tab | Wait a second, it retries every refresh. If it stays, press Window and open a tab |
+| Browser pane picture is frozen | The pane only refreshes while the Alter window is visible, or the tab is hung | Bring Alter forward. Reload from the pane |
+| Typing in the pane does nothing | The picture is not focused | Click the page in the pane first. A thin frame shows when it has focus |
 | A site keeps asking to sign in | The agent window has its own profile, separate from your normal browser | Open browser, sign in there once |
 
 ## Connectors

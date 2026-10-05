@@ -100,6 +100,16 @@ Settings, General, Agent browser (on by default). A real browser window that cha
 - Files it saves (screenshots, downloads) go to `media` in the app data folder.
 - Closing the window is fine. The next chat starts it again.
 
+### Browser pane
+
+The **Browser** button in the chat header shows the agent browser next to the chat, so you can watch and step in without switching windows. It also opens by itself the first time the chat you are looking at starts a browser step, unless you closed it.
+
+- It is a live picture of the browser's front tab, refreshed every second, with back, forward, reload and an address bar. Typing words without a dot in the address bar searches Google.
+- Click the picture to click the page. Click once, then type: letters, Enter, Backspace, Tab, arrows and Cmd V go to the page. Scroll with the wheel.
+- **Window** brings the real browser window to the front, which is the better place for long sign in flows.
+- When the browser is not running the pane offers **Start browser**.
+- Under the hood it attaches to `127.0.0.1:9333` with the `headless_chrome` crate (`src-tauri/src/browser_pane.rs`) and keeps that connection open.
+
 ## Connectors
 
 Settings, Connectors. MCP servers that give Claude Code and Codex chats extra tools.
