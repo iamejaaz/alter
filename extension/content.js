@@ -325,11 +325,6 @@ async function postToGh(event, text, btn) {
     if (note) note.innerHTML = `<span class="alter-err">Nothing to post — the comment is empty.</span>`;
     return;
   }
-  // Outward action — confirm the destination + kind before it leaves the machine.
-  const dest = `${session.parts.owner}/${session.parts.repo}#${session.parts.num}`;
-  const kind = event === "request_changes" ? "a 🔴 Request-changes review" : event === "approve" ? "a 🟢 Approve review" : "a comment";
-  const inline = comments.length ? ` with ${comments.length} inline comment${comments.length > 1 ? "s" : ""}` : "";
-  if (!(await panelConfirm(`Post ${escapeHtml(kind)}${escapeHtml(inline)} to <b>${escapeHtml(dest)}</b> as <b>you</b>. This is public.`))) return;
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Posting…";
@@ -1006,7 +1001,11 @@ function renderPostPreview(text, suggested) {
     btn("request_changes").hidden = !asks;
     btn("comment").disabled = empty;
     if (session) session.draft = current();
-    noteEl.textContent = empty ? "Nothing to post yet. Write the review body below, or ask for a draft comment." : "";
+    const dest = session ? `${session.parts.owner}/${session.parts.repo}#${session.parts.num}` : "this PR";
+    const n = d.comments.length;
+    noteEl.textContent = empty
+      ? "Nothing to post yet. Write the review body below, or ask for a draft comment."
+      : `Goes to ${dest} as a public review${n ? ` with ${n} inline comment${n > 1 ? "s" : ""}` : ""}. The text above is exactly what posts.`;
   };
   const draw = () => {
     cards.innerHTML = "";
@@ -1060,14 +1059,6 @@ async function postAsBot(text, btn) {
     if (note) note.innerHTML = `<span class="alter-err">Nothing to post — the comment is empty.</span>`;
     return;
   }
-  const dest = `${session.parts.owner}/${session.parts.repo}#${session.parts.num}`;
-  const extras = [
-    comments.length ? `${comments.length} inline comment${comments.length > 1 ? "s" : ""}` : "",
-    replies.length ? `${replies.length} thread repl${replies.length > 1 ? "ies" : "y"}` : "",
-    resolve.length ? `${resolve.length} thread${resolve.length > 1 ? "s" : ""} resolved` : "",
-  ].filter(Boolean);
-  const inline = extras.length ? ` with ${extras.join(", ")}` : "";
-  if (!(await panelConfirm(`Post a comment review${escapeHtml(inline)} to <b>${escapeHtml(dest)}</b> as <b>${escapeHtml(botLogin)}</b>. This is public.`))) return;
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Dispatching…";
