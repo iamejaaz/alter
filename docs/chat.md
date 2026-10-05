@@ -92,6 +92,18 @@ Settings, General, Agent browser (on by default). A real browser window that cha
 - Files it saves (screenshots, downloads) go to `media` in the app data folder.
 - Closing the window is fine. The next chat starts it again.
 
+## Connectors
+
+Settings, Connectors. MCP servers that give Claude Code and Codex chats extra tools.
+
+- **Browser** is built in, on the same switch as the agent browser above.
+- **Add a connector** with one of: a command Alter starts (command, arguments separated by spaces with quotes around one that has a space, and `KEY=value` lines for environment), or a remote URL.
+- Names must be unique and `browser` is reserved. The tools show up to the model under the name.
+- Each connector has an on/off switch. The change applies to the next message in any chat, because a changed connector list restarts that chat's Claude Code process (the session resumes).
+- How they are passed: Claude Code gets a temporary `--mcp-config` file in the system temp folder, Codex gets `-c mcp_servers.<name>...` overrides. API connections do not use connectors.
+- **Already in Claude Code** lists the servers in `~/.claude.json`. Claude Code loads those on its own, so they are shown, not edited. Use `claude mcp` in Terminal for them.
+- Stored in `alter.settings` under `connectors`, environment values included.
+
 ## Attachments and artifacts
 
 Images are saved to disk under the app data folder, PDFs and text files are read in. HTML and SVG the model produces open in the artifact side panel.

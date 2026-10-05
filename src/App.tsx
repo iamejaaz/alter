@@ -116,6 +116,7 @@ import {
   isLocalAgentUrl,
   newId,
   scheduleLabel,
+  connectorServers,
   storage,
   whenLabel,
   PlanItem,
@@ -421,14 +422,18 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   useEffect(() => {
     storage.saveScheduled(scheduled);
   }, [scheduled]);
+  const connectorsKey = JSON.stringify(settings.connectors ?? []);
   useEffect(() => {
     const on = settings.agentBrowser !== false;
+    const extra = connectorServers(settings.connectors);
     setSharedBrowser(on);
-    if (!on) return setChatMcp({});
+    setChatMcp(extra);
+    if (!on) return;
     invoke<Record<string, unknown>>("agent_browser_mcp")
-      .then((browser) => setChatMcp({ browser }))
-      .catch(() => setChatMcp({}));
-  }, [settings.agentBrowser]);
+      .then((browser) => setChatMcp({ browser, ...extra }))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.agentBrowser, connectorsKey]);
   useEffect(() => {
     if (localStorage.getItem("alter.folderBackfill")) return;
     localStorage.setItem("alter.folderBackfill", "1");

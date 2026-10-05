@@ -127,8 +127,46 @@ export interface Settings {
   frappeApiSecret?: string;
   agentWorkdir?: string; // where browser-triggered agents run (e.g. your bench folder)
   agentBrowser?: boolean;
+  connectors?: Connector[];
   prBot?: string; // GitHub account the reviews are posted as
   prRepos?: string; // comma-separated owner/repo to watch for replies; empty = every repo the bot reviewed
+}
+
+export interface Connector {
+  id: string;
+  name: string;
+  kind: "command" | "url";
+  command?: string;
+  args?: string;
+  env?: string;
+  url?: string;
+  enabled: boolean;
+}
+
+export function connectorKey(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "") || "connector";
+}
+
+export function connectorServers(list: Connector[] | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const c of list ?? []) {
+    if (!c.enabled) continue;
+    const key = connectorKey(c.name);
+    if (key === "browser" || out[key]) continue;
+    if (c.kind === "url") {
+      if (c.url?.trim()) out[key] = { type: "http", url: c.url.trim() };
+      continue;
+    }
+    if (!c.command?.trim()) continue;
+    const args = (c.args ?? "").match(/"[^"]*"|'[^']*'|\S+/g)?.map((a) => a.replace(/^["']|["']$/g, "")) ?? [];
+    const env: Record<string, string> = {};
+    for (const line of (c.env ?? "").split("\n")) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+      if (m) env[m[1]] = m[2].trim();
+    }
+    out[key] = { command: c.command.trim(), args, ...(Object.keys(env).length ? { env } : {}) };
+  }
+  return out;
 }
 
 export interface MemoryItem {

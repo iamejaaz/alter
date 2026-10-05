@@ -338,6 +338,28 @@ fn read_user_memory() -> Result<String, String> {
 }
 
 #[tauri::command]
+fn claude_mcp_servers() -> Vec<serde_json::Value> {
+    let Ok(home) = std::env::var("HOME") else { return Vec::new() };
+    let Ok(raw) = std::fs::read_to_string(std::path::Path::new(&home).join(".claude.json")) else { return Vec::new() };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else { return Vec::new() };
+    v["mcpServers"]
+        .as_object()
+        .map(|m| {
+            m.iter()
+                .map(|(name, s)| {
+                    let what = s["url"]
+                        .as_str()
+                        .map(|u| u.to_string())
+                        .or_else(|| s["command"].as_str().map(|c| c.rsplit('/').next().unwrap_or(c).to_string()))
+                        .unwrap_or_default();
+                    serde_json::json!({ "name": name, "what": what })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[tauri::command]
 fn append_user_memory(fact: String) -> Result<(), String> {
     use std::io::Write;
     let home = std::env::var("HOME").map_err(|_| "no HOME".to_string())?;
@@ -1906,6 +1928,7 @@ pub fn run() {
             browser::browser_screenshot,
             browser::browser_close,
             agent_browser::agent_browser_open,
+            claude_mcp_servers,
             agent_browser::agent_browser_status,
             agent_browser::agent_browser_mcp
         ])

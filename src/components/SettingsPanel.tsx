@@ -5,9 +5,10 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Routine, Settings, Skill, newId } from "../lib/store";
 import { listen } from "@tauri-apps/api/event";
 import { cliLogin, cliLoginTerminal, cliStatus, CliStatus, codexCheck, testConnection } from "../lib/api";
-import { IconBookmark, IconClock, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconSettings, IconSparkles } from "./Icons";
+import { IconBlocks, IconBookmark, IconClock, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconSettings, IconSparkles } from "./Icons";
 import SkillsPage from "./SkillsPage";
 import RoutinesPage from "./RoutinesPage";
+import ConnectorsPage from "./ConnectorsPage";
 import MemoryImport from "./MemoryImport";
 import Row, { action, field } from "./SettingsRow";
 import ProjectsEditor from "./ProjectsEditor";
@@ -128,7 +129,7 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   );
 }
 
-export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills" | "routines";
+export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills" | "routines" | "connectors";
 
 const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: React.ReactNode }[] }[] = [
   {
@@ -152,6 +153,7 @@ const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: Rea
     items: [
       { id: "skills", label: "Skills", icon: <IconSparkles /> },
       { id: "routines", label: "Routines", icon: <IconClock /> },
+      { id: "connectors", label: "Connectors", icon: <IconBlocks /> },
     ],
   },
 ];
@@ -383,7 +385,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
         </div>
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-10 pb-12">
-            {tab !== "skills" && tab !== "routines" && <h1 className="mb-2 text-[17px] font-semibold text-[var(--txt)]">{title}</h1>}
+            {tab !== "skills" && tab !== "routines" && tab !== "connectors" && <h1 className="mb-2 text-[17px] font-semibold text-[var(--txt)]">{title}</h1>}
 
             {tab === "general" && (
               <div>
@@ -785,6 +787,14 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
             )}
 
             {tab === "skills" && <SkillsPage embedded skills={skills} onChange={onSkillsChange} onBack={onClose} />}
+            {tab === "connectors" && (
+              <ConnectorsPage
+                connectors={draft.connectors ?? []}
+                onChange={(connectors) => setDraft({ ...draft, connectors })}
+                browserOn={draft.agentBrowser !== false}
+                onBrowser={(on) => setDraft({ ...draft, agentBrowser: on })}
+              />
+            )}
             {tab === "routines" && (
               <RoutinesPage
                 routines={routines}

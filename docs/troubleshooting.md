@@ -60,6 +60,15 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 | The agent says it cannot use the browser | The chat's Claude Code process started before the setting was turned on | Send the message again. A changed connector list restarts the process |
 | A site keeps asking to sign in | The agent window has its own profile, separate from your normal browser | Open browser, sign in there once |
 
+## Connectors
+
+| Message | Cause | Fix |
+| --- | --- | --- |
+| `That name is already used.` | Two connectors would get the same key, or the name is `browser` | Pick another name |
+| Add connector stays disabled | Name empty, or no command, or the URL is still `https://` | Fill them in |
+| The model says it has no such tool | The connector failed to start. Claude Code drops a server that does not answer | Run the command and arguments in Terminal. Check the environment lines. For `npx` or `uvx` make sure the program is installed |
+| A connector works in Claude Code chats but not in API chats | Connectors are only passed to Claude Code and Codex | Use a Claude Code or Codex connection for that chat |
+
 ## Extension and bridge
 
 | Message | Cause | Fix |
