@@ -106,6 +106,8 @@ Settings, Connectors. MCP servers that give Claude Code and Codex chats extra to
 
 ## Attachments and artifacts
 
+Attach with the paperclip, paste, or drag files from Finder or another app onto the chat. A dashed "Drop to attach" frame shows while you drag. The window setting `dragDropEnabled: false` in `src-tauri/tauri.conf.json` is what lets the page receive those drops; turning it back on breaks drag and drop.
+
 Images are saved to disk under the app data folder, PDFs and text files are read in. HTML and SVG the model produces open in the artifact side panel.
 
 ## Related

@@ -236,6 +236,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [pr, setPr] = useState<{ number: number; title: string; url: string } | null>(null);
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [dropping, setDropping] = useState(false);
+  const dragDepth = useRef(0);
   const [preview, setPreview] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<ArtifactType | null>(null);
   const [listening, setListening] = useState(false);
@@ -2276,7 +2278,37 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         onOpenPalette={() => setShowPalette(true)}
       />
 
-      <main className="relative flex-1 flex flex-col min-w-0">
+      <main
+        className="relative flex-1 flex flex-col min-w-0"
+        onDragEnter={(e) => {
+          if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+          e.preventDefault();
+          dragDepth.current += 1;
+          setDropping(true);
+        }}
+        onDragOver={(e) => {
+          if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (!dragDepth.current) setDropping(false);
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer.files.length) return;
+          e.preventDefault();
+          dragDepth.current = 0;
+          setDropping(false);
+          void onFiles(e.dataTransfer.files);
+          composerRef.current?.focus();
+        }}
+      >
+        {dropping && (
+          <div className="pointer-events-none absolute inset-3 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--txt-faint)] bg-[var(--bg)]/80 text-[15px] text-[var(--txt)]">
+            Drop to attach
+          </div>
+        )}
         {view === "settings" && (
           <SettingsPanel
             settings={settings}
