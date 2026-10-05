@@ -49,6 +49,17 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 | `/skill` command was sent as plain text | The name did not match a saved skill or a Claude Code skill | Check Settings, Skills, and `~/.claude/skills` |
 | Memory I added is not in `~/.claude/CLAUDE.md` | Only facts extracted from chats are appended there. Added and imported ones stay in Alter | Add the line to CLAUDE.md yourself if Claude Code needs it |
 
+## Agent browser
+
+| Message | Cause | Fix |
+| --- | --- | --- |
+| `No Chromium based browser found` | No Brave, Chrome, Edge, Chromium, Vivaldi, Opera or Arc in Applications | Install one. Safari and Firefox cannot be driven |
+| `The agent browser started but did not open its control port 9333` | Another program holds port 9333, or the browser refused the flag | `lsof -iTCP:9333` to find the holder. Quit it and try Open browser again |
+| `Node is not installed, so the browser connector can't start` | No `npx` in PATH, Homebrew, or `~/.nvm` | Install Node 18 or newer |
+| Tool result `connect ECONNREFUSED 127.0.0.1:9333` | The agent browser was closed after the chat started | Send the message again, or press Open browser in Settings first |
+| The agent says it cannot use the browser | The chat's Claude Code process started before the setting was turned on | Send the message again. A changed connector list restarts the process |
+| A site keeps asking to sign in | The agent window has its own profile, separate from your normal browser | Open browser, sign in there once |
+
 ## Extension and bridge
 
 | Message | Cause | Fix |

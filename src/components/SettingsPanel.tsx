@@ -191,6 +191,13 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [memoryImport, setMemoryImport] = useState(false);
+  const [browserNote, setBrowserNote] = useState<string | null>(null);
+  const [browserApp, setBrowserApp] = useState<string | null>(null);
+  useEffect(() => {
+    void invoke<{ browser: string | null }>("agent_browser_status")
+      .then((s) => setBrowserApp(s.browser))
+      .catch(() => {});
+  }, []);
 
   const importCreds = async () => {
     setImporting(true);
@@ -388,6 +395,35 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     control={<Switch on={!!autostart} onChange={() => void toggleAutostart()} />}
                   />
                 )}
+                <Row
+                  title="Agent browser"
+                  desc={
+                    <>
+                      A {browserApp ?? "Chrome"} window Alter's agents can drive, with its own profile that stays signed in. It uses your default browser when it is Chromium based. Sign in to a site there once, then ask a chat to work on it. Agents never type passwords.
+                      {browserNote && <span className="mt-1 block text-[var(--txt-dim)]">{browserNote}</span>}
+                    </>
+                  }
+                  control={
+                    <div className="flex items-center gap-3">
+                      {draft.agentBrowser !== false && (
+                        <button
+                          onClick={async () => {
+                            setBrowserNote(null);
+                            try {
+                              await invoke("agent_browser_open");
+                            } catch (e) {
+                              setBrowserNote(String(e));
+                            }
+                          }}
+                          className={action}
+                        >
+                          Open browser
+                        </button>
+                      )}
+                      <Switch on={draft.agentBrowser !== false} onChange={() => setDraft({ ...draft, agentBrowser: draft.agentBrowser === false })} />
+                    </div>
+                  }
+                />
                 <Row
                   title="Working folder for browser agents"
                   desc="Where PR review, support and fix runs start, usually your bench. Empty falls back to the develop repro bench, then your home folder."

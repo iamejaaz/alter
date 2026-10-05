@@ -80,6 +80,18 @@ Settings, Routines. A routine is a name, a prompt, a schedule and the connection
 - `/handoff <task>` starts a background chat that does the task and reports back into the current chat with a card. `/handoff-full` includes the recent conversation.
 - `@` lists running Claude Code sessions on this Mac. Picking one pairs the chat with it: what you type goes to that session and its replies land here. **Auto reply** lets this chat's model answer the session on its own, capped at 20 turns.
 
+## Agent browser
+
+Settings, General, Agent browser (on by default). A real browser window that chats can drive, the way Claude's built in browser works.
+
+- **Which browser:** your default browser when it is Chromium based (Brave, Chrome, Edge, Chromium, Vivaldi, Opera, Arc), otherwise the first of those installed. Safari and Firefox cannot be driven.
+- **Its own profile:** it runs as a separate instance with the profile in `browser-profile` in the app data folder, so it never touches your normal browser or its logins. Sign in to a site there once and it stays signed in.
+- **Control port:** `127.0.0.1:9333`. Alter starts the browser in the background the first time a Claude Code or Codex chat starts, and leaves it running. **Open browser** in Settings brings it to the front.
+- **How chats use it:** Claude Code and Codex get the Playwright connector (`@playwright/mcp@0.0.83`, run through `npx`) pointed at that port. API connections' own browser tools attach to the same window when it is running.
+- **Sign in is yours.** The agent is told to stop and ask when a page wants a login, and never to type passwords, codes or payment details.
+- Files it saves (screenshots, downloads) go to `media` in the app data folder.
+- Closing the window is fine. The next chat starts it again.
+
 ## Attachments and artifacts
 
 Images are saved to disk under the app data folder, PDFs and text files are read in. HTML and SVG the model produces open in the artifact side panel.

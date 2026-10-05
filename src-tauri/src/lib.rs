@@ -37,6 +37,7 @@ fn list_dir(path: String) -> Result<Vec<String>, String> {
 mod bridge;
 mod local_cli;
 mod browser;
+mod agent_browser;
 mod peers;
 
 pub(crate) fn html_to_text(html: &str) -> String {
@@ -133,6 +134,7 @@ struct ClaudeProc {
     cwd: String,
     effort: String,
     perm: String,
+    mcp: String,
     last_used: std::time::Instant,
     child: tokio::process::Child,
     stdin: tokio::process::ChildStdin,
@@ -745,6 +747,7 @@ async fn codex_result(lines: &mut CodexLines, id: u64, cancel: &ChatCancel, conv
 
 #[tauri::command]
 async fn codex_chat(
+    app: tauri::AppHandle,
     cancel: tauri::State<'_, ChatCancel>,
     replies: tauri::State<'_, AskReplies>,
     prompt: String,
@@ -756,6 +759,7 @@ async fn codex_chat(
     permission_mode: Option<String>,
     images: Option<Vec<ImageAttachment>>,
     identity: Option<String>,
+    mcp: Option<serde_json::Value>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
@@ -790,8 +794,18 @@ async fn codex_chat(
         }
     }
 
+    if agent_browser::needs_browser(&mcp) {
+        let a = app.clone();
+        let _ = tokio::task::spawn_blocking(move || agent_browser::ensure(&a, false)).await;
+    }
+    let mut overrides: Vec<String> = Vec::new();
+    for o in agent_browser::codex_overrides(&mcp) {
+        overrides.push("-c".into());
+        overrides.push(o);
+    }
     let mut child = tokio::process::Command::new(&bin)
         .args(["app-server", "--enable", "default_mode_request_user_input"])
+        .args(&overrides)
         .current_dir(&dir)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -909,6 +923,7 @@ async fn codex_chat(
 
 #[tauri::command]
 async fn claude_code(
+    app: tauri::AppHandle,
     cancel: tauri::State<'_, ChatCancel>,
     procs: tauri::State<'_, ClaudeState>,
     replies: tauri::State<'_, AskReplies>,
@@ -921,6 +936,7 @@ async fn claude_code(
     permission_mode: Option<String>,
     images: Option<Vec<ImageAttachment>>,
     identity: Option<String>,
+    mcp: Option<serde_json::Value>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -936,6 +952,7 @@ async fn claude_code(
         Some(m @ ("default" | "acceptEdits" | "bypassPermissions" | "plan")) => m.to_string(),
         _ => "bypassPermissions".to_string(), // default: act freely on the user's own machine
     };
+    let mcp_key = mcp.as_ref().map(|m| m.to_string()).unwrap_or_default();
     let slot = procs.slot(&conv_id).await;
     let mut guard = slot.lock().await;
 
@@ -944,7 +961,7 @@ async fn claude_code(
     let reuse = match guard.as_mut() {
         Some(p) => {
             let alive = matches!(p.child.try_wait(), Ok(None));
-            alive && p.model == model && p.cwd == cwd && p.effort == effort && p.perm == perm
+            alive && p.model == model && p.cwd == cwd && p.effort == effort && p.perm == perm && p.mcp == mcp_key
         }
         None => false,
     };
@@ -964,6 +981,13 @@ async fn claude_code(
             .arg("--permission-prompt-tool").arg("stdio");
         if let Some(id) = identity.as_deref().filter(|i| !i.is_empty()) {
             cmd.arg("--append-system-prompt").arg(id);
+        }
+        if agent_browser::needs_browser(&mcp) {
+            let a = app.clone();
+            let _ = tokio::task::spawn_blocking(move || agent_browser::ensure(&a, false)).await;
+        }
+        if let Some(path) = agent_browser::claude_config(&mcp) {
+            cmd.arg("--mcp-config").arg(path);
         }
         if !model.is_empty() && model != "claude-code" {
             cmd.arg("--model").arg(&model);
@@ -1009,6 +1033,7 @@ async fn claude_code(
             cwd: cwd.clone(),
             effort: effort.clone(),
             perm: perm.clone(),
+            mcp: mcp_key.clone(),
             last_used: std::time::Instant::now(),
             child,
             stdin,
@@ -1879,7 +1904,10 @@ pub fn run() {
             browser::browser_click,
             browser::browser_type,
             browser::browser_screenshot,
-            browser::browser_close
+            browser::browser_close,
+            agent_browser::agent_browser_open,
+            agent_browser::agent_browser_status,
+            agent_browser::agent_browser_mcp
         ])
         .setup(|app| {
             if let Ok(dir) = app.path().app_data_dir() {

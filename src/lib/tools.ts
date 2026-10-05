@@ -197,6 +197,11 @@ export async function pickFolder(): Promise<string | null> {
   return typeof result === "string" ? result : null;
 }
 
+let sharedBrowser = true;
+export function setSharedBrowser(on: boolean) {
+  sharedBrowser = on;
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -226,6 +231,7 @@ export async function executeTool(
     if (!ok) return "User denied the write.";
   }
   try {
+    if (name === "browser_open") args.shared = sharedBrowser;
     const result = await invoke(name, args);
     return typeof result === "string" ? result : JSON.stringify(result);
   } catch (e) {

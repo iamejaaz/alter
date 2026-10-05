@@ -77,6 +77,7 @@ import {
   AgentRun,
   ToolAsk,
   answerAsk,
+  setChatMcp,
   ChatResult,
   claudeClose,
   claudeCodeChat,
@@ -93,7 +94,7 @@ const slugify = (s: string) =>
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-import { describeToolCall, executeTool, pickFolder } from "./lib/tools";
+import { describeToolCall, executeTool, pickFolder, setSharedBrowser } from "./lib/tools";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -420,6 +421,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   useEffect(() => {
     storage.saveScheduled(scheduled);
   }, [scheduled]);
+  useEffect(() => {
+    const on = settings.agentBrowser !== false;
+    setSharedBrowser(on);
+    if (!on) return setChatMcp({});
+    invoke<Record<string, unknown>>("agent_browser_mcp")
+      .then((browser) => setChatMcp({ browser }))
+      .catch(() => setChatMcp({}));
+  }, [settings.agentBrowser]);
   useEffect(() => {
     if (localStorage.getItem("alter.folderBackfill")) return;
     localStorage.setItem("alter.folderBackfill", "1");

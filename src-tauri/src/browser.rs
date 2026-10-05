@@ -10,15 +10,23 @@ pub struct Session {
     #[allow(dead_code)]
     browser: Browser,
     tab: Arc<Tab>,
+    shared: bool,
 }
 
 fn tab(state: &BrowserState) -> Result<Arc<Tab>, String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let stale = guard.as_ref().map(|s| s.shared && !crate::agent_browser::is_up()).unwrap_or(false);
+    if stale {
+        *guard = None;
+    }
     if guard.is_none() {
-        let browser = Browser::default()
-            .map_err(|e| format!("Could not start a browser (Chrome not found and download failed): {e}"))?;
+        let shared = crate::agent_browser::ws_url();
+        let browser = match &shared {
+            Some(ws) => Browser::connect(ws.clone()).map_err(|e| format!("Could not attach to the agent browser: {e}"))?,
+            None => Browser::default().map_err(|e| format!("Could not start a browser (Chrome not found and download failed): {e}"))?,
+        };
         let tab = browser.new_tab().map_err(|e| e.to_string())?;
-        *guard = Some(Session { browser, tab });
+        *guard = Some(Session { browser, tab, shared: shared.is_some() });
     }
     Ok(guard.as_ref().unwrap().tab.clone())
 }
@@ -34,7 +42,10 @@ fn page_text(tab: &Tab) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn browser_open(state: tauri::State<BrowserState>, url: String) -> Result<String, String> {
+pub fn browser_open(app: tauri::AppHandle, state: tauri::State<BrowserState>, url: String, shared: Option<bool>) -> Result<String, String> {
+    if shared.unwrap_or(false) {
+        crate::agent_browser::ensure(&app, false)?;
+    }
     let tab = tab(&state)?;
     tab.navigate_to(&url).map_err(|e| e.to_string())?;
     tab.wait_until_navigated().map_err(|e| e.to_string())?;

@@ -12,6 +12,24 @@ const MODE_NOTES: Record<Mode, string> = {
 export const ALTER_IDENTITY =
   "You are Alter, a desktop AI companion app created by Ejaaz. Your identity is Alter: when asked who you are, who made you, or what you are, say you are Alter, built by Ejaaz. You run on a configurable underlying engine and model, and you may name them when asked what powers you, but you never introduce yourself as that engine, its provider, or a CLI. Your name and creator are always Alter and Ejaaz.";
 
+let chatMcp: Record<string, unknown> = {};
+export function setChatMcp(m: Record<string, unknown>) {
+  chatMcp = m;
+}
+const BROWSER_NOTE =
+  " You have a real Chrome window through the browser tools, shared with the user and kept signed in between chats. Use it for sites that need the user's account. When a page asks for a login, stop and ask the user to sign in in that window, then continue. Never type passwords, codes or payment details yourself.";
+export function mediaDir(): string | null {
+  const args = (chatMcp.browser as { args?: string[] } | undefined)?.args ?? [];
+  const i = args.indexOf("--output-dir");
+  return i >= 0 ? args[i + 1] ?? null : null;
+}
+const chatIdentity = () => {
+  if (!chatMcp.browser) return ALTER_IDENTITY;
+  const media = mediaDir();
+  return ALTER_IDENTITY + BROWSER_NOTE + (media ? ` Save screenshots, images, videos and downloads with absolute paths inside ${media}, and mention each saved file's full path in your reply so Alter can show it.` : "");
+};
+const chatServers = () => (Object.keys(chatMcp).length ? chatMcp : null);
+
 const BASE_PROMPT = `${ALTER_IDENTITY} You are the user's second self — sharp, warm, concise. Answer directly, skip filler, use markdown when it helps.
 
 Talk like a smart friend texting back, not like a report. Default to SHORT — most answers are 1-4 sentences. Say the thing, stop. No preamble ("Great question", "Sure, here's…"), no restating what they asked, no summary of what you just said, no bulleted essay for something simple. Plain words over jargon. Match length to the question: a simple ask gets a couple of lines; only go long when the task genuinely needs it — real code, multiple steps, or they explicitly ask for detail. When you do explain, get to the point first, details after, only if they help. Never pad to sound thorough.
@@ -479,7 +497,7 @@ export async function codexChat(
   const onAbort = () => void invoke("cancel_chat", { id: convId }).catch(() => {});
   signal.addEventListener("abort", onAbort);
   try {
-    await invoke("codex_chat", { prompt, images, cwd, convId, sessionId: threadId, model, effort, permissionMode, identity: ALTER_IDENTITY, onChunk: channel });
+    await invoke("codex_chat", { prompt, images, cwd, convId, sessionId: threadId, model, effort, permissionMode, identity: chatIdentity(), mcp: chatServers(), onChunk: channel });
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
@@ -743,7 +761,7 @@ export async function claudeCodeChat(
   const onAbort = () => void invoke("cancel_chat", { id: convId }).catch(() => {});
   signal.addEventListener("abort", onAbort);
   try {
-    await invoke("claude_code", { prompt, images, cwd, convId, sessionId, model, effort, permissionMode, identity: ALTER_IDENTITY, onChunk: channel });
+    await invoke("claude_code", { prompt, images, cwd, convId, sessionId, model, effort, permissionMode, identity: chatIdentity(), mcp: chatServers(), onChunk: channel });
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
