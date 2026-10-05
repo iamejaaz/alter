@@ -400,10 +400,25 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     try {
       ids = JSON.parse(localStorage.getItem(INFLIGHT_KEY) || "[]");
     } catch {}
-    localStorage.removeItem(INFLIGHT_KEY);
-    const resumable = ids.filter((id) => conversations.some((c) => c.id === id));
+    const live = ids.filter((id) => abortsRef.current[id]);
+    if (live.length) localStorage.setItem(INFLIGHT_KEY, JSON.stringify(live));
+    else localStorage.removeItem(INFLIGHT_KEY);
+    const resumable = ids.filter((id) => !abortsRef.current[id] && conversations.some((c) => c.id === id));
     if (!resumable.length) return;
-    setQueued((q) => Object.fromEntries([...Object.entries(q), ...resumable.map((id) => [id, [...(q[id] || []), RESUME_TEXT]])]));
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (!resumable.includes(c.id)) return c;
+        const msgs = c.messages.filter((m) => !(m.role === "assistant" && !m.content && !m.peer && !m.handoff));
+        if (msgs.length && msgs[msgs.length - 1].role === "user" && msgs[msgs.length - 1].content === RESUME_TEXT) msgs.pop();
+        return msgs.length === c.messages.length ? c : { ...c, messages: msgs };
+      })
+    );
+    setQueued((q) => ({
+      ...q,
+      ...Object.fromEntries(
+        resumable.filter((id) => !(q[id] || []).includes(RESUME_TEXT)).map((id) => [id, [...(q[id] || []), RESUME_TEXT]])
+      ),
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => setError(null), [activeId, settings.activeConnectionId, settings.model]);
@@ -2571,7 +2586,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                             <MediaStrip text={m.content} base={active.folder ?? folder} onPreview={setPreview} />
                           )}
                         </>
-                      ) : activeStreaming ? (
+                      ) : activeStreaming && i === active.messages.length - 1 ? (
                         <Logo size={16} busy />
                       ) : (
                         <span className="block py-1" />

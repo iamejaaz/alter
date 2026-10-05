@@ -41,6 +41,7 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 | `Couldn't save your chats — local storage is full.` | Web storage quota | Delete old chats. Images already live on disk and do not count |
 | `Voice dictation isn't supported in this app's webview yet.` | WebKit has no speech API here | Use the Mac's own dictation shortcut in the text box |
 | `Folder picker is only available in the desktop app` | You are on the Vite dev page in a browser | Use the Tauri window |
+| `The app was quit while you were working. Please continue from where you left off.` appears in a chat | Alter quit or restarted while that chat was running, so it resumes the turn once on the next start. The dead turn's empty reply is removed first, so only one resume shows | Nothing to do. In development every Rust change restarts the app, so avoid long jobs while editing `src-tauri` |
 | A permission or question card appeared and I cannot type | The turn is waiting for the card | Answer, Skip or Deny. Esc interrupts the turn |
 | Message says `Sending at the next step` and nothing happens | The running turn has not reached a step boundary | Press Esc to interrupt it now, or × on the bubble to drop the message |
 | Scheduled message did not send | Alter was closed at that time, or the chat's connection failed | It sends when Alter next opens. Check the chat for an error under it |
