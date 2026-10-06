@@ -1873,6 +1873,7 @@ fn install_bundled_skills() {
 }
 
 pub fn run() {
+    local_cli::fix_path();
     install_bundled_skills();
     tauri::Builder::default()
         .manage(browser::BrowserState::default())

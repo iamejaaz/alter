@@ -19,7 +19,7 @@ Presets fill the URL and a model: DeepSeek (`https://api.deepseek.com`), Gemini 
 
 A connection with base URL `claude-code://local`. Alter runs the `claude` CLI with your Claude subscription. No key or URL.
 
-**How Alter finds the CLI:** it checks PATH, then `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `~/.local/bin`, `~/.claude/local`, `~/.npm-global/bin`, `~/.bun/bin`, `~/.volta/bin`.
+**How Alter finds the CLI:** an app opened from Finder or the Dock only gets the bare system PATH. So at startup Alter asks your login shell (`$SHELL -ilc`, 5 second limit) for the PATH Terminal uses and adds the usual install folders: Homebrew, `~/.local/bin`, `~/.claude/local`, `~/.npm-global/bin`, every Node version under `~/.nvm` and fnm, Volta, Bun, pnpm, Yarn, asdf and mise shims, `~/.cargo/bin`. Every program Alter starts (`claude`, `codex`, `gh`, `fr`, `git`, `npx`) is found through that PATH (`fix_path` and `find` in `src-tauri/src/local_cli.rs`).
 
 **Status:** Settings runs `claude auth status --json` and shows `Signed in · <email>` with the version, or `Not signed in`.
 
@@ -35,7 +35,7 @@ A connection with base URL `claude-code://local`. Alter runs the `claude` CLI wi
 
 A connection with base URL `codex://local`. Alter runs `codex app-server` over stdio with your ChatGPT plan.
 
-**How Alter finds it:** the same directories as above, then `/Applications/Codex.app/Contents/Resources/codex`.
+**How Alter finds it:** the same PATH as above, then the Codex app at `/Applications/Codex.app` or `~/Applications/Codex.app`.
 
 **Status:** Settings runs `codex login status`, then makes one real request (`codex exec` with a read only sandbox, up to 90 seconds) because Codex can report signed in after its login expired. `Login expired` means that request failed.
 

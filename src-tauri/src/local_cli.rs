@@ -5,28 +5,94 @@ fn home() -> PathBuf {
     std::env::var("HOME").map(PathBuf::from).unwrap_or_default()
 }
 
+fn shell_path() -> Option<String> {
+    let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/zsh".into());
+    let mut child = Command::new(&shell)
+        .args(["-ilc", "printf '__ALTER_PATH__%s__ALTER_PATH__' \"$PATH\""])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(50)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+    let mut out = String::new();
+    use std::io::Read;
+    child.stdout.take()?.read_to_string(&mut out).ok()?;
+    let start = out.find("__ALTER_PATH__")? + "__ALTER_PATH__".len();
+    let end = out[start..].find("__ALTER_PATH__")? + start;
+    Some(out[start..end].to_string())
+}
+
+fn versioned_bins(dir: PathBuf, suffix: &str) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .map(|rd| rd.flatten().map(|e| e.path().join(suffix)).filter(|p| p.is_dir()).collect())
+        .unwrap_or_default();
+    v.sort();
+    v.reverse();
+    v
+}
+
+fn extra_dirs() -> Vec<PathBuf> {
+    let h = home();
+    let mut dirs: Vec<PathBuf> = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/opt/local/bin"].iter().map(PathBuf::from).collect();
+    for d in [".local/bin", ".claude/local", ".npm-global/bin", ".bun/bin", ".volta/bin", "Library/pnpm", ".yarn/bin", ".asdf/shims", ".local/share/mise/shims", ".cargo/bin", "bin"] {
+        dirs.push(h.join(d));
+    }
+    dirs.extend(versioned_bins(h.join(".nvm/versions/node"), "bin"));
+    dirs.extend(versioned_bins(h.join("Library/Application Support/fnm/node-versions"), "installation/bin"));
+    dirs.extend(versioned_bins(h.join(".local/share/fnm/node-versions"), "installation/bin"));
+    dirs.push(PathBuf::from("/usr/bin"));
+    dirs.push(PathBuf::from("/bin"));
+    dirs
+}
+
+pub fn fix_path() {
+    let mut parts: Vec<String> = Vec::new();
+    let mut add = |p: &str| {
+        if !p.is_empty() && !parts.iter().any(|x| x == p) {
+            parts.push(p.to_string());
+        }
+    };
+    if let Some(sp) = shell_path() {
+        sp.split(':').for_each(&mut add);
+    }
+    std::env::var("PATH").unwrap_or_default().split(':').for_each(&mut add);
+    for d in extra_dirs().into_iter().filter(|d| d.is_dir()) {
+        add(&d.display().to_string());
+    }
+    std::env::set_var("PATH", parts.join(":"));
+}
+
 pub fn find(name: &str) -> Option<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var("PATH")
+    let dirs: Vec<PathBuf> = std::env::var("PATH")
         .unwrap_or_default()
         .split(':')
         .filter(|d| !d.is_empty())
         .map(PathBuf::from)
+        .chain(extra_dirs())
         .collect();
-    let h = home();
-    for d in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
-        dirs.push(PathBuf::from(d));
-    }
-    for d in [".local/bin", ".claude/local", ".npm-global/bin", ".bun/bin", ".volta/bin"] {
-        dirs.push(h.join(d));
-    }
     if let Some(p) = dirs.iter().map(|d| d.join(name)).find(|p| p.is_file()) {
         return Some(p);
     }
+    let h = home();
     if name == "codex" {
         for app in [PathBuf::from("/Applications/Codex.app"), h.join("Applications/Codex.app")] {
-            let p = app.join("Contents/Resources/codex");
-            if p.is_file() {
-                return Some(p);
+            for inner in ["Contents/Resources/codex", "Contents/MacOS/codex"] {
+                let p = app.join(inner);
+                if p.is_file() {
+                    return Some(p);
+                }
             }
         }
     }
@@ -215,3 +281,4 @@ pub async fn codex_check() -> Result<String, String> {
     let err = String::from_utf8_lossy(&out.stderr).to_string();
     Err(signin_hint(&err).unwrap_or_else(|| err.lines().last().unwrap_or("Codex gave no answer.").to_string()))
 }
+
