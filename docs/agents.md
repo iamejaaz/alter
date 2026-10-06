@@ -56,6 +56,7 @@ Installed into `~/.claude/skills` on every start from `skills/` in the repo. Edi
 - `frappe-pr-review`: the review rubric, result format and comment rules. Scripts: `pr-threads.sh`, `where.sh`.
 - `frappe-support-diagnosis`: the triage method and the prompts for every verb (`prompts.json`). Scripts: `context.py`, `find-code.sh`, `across-versions.sh`, `repro.sh`, `repro-setup.sh`.
 - `plain-writing`: how anything sent under your name is written.
+- `frappe-debugging`: debugging on a local bench. Finding the bench, site and port, checking the server is the right one and current, logging in with `bench browse --sid` instead of a password, reproducing, reading the logs, and when a change needs a build, migrate or restart.
 
 ## Related
 

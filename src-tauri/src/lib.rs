@@ -1869,11 +1869,13 @@ fn install_bundled_skills() {
     let review = std::path::Path::new(&home).join(".claude/skills/frappe-pr-review");
     let review_scripts = review.join("scripts");
     let writing = std::path::Path::new(&home).join(".claude/skills/plain-writing");
-    if std::fs::create_dir_all(&scripts).is_err() || std::fs::create_dir_all(&review_scripts).is_err() || std::fs::create_dir_all(&writing).is_err() {
+    let debugging = std::path::Path::new(&home).join(".claude/skills/frappe-debugging");
+    if std::fs::create_dir_all(&scripts).is_err() || std::fs::create_dir_all(&review_scripts).is_err() || std::fs::create_dir_all(&writing).is_err() || std::fs::create_dir_all(&debugging).is_err() {
         return;
     }
-    let files: [(std::path::PathBuf, &str, bool); 11] = [
+    let files: [(std::path::PathBuf, &str, bool); 12] = [
         (writing.join("SKILL.md"), include_str!("../../skills/plain-writing/SKILL.md"), false),
+        (debugging.join("SKILL.md"), include_str!("../../skills/frappe-debugging/SKILL.md"), false),
         (dir.join("SKILL.md"), include_str!("../../skills/frappe-support-diagnosis/SKILL.md"), false),
         (dir.join("prompts.json"), include_str!("../../skills/frappe-support-diagnosis/prompts.json"), false),
         (scripts.join("context.py"), include_str!("../../skills/frappe-support-diagnosis/scripts/context.py"), true),
