@@ -61,6 +61,17 @@ Ticket panel extras: **Continue in** Alter chat, fr assistant, or Prepare fix. *
 
 What the agents behind these panels are allowed to do is in [agents.md](agents.md).
 
+## Runs in the app sidebar
+
+Runs started from the extension also show at the top of Alter's sidebar. Clicking one opens a panel beside the chat, not the browser:
+
+- **Status:** running with its time, finished with how long it took, or stopped with the reason. **Stop** ends a running one.
+- **Result:** the review or the diagnosis as written, refreshed every 2 seconds while it runs. The JSON block of review comments is hidden; post those from the PR panel.
+- **What it did:** the steps, folded.
+- **Open PR on GitHub**, **Open ticket** or **Open page** opens the link only when you click it. **Copy** copies the result.
+
+The panel reads `bridge_run` from the bridge's in memory list, so a run is gone after Alter restarts or 12 hours after it ends.
+
 ## Popup
 
 **Update** runs `git pull --ff-only` in Alter's own repo through the bridge (`POST /update`), lists the new commits, and reloads the extension when files under `extension/` changed. Refresh open GitHub and helpdesk tabs after that. The same button is in the app, Settings, General, Update Alter.

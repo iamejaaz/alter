@@ -573,6 +573,11 @@ fn bridge_runs(state: tauri::State<'_, bridge::BridgeState>) -> Vec<serde_json::
 }
 
 #[tauri::command]
+fn bridge_run(state: tauri::State<'_, bridge::BridgeState>, run_id: String) -> Option<serde_json::Value> {
+    bridge::run_detail(&state, &run_id)
+}
+
+#[tauri::command]
 fn bridge_cancel(state: tauri::State<'_, bridge::BridgeState>, run_id: String) -> bool {
     bridge::cancel_run(&state, &run_id)
 }
@@ -1905,6 +1910,7 @@ pub fn run() {
             bridge_runs,
             bridge_cancel,
             bridge_dismiss,
+            bridge_run,
             file_read_full,
             file_remove,
             snapshot_save,

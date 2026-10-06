@@ -7,6 +7,7 @@ import ComposerSelect from "./components/ComposerSelect";
 import SendLater from "./components/SendLater";
 import MediaStrip from "./components/MediaStrip";
 import BrowserPane from "./components/BrowserPane";
+import RunPanel from "./components/RunPanel";
 import AttachmentImage from "./components/AttachmentImage";
 import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
@@ -240,6 +241,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dropping, setDropping] = useState(false);
   const [browserPane, setBrowserPane] = useState(false);
+  const [openRun, setOpenRun] = useState<string | null>(null);
   const paneDismissed = useRef(false);
   const [jobs, setJobs] = useState<Record<string, { since: number; step?: string }>>({});
   const dragDepth = useRef(0);
@@ -2288,7 +2290,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         onTogglePin={(id) => updateConversation(id, (c) => ({ ...c, pinned: !c.pinned }))}
         onToggleMute={(id) => updateConversation(id, (c) => ({ ...c, muted: !c.muted }))}
         backgroundRuns={bgRuns}
-        onOpenUrl={(url) => void invoke("open_external", { url }).catch(() => {})}
+        onOpenRun={(id) => {
+          setArtifact(null);
+          setShowChanges(false);
+          setBrowserPane(false);
+          setOpenRun(id);
+          setView("chat");
+        }}
         onStopRun={(runId) => {
           void invoke("bridge_cancel", { runId }).catch(() => {});
           setBgRuns((l) => l.map((r) => (r.runId === runId ? { ...r, done: true, error: "Stopped" } : r)));
@@ -3242,6 +3250,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       </main>
 
       {artifact && <ArtifactPanel artifact={artifact} onClose={() => setArtifact(null)} />}
+      {openRun && !artifact && !showChanges && !browserPane && (
+        <RunPanel
+          runId={openRun}
+          onClose={() => setOpenRun(null)}
+          onStop={(runId) => void invoke("bridge_cancel", { runId }).catch(() => {})}
+        />
+      )}
       {browserPane && !artifact && !showChanges && (
         <BrowserPane
           onClose={() => {

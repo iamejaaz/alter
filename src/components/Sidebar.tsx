@@ -17,7 +17,7 @@ export interface BackgroundRun {
 
 interface Props {
   backgroundRuns?: BackgroundRun[];
-  onOpenUrl?: (url: string) => void;
+  onOpenRun?: (runId: string) => void;
   onStopRun?: (runId: string) => void;
   onDismissRun?: (runId?: string) => void;
   conversations: Conversation[];
@@ -51,7 +51,7 @@ const since = (ms: number) => {
 
 export default function Sidebar({
   backgroundRuns = [],
-  onOpenUrl,
+  onOpenRun,
   onStopRun,
   onDismissRun,
   conversations,
@@ -375,7 +375,7 @@ export default function Sidebar({
                 <div
                   key={r.runId}
                   className="group flex min-h-7 items-center gap-2 rounded-lg px-2 py-1 text-[13px] cursor-pointer text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
-                  onClick={() => r.url && onOpenUrl?.(r.url)}
+                  onClick={() => onOpenRun?.(r.runId)}
                   title={r.error || r.step || r.label}
                 >
                   <span className="flex w-2 shrink-0 justify-center">

@@ -167,6 +167,24 @@ pub fn runs_snapshot(state: &BridgeState) -> Vec<serde_json::Value> {
     out
 }
 
+pub fn run_detail(state: &BridgeState, run_id: &str) -> Option<serde_json::Value> {
+    let map = state.progress.lock().unwrap_or_else(|e| e.into_inner());
+    let p = map.get(run_id)?;
+    let ended = p.finished_at.map(|t| t.elapsed().as_millis() as u64);
+    Some(serde_json::json!({
+        "runId": run_id,
+        "label": p.label,
+        "url": p.url,
+        "kind": p.kind,
+        "startedAt": p.started_at,
+        "endedAgoMs": ended,
+        "done": p.done,
+        "error": p.error,
+        "text": p.text,
+        "steps": p.steps,
+    }))
+}
+
 pub fn cancel_run(state: &BridgeState, run_id: &str) -> bool {
     let pid = state.running.lock().unwrap_or_else(|e| e.into_inner()).get(run_id).copied();
     if let Some(pid) = pid {
