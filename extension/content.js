@@ -242,7 +242,7 @@ const DRAFT_SYSTEM =
 const VERIFY_SYSTEM = [
   "You verify a GitHub PR by RUNNING its code on a bench, not by reading the diff. Follow section 5b, \"Run the PR's own code\", of the frappe-pr-review skill (its SKILL.md is in your skills; read it first), and its where.sh to find the app and site.",
   "Repro benches (literal paths, use them exactly as written): {benches}. Pick the one whose version matches the PR's base branch. NEVER put $ALTER_REPRO_* or any $-variable in a command: the sandbox denies shell expansion. Run `bench` bare from that bench folder (`cd <bench> && bench --site …`), never by absolute path, never wrapped in `timeout`. If testing is disabled on the site, run `bench --site <site> set-config allow_tests true` once. A script goes through `{skill}/scripts/repro.sh develop -` on stdin, never `env/bin/python` or `bench console` directly.",
-  "Output for the reader, who wants to know what is wrong with the PR, not how you debugged it. In this order and nothing else. Line 1: **Works**, **Broken** or **Couldn't run it**, then one plain sentence on what a user sees (for example: an invoice made from a sales order now uses the coupon once). Then **Issues in this PR**: one bullet per real problem, written as a plain user example (a user does X, they get Y, they should get Z), then the one change that fixes it. Count the review's findings and anything your run exposed; if there are none, the single line `None found.` Then one line **Tested:** naming what passed or failed in plain words, no commands, no counts of steps. Last, only if the bench is left changed, one line **Bench:** with what changed. No command listings, no reverting counter-checks, no service or redis notes, no file paths unless the fix needs one. NEVER claim it works without actually running something.",
+  "Output in exactly this shape and nothing else. Line 1: `Verdict: READY` (safe to approve), `Verdict: NEEDS CHANGES` or `Verdict: NEEDS HUMAN JUDGMENT`. Line 2: `Reproduced: yes` when you ran the PR's code, else `Reproduced: no`. Then two or three plain sentences: what the PR does for a user and whether it works. Then a line `### Changes needed` followed by a numbered list, one item per change the author must make, each item exactly: `1. **Blocking**: <the change, one sentence>` (or **Nit**), next line the anchor in backticks like `path/to/file.py:123`, next line why, as a plain user example (a user does X, gets Y, should get Z). Count the review's findings that still hold and anything your run exposed. If nothing needs changing, the single line `None.` under the heading. Then a line `### Checked` and under it everything about how you ran it: commands, test results, the before and after comparison, environment problems, what the bench was left with. Nothing about the run goes above `### Checked`. NEVER say READY or Reproduced: yes without actually running the PR's code.",
 ].join(" ");
 
 async function fixPr() {
@@ -441,7 +441,7 @@ function reviewHeader(text) {
 function findingCard(item) {
   const lines = item.split("\n").map((l) => l.trim());
   const head = lines.shift() || "";
-  const m = head.match(/^\**\s*(Blocking|Nit)\s*:\s*([\s\S]*?)\**$/i);
+  const m = head.match(/^\**\s*(Blocking|Nit)\s*\**\s*:\s*\**\s*([\s\S]*?)\**$/i);
   const sev = m ? m[1].toLowerCase() : "";
   const raw = (m ? m[2] : head).replace(/\*\*/g, "").trim();
   const ask = raw.charAt(0).toUpperCase() + raw.slice(1);
@@ -465,7 +465,7 @@ function renderReview(text) {
   };
   const changes = section("changes needed");
   if (changes === null) return reviewHeader(body) + mini(body);
-  const summary = parts[0].replace(/^.*Verdict:.*$/im, "").trim();
+  const summary = parts[0].replace(/^.*(Verdict|Reproduced):.*$/gim, "").trim();
   const items = changes.split(/^\s*\d+\.\s+/m).map((x) => x.trim()).filter(Boolean);
   const numbered = /^\s*\d+\.\s+/m.test(changes);
   const checked = section("checked");
@@ -637,7 +637,7 @@ function pollRun(el, runId, opts) {
         const clean = displayText(p.text || "") ?? (p.text || "");
         const body = document.getElementById("alter-panel-body");
         const wasAtBottom = nearBottom(body);
-        ans.innerHTML = opts.label === "review" ? renderReview(clean) : mini(clean);
+        ans.innerHTML = opts.label === "review" || opts.label === "verify" ? renderReview(clean) : mini(clean);
         el.appendChild(ans);
         // Only reposition if the user was following along at the bottom.
         if (wasAtBottom && body) {
