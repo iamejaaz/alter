@@ -1415,6 +1415,34 @@ fn read_frontmatter(path: &std::path::Path) -> (Option<String>, String) {
 }
 
 #[tauri::command]
+fn claude_models() -> Vec<String> {
+    fn walk(v: &serde_json::Value, out: &mut std::collections::BTreeSet<String>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                for (k, x) in m {
+                    if let (true, Some(s)) = (k == "model", x.as_str()) {
+                        if s.starts_with("claude-") && s.chars().any(|c| c.is_ascii_digit()) {
+                            out.insert(s.to_string());
+                        }
+                    }
+                    walk(x, out);
+                }
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut out = std::collections::BTreeSet::new();
+    for f in [".claude.json", ".claude/settings.json"] {
+        if let Ok(v) = std::fs::read_to_string(std::path::Path::new(&home).join(f)).map(|t| serde_json::from_str::<serde_json::Value>(&t).unwrap_or_default()) {
+            walk(&v, &mut out);
+        }
+    }
+    out.into_iter().collect()
+}
+
+#[tauri::command]
 fn list_claude_skills(cwd: Option<String>) -> Vec<SkillEntry> {
     let mut roots: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(h) = std::env::var("HOME") {
@@ -1918,6 +1946,7 @@ pub fn run() {
             save_attachment,
             load_attachment,
             list_claude_skills,
+            claude_models,
             delete_attachments,
             list_dir,
             list_tree,

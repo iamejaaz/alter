@@ -1825,11 +1825,31 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     storage.saveSettings(s);
     if (activeId) updateConversation(activeId, (c) => ({ ...c, model }));
   };
-  const CLAUDE_MODELS = [
+  const [seenClaudeModels, setSeenClaudeModels] = useState<string[]>([]);
+  useEffect(() => {
+    void invoke<string[]>("claude_models").then(setSeenClaudeModels).catch(() => {});
+  }, [settings.model]);
+  const FAMILIES = ["fable", "opus", "sonnet", "haiku"];
+  const modelLabel = (id: string) => {
+    const m = id.match(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
+    if (!m) return id;
+    return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? "." + m[3] : ""}`;
+  };
+  const versionKey = (id: string) => {
+    const m = id.match(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?/);
+    const fam = m ? FAMILIES.indexOf(m[1]) : 99;
+    return [fam < 0 ? 98 : fam, -(m ? Number(m[2]) * 100 + Number(m[3] ?? 0) : 0)];
+  };
+  const CLAUDE_MODELS: { id: string; label: string; group?: string }[] = [
     { id: "claude-code", label: "Default" },
-    { id: "opus", label: "Opus 5" },
-    { id: "sonnet", label: "Sonnet 5" },
-    { id: "haiku", label: "Haiku" },
+    ...FAMILIES.map((f) => ({ id: f, label: `${f[0].toUpperCase()}${f.slice(1)} (latest)`, group: "Always the newest" })),
+    ...[...new Set([...seenClaudeModels, ...(settings.model?.startsWith("claude-") && settings.model !== "claude-code" ? [settings.model] : [])])]
+      .sort((a, b) => {
+        const [fa, va] = versionKey(a);
+        const [fb, vb] = versionKey(b);
+        return fa - fb || va - vb;
+      })
+      .map((id) => ({ id, label: modelLabel(id), group: "Specific versions" })),
   ];
   const claudeCodeActive = isClaudeCodeUrl(settings.baseUrl);
   const [claudeSkills, setClaudeSkills] = useState<{ name: string; description: string }[]>([]);
@@ -3235,7 +3255,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   <ComposerSelect
                     value={CLAUDE_MODELS.some((m) => m.id === settings.model) ? settings.model : "claude-code"}
                     onChange={setClaudeModel}
-                    options={CLAUDE_MODELS.map((m) => ({ value: m.id, label: m.label }))}
+                    options={CLAUDE_MODELS.map((m) => ({ value: m.id, label: m.label, group: m.group }))}
                     title="Claude Code model"
                   />
                 )}

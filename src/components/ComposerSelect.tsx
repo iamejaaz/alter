@@ -3,7 +3,7 @@ import { Chevron } from "./Icons";
 interface Props {
   value: string;
   onChange: (value: string) => void;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; group?: string }[];
   title?: string;
 }
 
@@ -20,10 +20,23 @@ export default function ComposerSelect({ value, onChange, options, title }: Prop
         title={title}
         className="absolute inset-0 h-full w-full min-w-0 appearance-none truncate bg-transparent rounded-lg hover:bg-[var(--panel-2)] px-2 pr-5 font-medium text-[var(--txt-dim)] hover:text-[var(--txt)] focus:outline-none cursor-pointer transition-colors"
       >
-        {options.map((o) => (
-          <option key={o.value} value={o.value} className="bg-[var(--modal)]">
-            {o.label}
-          </option>
+        {options
+          .filter((o) => !o.group)
+          .map((o) => (
+            <option key={o.value} value={o.value} className="bg-[var(--modal)]">
+              {o.label}
+            </option>
+          ))}
+        {[...new Set(options.map((o) => o.group).filter(Boolean))].map((g) => (
+          <optgroup key={g} label={g} className="bg-[var(--modal)]">
+            {options
+              .filter((o) => o.group === g)
+              .map((o) => (
+                <option key={o.value} value={o.value} className="bg-[var(--modal)]">
+                  {o.label}
+                </option>
+              ))}
+          </optgroup>
         ))}
       </select>
       <Chevron />
