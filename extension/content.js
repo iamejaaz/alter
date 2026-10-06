@@ -161,10 +161,46 @@ async function showSaved(parts, saved) {
   if (now && saved.head && now !== saved.head && note.isConnected) note.firstChild.textContent = `Reviewed ${ago(saved.at)}, and the PR has new commits since. `;
 }
 
+const RUN_INTENT = /\b(verify|reproduce|repro|bench|console|run (?:it|this|that|the tests?|tests)|try it|execute)\b/i;
+
+function sessionTranscript() {
+  return `\n\nReview:\n${withoutJsonFence(session.review)}` + session.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
+}
+
+async function continueInAlter() {
+  if (!session) return;
+  const p = session.parts;
+  const ref = session.kind === "issue" ? session.issue : `${p.owner}/${p.repo}#${p.num}`;
+  const prompt = `Continue working on GitHub ${session.kind === "issue" ? "issue" : "PR"} ${ref}. Here is what was done so far in the browser panel, so pick up from it instead of starting over:${sessionTranscript()}\n\nAsk me what to do next if it is not clear from the last message.`;
+  const r = await send({ type: "open-chat", prompt, title: ref, connectionId: session.connectionId, model: session.model });
+  if (!r || !r.ok) appendBlock("assistant").innerHTML = `<span class="alter-err">${escapeHtml((r && r.error) || "Couldn't open Alter. Is the app running?")}</span>`;
+}
+
+async function runFollowUp(q) {
+  const p = session.parts;
+  const info = await send({ type: "repro-info" });
+  const block = appendBlock("assistant");
+  if (!(info && info.ok && info.data && info.data.configured)) {
+    block.innerHTML = "No repro bench is set yet. In Alter, open <b>Settings, Support agent, Repro benches</b> and choose your bench folder. Then ask again.";
+    return;
+  }
+  const a = await streamAgent(block, {
+    connectionId: session.connectionId,
+    includeMemory: true,
+    model: session.model,
+    mode: "verify",
+    system: VERIFY_SYSTEM,
+    prompt: `PR ${p.owner}/${p.repo}#${p.num}.${sessionTranscript()}\n\nUser: ${q}\n\nDo what the user asks by running it on the matching repro bench, then report.`,
+    label: "verify",
+  });
+  session.transcript.push({ q, a });
+}
+
 async function followUp(q) {
   if (!session || !q.trim()) return;
   appendBlock("user").textContent = q;
   if (session.resumeReview) return continueReview(q);
+  if (session.kind !== "issue" && RUN_INTENT.test(q) && !REPLY_INTENT.test(q)) return runFollowUp(q);
   const t = session.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
   // Normal CHAT about the PR you already reviewed — not a fresh review each time.
   // A request for a comment to POST is a PR review comment (code refs welcome, in
@@ -172,7 +208,7 @@ async function followUp(q) {
   const isIssue = session.kind === "issue";
   const domain = isIssue
     ? "The work here is a fix you prepared on a local branch for a GitHub issue; you may read the branch with git and cite file:line."
-    : `The work here is your review of GitHub PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}. Every question is about that PR: read it with \`gh pr view\` and \`gh pr diff\` when you need a fact, and never answer from the state of the local checkout. Cite file:line when the question is about the code. This panel is read-only, so you cannot edit, commit or push: when asked to change the PR, say exactly what to change, and say that the "Fix this PR" button below prepares it.`;
+    : `The work here is your review of GitHub PR ${session.parts.owner}/${session.parts.repo}#${session.parts.num}. Every question is about that PR: read it with \`gh pr view\` and \`gh pr diff\` when you need a fact, and never answer from the state of the local checkout. Cite file:line when the question is about the code. You cannot edit, commit or push from here: when asked to change the PR, say exactly what to change, and say that the "Fix this PR" button below prepares it. Never say a command is blocked or that you cannot run things: asking to run or verify something here runs it on the repro bench.`;
   const wantsReply = REPLY_INTENT.test(q);
   const system = wantsReply
     ? `${domain} ${FOLLOWUP_SYSTEM} You are drafting a PR REVIEW COMMENT to post on GitHub, in your OWN terse review voice from memory (not a customer reply): plain, direct, your exact phrasing. ${COMMENT_VOICE} ${ANCHOR_FORMAT} Output ONLY the comment.`
@@ -214,7 +250,7 @@ async function fixPr() {
   if (!session) return;
   appendBlock("user").textContent = "Fix this PR";
   const p = session.parts;
-  const t = `\n\nReview:\n${withoutJsonFence(session.review)}` + session.transcript.map((x) => `\n\nUser: ${x.q}\nYou: ${x.a}`).join("");
+  const t = sessionTranscript();
   const block = appendBlock("assistant");
   const a = await streamAgent(block, {
     connectionId: session.connectionId,
@@ -383,6 +419,10 @@ function displayText(full) {
 // The verdict is one line somewhere in a long review, and the JSON fence at the
 // end is for the poster, not the reader. Pull the verdict up into a header and
 // keep the fence out of the rendered text.
+function isReady(text) {
+  return /Verdict:\s*\**\s*READY\b/i.test(text || "");
+}
+
 function reviewHeader(text) {
   const v = (text || "").match(/Verdict:\s*\**\s*(READY|NEEDS CHANGES|NEEDS HUMAN JUDGMENT)/i);
   if (!v) return "";
@@ -898,8 +938,8 @@ function renderFooter() {
       : ""
     : session && session.review
       ? `<button id="alter-post-review" class="alter-primary">Preview comments</button>${
-          session.fixPrepared ? '<button id="alter-pr-push">Push to PR</button>' : '<button id="alter-pr-fix">Fix this PR</button>'
-        }<button id="alter-verify">Verify on bench</button>`
+          session.fixPrepared ? '<button id="alter-pr-push">Push to PR</button>' : isReady(session.review) ? "" : '<button id="alter-pr-fix">Fix this PR</button>'
+        }<button id="alter-verify">Verify on bench</button><button id="alter-continue">Continue in Alter</button>`
       : "";
   foot.innerHTML = `
     <div id="alter-foot-btns">${btns}</div>
@@ -919,6 +959,8 @@ function renderFooter() {
   };
   busyRun("#alter-pr-fix", fixPr);
   busyRun("#alter-pr-push", pushPrFix);
+  const contBtn = foot.querySelector("#alter-continue");
+  if (contBtn) contBtn.addEventListener("click", continueInAlter);
   const pushBtn = foot.querySelector("#alter-push");
   if (pushBtn) pushBtn.addEventListener("click", (e) => { e.target.disabled = true; pushIssueFix(); });
   const verifyBtn = foot.querySelector("#alter-verify");

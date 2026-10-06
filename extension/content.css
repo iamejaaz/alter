@@ -144,12 +144,13 @@
 #alter-foot-btns,
 #alter-foot-btns2 {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
 }
 #alter-foot-btns button,
 #alter-foot-btns2 button {
-  flex: 1;
+  flex: 1 1 30%;
   background: #232329;
   border: 1px solid #34343c;
   color: #e4e4e7;
