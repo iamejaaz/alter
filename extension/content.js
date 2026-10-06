@@ -174,7 +174,7 @@ async function reviewDone(raw) {
   session.review = raw;
   if (raw) await saveReview(prKey(session.parts), { at: new Date().toISOString(), head: session.head, review: raw, connectionId: session.connectionId, model: session.model });
   renderFooter();
-  refreshBadge();
+  loadBot();
 }
 
 async function continueReview(q) {
@@ -818,23 +818,11 @@ function ago(iso) {
   if (s < 129600) return `${Math.round(s / 3600)}h ago`;
   return `${Math.round(s / 86400)}d ago`;
 }
-async function refreshBadge() {
+async function loadBot() {
   const parts = prParts();
-  const badge = document.getElementById("alter-badge");
-  if (!parts || !badge) return;
+  if (!parts) return;
   const r = await send({ type: "pr-reviewed", repo: `${parts.owner}/${parts.repo}`, num: parts.num });
-  const d = r && r.ok ? r.data : null;
-  if (d) botLogin = d.bot || "";
-  const local = await savedReview(prKey(parts));
-  badge.textContent = !d
-    ? ""
-    : !d.open
-      ? "closed"
-      : d.lastReview
-        ? `reviewed ${ago(d.lastReview)}`
-        : local
-          ? `reviewed ${ago(local.at)}, not posted`
-          : "not reviewed yet";
+  if (r && r.ok && r.data) botLogin = r.data.bot || "";
 }
 
 function ensureButton() {
@@ -846,11 +834,11 @@ function ensureButton() {
   wrap.id = "alter-actions";
   const b = document.createElement("button");
   b.className = "alter-action-btn";
-  b.innerHTML = `${isIssue ? "Fix with Alter" : "Review with Alter"}${isIssue ? "" : '<span id="alter-badge"></span>'}`;
+  b.textContent = isIssue ? "Fix with Alter" : "Review with Alter";
   b.addEventListener("click", () => (isIssue ? runIssueFix() : run()));
   wrap.appendChild(b);
   document.body.appendChild(wrap);
-  refreshBadge();
+  loadBot();
 }
 
 async function runIssueFix() {
