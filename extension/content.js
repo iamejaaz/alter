@@ -809,9 +809,9 @@ function openPanel() {
     <div id="alter-panel-head">
       <span id="alter-panel-title">Alter — PR review</span>
       <div>
-        <button id="alter-copy" title="Copy the review, or the comments while you preview them">Copy review</button>
+        <button id="alter-copy" title="Copy the review, or the comments while you preview them">Copy</button>
         <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
-        <button id="alter-min" title="Minimize">▾</button>
+        <button id="alter-min" title="Minimize">–</button>
         <button id="alter-close" title="Close">×</button>
       </div>
     </div>
@@ -827,12 +827,12 @@ function openPanel() {
     if (!text) return;
     navigator.clipboard.writeText(text);
     b.textContent = "Copied";
-    setTimeout(() => (b.textContent = "Copy review"), 1500);
+    setTimeout(() => (b.textContent = "Copy"), 1500);
   });
   el.querySelector("#alter-min").addEventListener("click", () => {
     const min = el.classList.toggle("alter-collapsed");
     float.collapse(min);
-    el.querySelector("#alter-min").textContent = min ? "▴" : "▾";
+    el.querySelector("#alter-min").textContent = min ? "▢" : "–";
     el.querySelector("#alter-min").title = min ? "Expand" : "Minimize";
   });
   el.querySelector("#alter-stop").addEventListener("click", () => {

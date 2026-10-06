@@ -339,6 +339,21 @@ fn read_user_memory() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn app_update() -> serde_json::Value {
+    tokio::task::spawn_blocking(bridge::self_update).await.unwrap_or_else(|e| serde_json::json!({ "ok": false, "error": e.to_string() }))
+}
+
+#[tauri::command]
+fn app_version_info() -> serde_json::Value {
+    let root = bridge::repo_root();
+    let head = std::process::Command::new("git").arg("-C").arg(&root).args(["log", "-1", "--format=%h %cr"]).output().ok();
+    serde_json::json!({
+        "root": root.display().to_string(),
+        "head": head.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default(),
+    })
+}
+
+#[tauri::command]
 fn claude_mcp_servers() -> Vec<serde_json::Value> {
     let Ok(home) = std::env::var("HOME") else { return Vec::new() };
     let Ok(raw) = std::fs::read_to_string(std::path::Path::new(&home).join(".claude.json")) else { return Vec::new() };
@@ -1931,6 +1946,8 @@ pub fn run() {
             browser::browser_close,
             agent_browser::agent_browser_open,
             claude_mcp_servers,
+            app_update,
+            app_version_info,
             agent_browser::media_allow,
             agent_browser::media_reveal,
             browser_pane::pane_snapshot,

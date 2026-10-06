@@ -195,6 +195,35 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [memoryImport, setMemoryImport] = useState(false);
   const [browserNote, setBrowserNote] = useState<string | null>(null);
   const [browserApp, setBrowserApp] = useState<string | null>(null);
+  const [version, setVersion] = useState<{ root: string; head: string } | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [updateNote, setUpdateNote] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    void invoke<{ root: string; head: string }>("app_version_info").then(setVersion).catch(() => {});
+  }, []);
+  const runUpdate = async () => {
+    setUpdating(true);
+    setUpdateNote(null);
+    try {
+      const u = await invoke<{ ok: boolean; error?: string; updated?: boolean; head?: string; commits?: string[]; backend?: boolean; extension?: boolean; skills?: boolean }>("app_update");
+      if (!u.ok) setUpdateNote({ ok: false, text: u.error ?? "Update failed." });
+      else if (!u.updated) setUpdateNote({ ok: true, text: `Already up to date (${u.head}).` });
+      else {
+        const n = u.commits?.length ?? 0;
+        const after = [
+          u.backend ? "the app restarts itself in dev, or rebuild it" : "",
+          u.extension ? "reload the extension (its popup has Update too)" : "",
+          u.skills ? "restart Alter to install the new skills" : "",
+        ].filter(Boolean);
+        setUpdateNote({ ok: true, text: `Updated to ${u.head}, ${n} new commit${n === 1 ? "" : "s"}.${after.length ? ` Next: ${after.join(", ")}.` : ""}` });
+      }
+      void invoke<{ root: string; head: string }>("app_version_info").then(setVersion).catch(() => {});
+    } catch (e) {
+      setUpdateNote({ ok: false, text: String(e) });
+    } finally {
+      setUpdating(false);
+    }
+  };
   useEffect(() => {
     void invoke<{ browser: string | null }>("agent_browser_status")
       .then((s) => setBrowserApp(s.browser))
@@ -389,6 +418,21 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
 
             {tab === "general" && (
               <div>
+                <Row
+                  title="Update Alter"
+                  desc={
+                    <>
+                      Pulls the latest code with git into {version ? <code className="text-[12px]">{version.root}</code> : "Alter's folder"}
+                      {version?.head ? `, now at ${version.head}` : ""}.
+                      {updateNote && <span className={`mt-1 block ${updateNote.ok ? "text-[var(--txt-dim)]" : "text-red-400"}`}>{updateNote.text}</span>}
+                    </>
+                  }
+                  control={
+                    <button onClick={() => void runUpdate()} disabled={updating} className={action}>
+                      {updating ? "Updating…" : "Update"}
+                    </button>
+                  }
+                />
                 <Row title="Light theme" control={<Switch on={light} onChange={toggleTheme} />} />
                 {autostart !== null && (
                   <Row

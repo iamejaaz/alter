@@ -24,6 +24,10 @@ npm run tauri build
 
 The `.app` and `.dmg` land in `src-tauri/target/release/bundle/`. There is no auto update. Install a new build by replacing `Alter.app`.
 
+## Updating
+
+Settings, General, **Update Alter**, or **Update** in the extension popup. Both run `git pull --ff-only` in the repo the app was built from. In `npm run dev` the app then rebuilds and restarts itself when Rust files changed, and the front end reloads on its own. A built `.app` needs `npm run tauri build` again for app changes. The extension reloads itself when its own files changed.
+
 ## Where state lives
 
 | What | Where |

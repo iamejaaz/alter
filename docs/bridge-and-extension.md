@@ -23,6 +23,7 @@ The desktop app runs a small HTTP server on `127.0.0.1:8765` (`src-tauri/src/bri
 | `GET /review-requests`, `GET /bot-replies` | PRs waiting for your review, threads the bot still owes a reply |
 | `POST /fr-write` | A site write the agent proposed, run only after you approve it in the panel |
 | `POST /open-chat`, `POST /assistant` | Hand off into an Alter chat or into `fr assistant` in Terminal |
+| `POST /update` | `git pull --ff-only` in Alter's repo, returns the new commits and which parts changed |
 | `GET /repro-info` | Which repro benches are configured |
 
 ## Install the extension
@@ -54,13 +55,15 @@ GitHub pull requests get **Review with Alter**. Helpdesk tickets get **Summarize
 - takes follow up questions while a run is going: the message queues, **Send now** interrupts the run and continues it after answering
 - shows **Copy**, minimise and close in the header
 
-PR panel extras: **Copy review**, **Preview comments** and **Post review** (the preview is the confirmation: one click on Comment, Request changes or Post as the bot posts what the cards show, and the note under the buttons names the PR), **Fix this PR** and **Push to PR**, **Verify on bench** when a bench is configured. The badge on the button says `reviewed, not posted` when a review exists.
+PR panel extras: **Copy**, **Preview comments** and **Post review** (the preview is the confirmation: one click on Comment, Request changes or Post as the bot posts what the cards show, and the note under the buttons names the PR), **Fix this PR** and **Push to PR**, **Verify on bench** when a bench is configured. The badge on the button says `reviewed, not posted` when a review exists.
 
 Ticket panel extras: **Continue in** Alter chat, fr assistant, or Prepare fix. **Approve & run** cards for any site write the agent proposes.
 
 What the agents behind these panels are allowed to do is in [agents.md](agents.md).
 
 ## Popup
+
+**Update** runs `git pull --ff-only` in Alter's own repo through the bridge (`POST /update`), lists the new commits, and reloads the extension when files under `extension/` changed. Refresh open GitHub and helpdesk tabs after that. The same button is in the app, Settings, General, Update Alter.
 
 Shows connection status, runs in progress with Stop, and runs finished in the last 12 hours with × and Clear. **Describe this page** summarises the active tab.
 

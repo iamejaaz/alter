@@ -57,6 +57,15 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 | A reply names an image but nothing shows | The path does not exist, has a space, or the reply gave a bare file name | Ask the model for the full path. Relative paths only work when the chat has a folder |
 | Image box shows broken | The CSP or asset protocol settings in `src-tauri/tauri.conf.json` were changed | Keep `assetProtocol.enable` true and `img-src`/`media-src` allowing `asset:` and `http://asset.localhost` |
 
+## Update
+
+| Message | Cause | Fix |
+| --- | --- | --- |
+| `is not a git checkout, so Alter can't update itself.` | The app was built from a copy without `.git` | Clone the repo and build from the clone |
+| `Your local branch has commits that are not on the remote` | You committed locally, so a fast forward is not possible | `git pull --rebase` by hand in the repo |
+| `You have local changes to files the update touches.` | Uncommitted edits clash with incoming ones | Commit or stash them, then Update |
+| Updated, but the panels still look old | The extension reloaded but open tabs keep the old script | Refresh the GitHub or helpdesk tab |
+
 ## Agent browser
 
 | Message | Cause | Fix |

@@ -39,6 +39,13 @@
       .run-label:hover { text-decoration: underline; }
       .run-sub { color: #71717a; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
       .run-fail { color: #f87171; }
+      .row2 { display: flex; gap: 8px; }
+      .row2 #settings { flex: 1; }
+      .row2 #update { width: auto; flex: none; padding-left: 14px; padding-right: 14px; }
+      #update-note:empty { display: none; }
+      #update-note { font-size: 12px; color: #a1a1aa; margin: -2px 0 10px; line-height: 1.45; }
+      #update-note .err { color: #f87171; }
+      #update-note ul { margin: 4px 0 0; padding-left: 16px; }
       .run-stop { width: auto; flex: none; background: transparent; border: 1px solid #34343c; color: #a1a1aa; padding: 2px 8px; font-size: 11px; border-radius: 6px; }
       .run-x { border: 0; padding: 0 4px; font-size: 14px; line-height: 18px; opacity: 0; }
       .run:hover .run-x { opacity: 1; }
@@ -52,7 +59,11 @@
     <p class="sub">Uses your desktop app's models. No keys stored here.</p>
     <div class="status" id="status"></div>
     <div id="runs"></div>
-    <button id="settings" class="ghost">⚙ Settings &amp; models</button>
+    <div class="row2">
+      <button id="settings" class="ghost">⚙ Settings &amp; models</button>
+      <button id="update" class="ghost" title="Pull the latest Alter from git, then reload this extension">Update</button>
+    </div>
+    <div id="update-note"></div>
     <button id="describe-page">Describe this page</button>
     <div id="summary"></div>
     <script src="shared.js"></script>

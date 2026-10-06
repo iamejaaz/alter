@@ -18,6 +18,37 @@ async function refresh() {
 
 $("settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
 
+$("update").addEventListener("click", async () => {
+  const btn = $("update");
+  const note = $("update-note");
+  btn.disabled = true;
+  btn.textContent = "Updating…";
+  note.textContent = "";
+  const r = await send({ type: "update" });
+  btn.disabled = false;
+  btn.textContent = "Update";
+  if (!r || !r.ok) {
+    note.innerHTML = `<span class="err">${window.ALTER.escapeHtml((r && r.error) || "Couldn't reach Alter. Is the app running?")}</span>`;
+    return;
+  }
+  const u = r.data;
+  if (!u.updated) {
+    note.textContent = `Already up to date (${u.head}).`;
+    return;
+  }
+  const parts = [];
+  if (u.backend) parts.push("the app restarts itself if you run it with npm run dev, or rebuild it");
+  else if (u.frontend) parts.push("the app reloads itself in dev");
+  if (u.skills) parts.push("restart Alter to install the new skills");
+  const list = u.commits.slice(0, 6).map((c) => `<li>${window.ALTER.escapeHtml(c)}</li>`).join("");
+  note.innerHTML =
+    `Updated to ${u.head}, ${u.commits.length} new commit${u.commits.length === 1 ? "" : "s"}.` +
+    (parts.length ? ` Note: ${parts.join(", ")}.` : "") +
+    `<ul>${list}</ul>` +
+    (u.extension ? "Reloading the extension, then refresh open GitHub and helpdesk tabs." : "");
+  if (u.extension) setTimeout(() => chrome.runtime.reload(), 2500);
+});
+
 $("describe-page").addEventListener("click", async () => {
   const out = $("summary");
   const { models } = await chrome.storage.local.get("models");

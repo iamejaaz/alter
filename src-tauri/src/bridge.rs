@@ -76,6 +76,64 @@ fn tag_run(state: &BridgeState, run_id: &str, label: String, url: String, kind: 
     }
 }
 
+pub fn repo_root() -> std::path::PathBuf {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    dir.parent().unwrap_or(dir).to_path_buf()
+}
+
+fn git_out(root: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let o = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .map_err(|e| format!("can't run git: {e}"))?;
+    let text = String::from_utf8_lossy(&o.stdout).trim().to_string();
+    if o.status.success() {
+        Ok(text)
+    } else {
+        Err(String::from_utf8_lossy(&o.stderr).trim().to_string())
+    }
+}
+
+pub fn self_update() -> serde_json::Value {
+    let root = repo_root();
+    let run = || -> Result<serde_json::Value, String> {
+        if !root.join(".git").exists() {
+            return Err(format!("{} is not a git checkout, so Alter can't update itself.", root.display()));
+        }
+        let before = git_out(&root, &["rev-parse", "HEAD"])?;
+        git_out(&root, &["pull", "--ff-only", "--quiet"]).map_err(|e| {
+            if e.contains("Not possible to fast-forward") || e.contains("diverge") {
+                "Your local branch has commits that are not on the remote, so it can't be fast forwarded. Pull it by hand.".to_string()
+            } else if e.contains("would be overwritten") {
+                "You have local changes to files the update touches. Commit or stash them, then update.".to_string()
+            } else {
+                e
+            }
+        })?;
+        let after = git_out(&root, &["rev-parse", "HEAD"])?;
+        if before == after {
+            return Ok(serde_json::json!({ "ok": true, "updated": false, "head": &after[..7.min(after.len())] }));
+        }
+        let range = format!("{before}..{after}");
+        let log = git_out(&root, &["log", "--format=%s", &range]).unwrap_or_default();
+        let files = git_out(&root, &["diff", "--name-only", &range]).unwrap_or_default();
+        let changed = |prefix: &str| files.lines().any(|f| f.starts_with(prefix));
+        Ok(serde_json::json!({
+            "ok": true,
+            "updated": true,
+            "head": &after[..7.min(after.len())],
+            "commits": log.lines().collect::<Vec<_>>(),
+            "extension": changed("extension/"),
+            "backend": changed("src-tauri/"),
+            "frontend": changed("src/") || changed("package"),
+            "skills": changed("skills/"),
+        }))
+    };
+    run().unwrap_or_else(|e| serde_json::json!({ "ok": false, "error": e }))
+}
+
 pub fn dismiss_runs(state: &BridgeState, run_id: Option<&str>) {
     let mut map = state.progress.lock().unwrap_or_else(|e| e.into_inner());
     for (id, p) in map.iter_mut() {
@@ -1207,6 +1265,10 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
 
     match (method, path) {
         (tiny_http::Method::Get, "/runs") => (200, serde_json::Value::Array(runs_snapshot(&state)).to_string()),
+        (tiny_http::Method::Post, "/update") => {
+            let v = self_update();
+            (if v["ok"].as_bool() == Some(true) { 200 } else { 409 }, v.to_string())
+        }
         (tiny_http::Method::Post, "/dismiss") => {
             let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
             dismiss_runs(&state, v["runId"].as_str());
@@ -2027,3 +2089,4 @@ fn kill_group(pid: u32) {
             .output();
     }
 }
+
