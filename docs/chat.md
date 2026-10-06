@@ -146,3 +146,7 @@ When a reply mentions the path of an image (`png jpg jpeg gif webp svg`) or a vi
 
 - [connections.md](connections.md) for what each connection can do
 - [troubleshooting.md](troubleshooting.md#chat) for errors shown in a chat
+
+## PR chips
+
+A PR a chat opened shows as a chip above the composer with its checks and open review threads. **Auto-fix CI & address comments** sends the fix request into that same chat, so the agent keeps everything it knew when it made the PR. If the chat is busy, the request waits in its queue. It runs once per head commit, so its own push does not trigger it again. The chips are checked every 45 seconds while that chat is open.

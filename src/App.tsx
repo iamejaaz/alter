@@ -2980,14 +2980,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               </div>
             )}
             <PrChips
-              onFixComments={(pr) =>
-                send({
-                  forceNew: true,
-                  title: `Fix review comments on #${pr.number}`,
-                  display: `Fix the review comments on ${pr.repo}#${pr.number}`,
-                  text: fixCommentsPrompt(pr),
-                })
-              }
+              onFixComments={(pr) => {
+                const cid = activeId;
+                if (!cid) return;
+                if (streamingIds.includes(cid)) {
+                  setQueued((q) => ({ ...q, [cid]: [...(q[cid] || []), fixCommentsPrompt(pr)] }));
+                  return;
+                }
+                void send({ targetConvId: cid, display: `Fix the review comments on ${pr.repo}#${pr.number}`, text: fixCommentsPrompt(pr) });
+              }}
               keys={prKeys}
               onDismiss={(key) =>
                 activeId &&
