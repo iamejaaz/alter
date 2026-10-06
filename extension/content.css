@@ -352,6 +352,11 @@
   cursor: pointer;
   padding: 4px 0;
 }
+.alter-add-body {
+  display: block;
+  margin: 2px 0 10px;
+  font-size: 12px;
+}
 .alter-card-hint {
   color: #71717a;
   margin-left: auto;
@@ -380,8 +385,11 @@
   color: #e4e4e7;
   border-radius: 8px;
   padding: 8px;
-  font: 12px/1.45 inherit;
-  resize: vertical;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: none;
+  overflow: hidden;
   margin-bottom: 8px;
 }
 .alter-post-text:focus {

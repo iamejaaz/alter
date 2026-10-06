@@ -243,7 +243,7 @@ const VERIFY_SYSTEM = [
   "You verify a GitHub PR by RUNNING it on a throwaway repro bench, not by reading the diff. Repro benches (literal paths — use them exactly as written): {benches}. Pick the one whose version matches the PR's base branch (a develop-targeted PR → the develop bench). NEVER put $ALTER_REPRO_* or any $-variable in a command: the sandbox blocks shell expansion, so a command containing one is denied — always paste the literal path shown above. If no bench is configured, say so and stop.",
   "Work only via `git -C <literal-bench-path>/apps/<repo>` so you never disturb the user's own checkout.",
   "Steps, batched into as few calls as possible: 1) record the current branch (rev-parse --abbrev-ref HEAD) and refuse to continue if `git status --short` is dirty. 2) fetch + checkout the PR: git -C <path> fetch upstream pull/<num>/head:pr-<num> && git -C <path> checkout pr-<num> (fall back to origin if there is no upstream remote). 3) if there are schema/patch changes, `bench --site <repro site> migrate`. 4) run the change — prefer the PR's OWN tests (`bench --site <repro site> run-tests --module <touched module>` — you start inside the first configured repro bench; run `bench` bare from the bench that matches the base branch, so for another version use `cd <that bench> && bench --site …`; never call bench by absolute path, never wrap it in `timeout`; if the site says testing is disabled, run `bench --site <repro site> set-config allow_tests true` once); else Write a script into YOUR SCRATCHPAD DIRECTORY (the path in your system prompt; nowhere else) that exercises the changed path, asserts the outcome and rolls back, and run it ONLY through `{skill}/scripts/repro.sh develop <that path>` — never `env/bin/python`, never `bench console` directly, both are denied. 5) ALWAYS restore in the same run: `git -C <path> checkout <original-branch>` and delete pr-<num>, leaving the bench exactly as found — never end with the PR branch checked out.",
-  "Output: **Verified** — works on <version> (what you ran + the result), or **Failed** — what broke (paste the error), or **Couldn't verify** — why (no repro bench, no tests to run, etc.). Terse and honest — NEVER claim verified without actually running something.",
+  "Output for the reader, who wants to know what is wrong with the PR, not how you debugged it. In this order and nothing else. Line 1: **Works**, **Broken** or **Couldn't run it**, then one plain sentence on what a user sees (for example: an invoice made from a sales order now uses the coupon once). Then **Issues in this PR**: one bullet per real problem, written as a plain user example (a user does X, they get Y, they should get Z), then the one change that fixes it. Count the review's findings and anything your run exposed; if there are none, the single line `None found.` Then one line **Tested:** naming what passed or failed in plain words, no commands, no counts of steps. Last, only if the bench is left changed, one line **Bench:** with what changed. No command listings, no reverting counter-checks, no service or redis notes, no file paths unless the fix needs one. NEVER claim it works without actually running something.",
 ].join(" ");
 
 async function fixPr() {
@@ -297,7 +297,7 @@ async function verifyOnBench() {
     model: session.model,
     mode: "verify",
     system: VERIFY_SYSTEM,
-    prompt: `Verify PR ${p.owner}/${p.repo}#${p.num}. Check its base branch with gh, pick the matching repro bench, run it, and report.`,
+    prompt: `Verify PR ${p.owner}/${p.repo}#${p.num}. Check its base branch with gh, pick the matching repro bench, run it, and report.${session.review ? `\n\nThe review you are verifying against:\n${withoutJsonFence(session.review)}` : ""}`,
     label: "verify",
   });
   session.verify = a;
@@ -1019,6 +1019,11 @@ function serializeDraft(d) {
   return parts.join("\n\n");
 }
 
+function fit(ta) {
+  ta.style.height = "auto";
+  ta.style.height = ta.scrollHeight + "px";
+}
+
 function renderPostPreview(text, suggested) {
   const foot = document.querySelector("#alter-panel-foot");
   const ev = suggested || (session && extractEvent(session.review)) || "comment";
@@ -1061,11 +1066,13 @@ function renderPostPreview(text, suggested) {
     d.comments.forEach((c, i) => {
       const card = document.createElement("div");
       card.className = "alter-card";
-      card.innerHTML = `<div class="alter-card-head"><span class="alter-card-anchor">${escapeHtml(c.path)}:${c.line}</span><span class="alter-card-hint">inline</span><button class="alter-card-x" title="Drop this comment">×</button></div><textarea class="alter-post-text" rows="3"></textarea>`;
+      const file = c.path.split("/").pop();
+      card.innerHTML = `<div class="alter-card-head"><span class="alter-card-anchor" title="${escapeHtml(c.path)}:${c.line}">${escapeHtml(file)}:${c.line}</span><span class="alter-card-hint">inline</span><button class="alter-card-x" title="Drop this comment">×</button></div><textarea class="alter-post-text" rows="1"></textarea>`;
       const ta = card.querySelector("textarea");
       ta.value = c.body || "";
       ta.addEventListener("input", () => {
         c.body = ta.value;
+        fit(ta);
         syncEvents();
       });
       card.querySelector(".alter-card-x").addEventListener("click", () => {
@@ -1074,16 +1081,30 @@ function renderPostPreview(text, suggested) {
       });
       cards.appendChild(card);
     });
-    const bodyCard = document.createElement("div");
-    bodyCard.className = "alter-card";
-    bodyCard.innerHTML = `<div class="alter-card-head"><span class="alter-card-anchor">Review body</span><span class="alter-card-hint">${d.comments.length ? "posted with the inline comments" : "the whole review"}</span></div><textarea class="alter-post-text" rows="4"></textarea>`;
-    const bta = bodyCard.querySelector("textarea");
-    bta.value = d.body || "";
-    bta.addEventListener("input", () => {
-      d.body = bta.value;
-      syncEvents();
-    });
-    cards.appendChild(bodyCard);
+    if (d.comments.length && !(d.body || "").trim() && !d.showBody) {
+      const add = document.createElement("button");
+      add.className = "alter-link alter-add-body";
+      add.textContent = "+ Add a review body";
+      add.addEventListener("click", () => {
+        d.showBody = true;
+        draw();
+        cards.querySelector(".alter-card:last-child textarea").focus();
+      });
+      cards.appendChild(add);
+    } else {
+      const bodyCard = document.createElement("div");
+      bodyCard.className = "alter-card";
+      bodyCard.innerHTML = `<div class="alter-card-head"><span class="alter-card-anchor">Review body</span><span class="alter-card-hint">${d.comments.length ? "posted with the inline comments" : "the whole review"}</span></div><textarea class="alter-post-text" rows="2"></textarea>`;
+      const bta = bodyCard.querySelector("textarea");
+      bta.value = d.body || "";
+      bta.addEventListener("input", () => {
+        d.body = bta.value;
+        fit(bta);
+        syncEvents();
+      });
+      cards.appendChild(bodyCard);
+    }
+    cards.querySelectorAll("textarea").forEach(fit);
     syncEvents();
   };
   draw();
