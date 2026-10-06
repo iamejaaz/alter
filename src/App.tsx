@@ -2309,7 +2309,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           const runs = conversations.filter((c) => (c.routineId ? c.routineId === id : c.title === `⏱ ${name}`));
           if (runs.length && !runs.some((c) => c.id === activeId)) openChat(runs[0].id);
         }}
-        onOpenSkills={() => setShowSettings(true, "skills")}
         onOpenPalette={() => setShowPalette(true)}
       />
 

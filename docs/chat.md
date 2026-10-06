@@ -57,6 +57,8 @@ The clock beside Send schedules the typed message:
 
 ## Skills
 
+Skills live in Settings, under Customize. The command palette (Cmd K, Open skills) also opens that page.
+
 - A skill is a name, a one line description and instructions. The model sees names and descriptions, and the full instructions load when a request matches or when you type `/<name> args`.
 - Claude Code's own skills in `~/.claude/skills` and `~/.claude/commands` also appear in the slash menu and pass through to the CLI unchanged.
 - **Import skills** in Settings, Skills: from `~/.claude/skills` (copies, originals untouched) or from a SKILL.md file. A skill with the same name is not imported twice.

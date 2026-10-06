@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Conversation, Project, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
-import { IconClock, IconPlus, IconPuzzle, IconSearch, IconSettings, IconSparkles } from "./Icons";
+import { IconClock, IconPlus, IconPuzzle, IconSearch, IconSettings } from "./Icons";
 
 export interface BackgroundRun {
   runId: string;
@@ -42,7 +42,6 @@ interface Props {
   onOpenRoutines: () => void;
   onOpenExtension: () => void;
   onOpenRuns: (routineId: string) => void;
-  onOpenSkills: () => void;
   onOpenPalette?: () => void;
 }
 
@@ -78,7 +77,6 @@ export default function Sidebar({
   onOpenRoutines,
   onOpenExtension,
   onOpenRuns,
-  onOpenSkills,
   onOpenPalette,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -477,7 +475,6 @@ export default function Sidebar({
       <div className="border-t border-[var(--bd-soft)] px-2 py-2">
         <div className="space-y-0.5">
           {[
-            { label: "Skills", icon: <IconSparkles />, run: onOpenSkills },
             { label: "Routines", icon: <IconClock />, run: onOpenRoutines },
             { label: "Browser extension", icon: <IconPuzzle />, run: onOpenExtension },
             { label: "Settings", icon: <IconSettings />, run: onOpenSettings },
