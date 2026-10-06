@@ -45,7 +45,9 @@ The clock beside Send schedules the typed message:
 - The message waits in the chat as a dashed bubble with **Send now**, **Edit** and ×. The sidebar shows a clock on that chat.
 - It sends into the same chat with that chat's connection. If a turn is running at that moment it waits for it to finish.
 - Alter checks every 5 seconds while open, plus a tick from the backend every 15 seconds for a hidden window. A message whose time passed while Alter was closed sends when Alter next opens.
-- Text only. Attachments cannot be scheduled. Not available in a chat paired with a Claude Code session.
+- In a chat paired with a Claude Code session (picked with `@`), it is delivered to that session at the chosen time.
+- When a chat shows a session limit with a reset time ("resets 3pm"), a **Continue today at 3:01 PM** button schedules "Continue from where you stopped." one minute after the reset.
+- Text only. Attachments cannot be scheduled.
 - Stored under `alter.scheduled`.
 
 ## Memory

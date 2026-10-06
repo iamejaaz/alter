@@ -122,6 +122,7 @@ import {
   connectorServers,
   storage,
   whenLabel,
+  limitResetAt,
   PlanItem,
 } from "./lib/store";
 
@@ -1470,6 +1471,21 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamingIds, queued]);
 
+  const resumeAt = (convId: string, at: number) => {
+    setScheduled((prev) => [...prev, { id: newId(), convId, text: "Continue from where you stopped.", at }].sort((a, b) => a.at - b.at));
+    setConvError(convId, null);
+    setError(null);
+  };
+  const ResumeButton = ({ convId, text, cls }: { convId: string; text: string; cls: string }) => {
+    const at = limitResetAt(text);
+    if (!at || scheduled.some((x) => x.convId === convId && Math.abs(x.at - at) < 120_000)) return null;
+    return (
+      <button onClick={() => resumeAt(convId, at)} className={cls} title="Sends “Continue from where you stopped.” into this chat when the limit resets">
+        Continue {whenLabel(at)}
+      </button>
+    );
+  };
+
   const scheduleSend = (at: number) => {
     const typed = input.trim();
     if (!typed) return;
@@ -1501,6 +1517,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const sendScheduledNow = (item: Scheduled) => {
     firedRef.current.add(item.id);
     setScheduled((prev) => prev.filter((x) => x.id !== item.id));
+    const peer = conversations.find((c) => c.id === item.convId)?.peer;
+    if (peer) return void sendToPeer(item.convId, peer, item.text);
     if (streamingIds.includes(item.convId)) {
       setQueued((q) => ({ ...q, [item.convId]: [...(q[item.convId] || []), item.text] }));
       interrupt(item.convId, false);
@@ -1522,8 +1540,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     picked.forEach((x) => firedRef.current.add(x.id));
     setScheduled((prev) => prev.filter((x) => !firedRef.current.has(x.id)));
     for (const item of picked) {
-      if (!conversations.some((c) => c.id === item.convId)) continue;
-      void send({ text: item.text, targetConvId: item.convId });
+      const conv = conversations.find((c) => c.id === item.convId);
+      if (!conv) continue;
+      if (conv.peer) void sendToPeer(conv.id, conv.peer, item.text);
+      else void send({ text: item.text, targetConvId: item.convId });
     }
   };
   useEffect(() => {
@@ -2613,6 +2633,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   <div key={i} className="group animate-fade-up" data-role="assistant">
                     <div className="min-w-0">
                       {m.peer && <p className="mb-1 text-[11px] text-[var(--txt-faint)]">From {m.peer.name}</p>}
+                      {m.peer && i === active.messages.length - 1 && (
+                        <ResumeButton
+                          convId={active.id}
+                          text={m.content}
+                          cls="mb-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-2.5 py-1 text-[12px] text-[var(--txt)] hover:bg-[var(--panel-2)]"
+                        />
+                      )}
                       {m.content ? (
                         <>
                           <Markdown text={m.content} />
@@ -2728,6 +2755,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             {((activeId && convErrors[activeId]) || error) && (
               <div className="mb-2 flex items-center gap-2 rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-xs text-red-300">
                 <span className="min-w-0 flex-1">{(activeId && convErrors[activeId]) || error}</span>
+                {activeId && (
+                  <ResumeButton
+                    convId={activeId}
+                    text={(activeId && convErrors[activeId]) || error || ""}
+                    cls="shrink-0 rounded-md border border-red-800 px-2.5 py-1 text-red-200 hover:bg-red-900/40"
+                  />
+                )}
                 {/Sign in to continue/.test((activeId && convErrors[activeId]) || error || "") && (
                   <button
                     disabled={signingIn}
@@ -3212,13 +3246,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     title="Working…"
                   />
                 )}
-                {!active?.peer && (
-                  <SendLater
-                    disabled={!input.trim() || attachments.length > 0}
-                    title={attachments.length ? "Attachments cannot be scheduled" : "Send later"}
-                    onPick={scheduleSend}
-                  />
-                )}
+                <SendLater
+                  disabled={!input.trim() || attachments.length > 0}
+                  title={attachments.length ? "Attachments cannot be scheduled" : "Send later"}
+                  onPick={scheduleSend}
+                />
                 {activeStreaming ? (
                   <button
                     onClick={stop}

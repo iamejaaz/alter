@@ -83,6 +83,18 @@ export function whenLabel(at: number): string {
   return `${d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })} at ${time}`;
 }
 
+export function limitResetAt(text: string, now = Date.now()): number | null {
+  if (!/limit/i.test(text)) return null;
+  const m = text.match(/resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if (!m) return null;
+  let h = Number(m[1]) % 12;
+  if (m[3].toLowerCase() === "pm") h += 12;
+  const d = new Date(now);
+  d.setHours(h, Number(m[2] ?? 0) + 1, 0, 0);
+  if (d.getTime() <= now) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
 export interface Project {
   id: string;
   name: string;
