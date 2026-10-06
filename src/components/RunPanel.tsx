@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Markdown from "./Markdown";
 
@@ -27,6 +27,28 @@ function linkLabel(url: string) {
   return "Open page";
 }
 
+function Timeline({ steps }: { steps: string[] }) {
+  return (
+    <ol className="space-y-1.5">
+      {steps.map((s, i) =>
+        s.startsWith("\u25B8") ? (
+          <li key={i} className="truncate font-mono text-[11.5px] text-[var(--txt-dim)]" title={s}>
+            {s}
+          </li>
+        ) : s.startsWith("\u21B3") ? (
+          <li key={i} className={`truncate pl-3 font-mono text-[11px] ${s.includes("error:") ? "text-red-400/80" : "text-[var(--txt-faint)]"}`} title={s}>
+            {s}
+          </li>
+        ) : (
+          <li key={i} className="pt-1 text-[13.5px] leading-relaxed text-[var(--txt)]">
+            <Markdown text={s} />
+          </li>
+        )
+      )}
+    </ol>
+  );
+}
+
 function cleanResult(text: string) {
   return text.replace(/```json\s*\n[\s\S]*?\n```\s*$/i, "").trim();
 }
@@ -36,6 +58,8 @@ export default function RunPanel({ runId, onClose, onStop }: { runId: string; on
   const [gone, setGone] = useState(false);
   const [stepsOpen, setStepsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
 
   useEffect(() => {
     let alive = true;
@@ -57,7 +81,11 @@ export default function RunPanel({ runId, onClose, onStop }: { runId: string; on
   }, [runId]);
 
   const result = run ? cleanResult(run.text || "") : "";
-  const now = run ? [...run.steps].reverse().find((x) => !x.startsWith("\u21B3")) : undefined;
+  const live = !!run && !run.done;
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && live && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [run?.steps.length, live]);
   const took = run && run.done && run.endedAgoMs != null ? Date.now() - run.endedAgoMs - run.startedAt : null;
   const status = !run
     ? ""
@@ -113,32 +141,43 @@ export default function RunPanel({ runId, onClose, onStop }: { runId: string; on
               </button>
             )}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <div
+            ref={scroller}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+            }}
+            className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
+          >
             {run.error && run.done && <p className="mb-3 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-[12px] text-red-300">{run.error}</p>}
-            {result ? (
-              <div className="text-[14px] leading-relaxed">
-                <Markdown text={result} />
-              </div>
+            {live ? (
+              run.steps.length ? (
+                <Timeline steps={run.steps} />
+              ) : (
+                <p className="text-[13px] text-[var(--txt-faint)]">Starting up…</p>
+              )
             ) : (
-              <p className="text-[13px] text-[var(--txt-faint)]">
-                {run.done ? "It finished without a written result." : `Working. ${now ? `Now: ${now}` : "Starting up."}`}
-              </p>
-            )}
-            {run.steps.length > 0 && (
-              <div className="mt-4 border-t border-[var(--bd-soft)] pt-3">
-                <button onClick={() => setStepsOpen((v) => !v)} className="text-[12px] text-[var(--txt-dim)] hover:text-[var(--txt)]">
-                  {stepsOpen ? "▾" : "▸"} What it did · {run.steps.length} {run.steps.length === 1 ? "step" : "steps"}
-                </button>
-                {stepsOpen && (
-                  <ol className="mt-2 space-y-1">
-                    {run.steps.map((s, i) => (
-                      <li key={i} className="truncate font-mono text-[11px] text-[var(--txt-faint)]" title={s}>
-                        {s}
-                      </li>
-                    ))}
-                  </ol>
+              <>
+                {result ? (
+                  <div className="text-[14px] leading-relaxed">
+                    <Markdown text={result} />
+                  </div>
+                ) : (
+                  <p className="text-[13px] text-[var(--txt-faint)]">It finished without a written result.</p>
                 )}
-              </div>
+                {run.steps.length > 0 && (
+                  <div className="mt-4 border-t border-[var(--bd-soft)] pt-3">
+                    <button onClick={() => setStepsOpen((v) => !v)} className="text-[12px] text-[var(--txt-dim)] hover:text-[var(--txt)]">
+                      {stepsOpen ? "▾" : "▸"} What it did · {run.steps.length} {run.steps.length === 1 ? "step" : "steps"}
+                    </button>
+                    {stepsOpen && (
+                      <div className="mt-3">
+                        <Timeline steps={run.steps} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </>
