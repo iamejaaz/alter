@@ -272,6 +272,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       } else if (msg.type === "update") {
         const r = await bridge("/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
         sendResponse(r.body && r.body.ok ? { ok: true, data: r.body } : { ok: false, error: (r.body && r.body.error) || hint(r) });
+      } else if (msg.type === "cli-update") {
+        const r = await bridge("/cli-update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: msg.kind || "claude" }) });
+        sendResponse(r.ok ? { ok: true, data: r.body } : { ok: false, error: (r.body && r.body.error) || hint(r) });
       } else if (msg.type === "dismiss") {
         const r = await bridge("/dismiss", {
           method: "POST",

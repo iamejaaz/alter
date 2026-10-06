@@ -126,6 +126,61 @@ fn find_in_apps(name: &str, keys: &[&str]) -> Option<PathBuf> {
     None
 }
 
+fn version_of(p: &std::path::Path) -> Option<Vec<u32>> {
+    let out = std::process::Command::new(p).arg("--version").output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let v = text.split_whitespace().next()?;
+    let parts: Vec<u32> = v.split('.').map(|x| x.parse().ok()).collect::<Option<_>>()?;
+    (!parts.is_empty()).then_some(parts)
+}
+
+fn claude_candidates() -> Vec<PathBuf> {
+    let mut c: Vec<PathBuf> = std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+        .chain(extra_dirs())
+        .map(|d| d.join("claude"))
+        .filter(|p| is_exec(p))
+        .collect();
+    if let Some(home) = std::env::var_os("HOME") {
+        let root = std::path::Path::new(&home).join("Library/Application Support/Claude/claude-code");
+        for v in std::fs::read_dir(root).into_iter().flatten().flatten() {
+            for h in std::fs::read_dir(v.path()).into_iter().flatten().flatten() {
+                let bin = h.path().join("claude.app/Contents/MacOS/claude");
+                if is_exec(&bin) {
+                    c.push(bin);
+                }
+            }
+        }
+    }
+    c.dedup();
+    c
+}
+
+static NEWEST_CLAUDE: std::sync::Mutex<Option<(std::time::Instant, PathBuf)>> = std::sync::Mutex::new(None);
+
+pub fn claude_bin() -> PathBuf {
+    if let Some(p) = override_for("claude") {
+        return p;
+    }
+    let mut cache = NEWEST_CLAUDE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, p)) = cache.as_ref() {
+        if at.elapsed() < std::time::Duration::from_secs(600) && p.is_file() {
+            return p.clone();
+        }
+    }
+    let best = claude_candidates()
+        .into_iter()
+        .filter_map(|p| version_of(&p).map(|v| (v, p)))
+        .max_by(|a, b| a.0.cmp(&b.0))
+        .map(|(_, p)| p)
+        .unwrap_or_else(|| PathBuf::from("claude"));
+    *cache = Some((std::time::Instant::now(), best.clone()));
+    best
+}
+
 pub fn find(name: &str) -> Option<PathBuf> {
     if let Some(p) = override_for(name) {
         return Some(p);
@@ -255,13 +310,38 @@ fn install_command(name: &str) -> Result<String, String> {
     Err("Installing the Codex CLI needs Node (npm) or Homebrew, and neither was found. Install Node from nodejs.org, or the Codex app from openai.com/codex, then come back.".into())
 }
 
+fn update_command(name: &str) -> Result<String, String> {
+    let brew = find("brew");
+    if name == "claude" {
+        let on_path = find("claude");
+        if let (Some(b), Some(p)) = (&brew, &on_path) {
+            if std::fs::canonicalize(p).map(|r| r.to_string_lossy().contains("/Caskroom/")).unwrap_or(false) {
+                return Ok(format!("'{}' upgrade --cask claude-code", b.display()));
+            }
+        }
+        return match on_path {
+            Some(p) => Ok(format!("'{}' update", p.display())),
+            None => install_command(name),
+        };
+    }
+    if let Some(npm) = find("npm") {
+        return Ok(format!("'{}' install -g @openai/codex@latest", npm.display()));
+    }
+    if let Some(b) = brew {
+        return Ok(format!("'{}' upgrade codex", b.display()));
+    }
+    install_command(name)
+}
+
 #[tauri::command]
-pub fn cli_install_terminal(kind: String) -> Result<String, String> {
+pub fn cli_install_terminal(kind: String, update: Option<bool>) -> Result<String, String> {
     let name = if kind == "codex" { "codex" } else { "claude" };
-    let cmd = install_command(name)?;
+    let updating = update.unwrap_or(false);
+    let cmd = if updating { update_command(name)? } else { install_command(name)? };
     let label = if name == "claude" { "Claude Code" } else { "Codex" };
+    let verb = if updating { "Updating" } else { "Installing" };
     let script = format!(
-        "#!/bin/sh\nclear\necho 'Installing the {label} CLI for Alter:'\necho '  {}'\necho\n{cmd}\necho\necho 'Done. Go back to Alter, it checks again when you switch to it.'\n",
+        "#!/bin/sh\nclear\necho '{verb} the {label} CLI for Alter:'\necho '  {}'\necho\n{cmd}\necho\necho 'Done. Go back to Alter and run it again.'\n",
         cmd.replace('\'', "")
     );
     let path = std::env::temp_dir().join(format!("alter-{name}-install.sh"));
@@ -394,5 +474,3 @@ pub async fn codex_check() -> Result<String, String> {
     let err = String::from_utf8_lossy(&out.stderr).to_string();
     Err(signin_hint(&err).unwrap_or_else(|| err.lines().last().unwrap_or("Codex gave no answer.").to_string()))
 }
-
-

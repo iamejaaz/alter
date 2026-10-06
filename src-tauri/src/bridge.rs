@@ -618,7 +618,7 @@ fn build_system(include_memory: bool, system: Option<&str>) -> String {
 }
 
 fn wrap_up(session_id: &str, model: Option<&str>) -> Result<String, String> {
-    let mut cmd = std::process::Command::new("claude");
+    let mut cmd = std::process::Command::new(crate::local_cli::claude_bin());
     cmd.arg("-p")
         .arg("Your tool budget is exhausted. Do NOT call any tool. Write the final answer now, in the required format, from what you already found — say plainly which parts are unverified.")
         .arg("--resume")
@@ -708,7 +708,7 @@ fn spawn_agent_run(
         None => prompt,
     };
     let full = format!("{}{}", if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") }, alter_skills_index());
-    let mut cmd = std::process::Command::new("claude");
+    let mut cmd = std::process::Command::new(crate::local_cli::claude_bin());
     cmd.arg("-p")
         .arg(&full);
     if let Some(sid) = &session_id {
@@ -1078,7 +1078,7 @@ async fn run_completion(
             Some(s) if !s.is_empty() => format!("{s}\n\n{prompt}"),
             _ => prompt.to_string(),
         };
-        let mut cmd = std::process::Command::new("claude");
+        let mut cmd = std::process::Command::new(crate::local_cli::claude_bin());
         cmd.arg("-p").arg(&full);
         if !conn.model.is_empty() && conn.model != "claude-code" {
             cmd.arg("--model").arg(&conn.model);
@@ -1406,6 +1406,14 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 })
                 .collect();
             (200, serde_json::to_string(&list).unwrap_or_else(|_| "[]".into()))
+        }
+        (tiny_http::Method::Post, "/cli-update") => {
+            let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+            let kind = v["kind"].as_str().unwrap_or("claude").to_string();
+            match crate::local_cli::cli_install_terminal(kind, Some(true)) {
+                Ok(cmd) => (200, serde_json::json!({ "ok": true, "command": cmd }).to_string()),
+                Err(e) => (500, serde_json::json!({ "error": e }).to_string()),
+            }
         }
         (tiny_http::Method::Get, "/ext-version") => {
             let v = git_out(&repo_root(), &["log", "-1", "--format=%h", "--", "extension/"]).unwrap_or_default();

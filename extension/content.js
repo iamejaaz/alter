@@ -76,6 +76,20 @@ const CLAUDE_CHOICES = [
   ["claude-haiku-4-5-20251001", "Haiku 4.5"],
 ];
 
+const NEEDS_UPDATE = /claude update|or newer is required|update the claude|upgrade codex|codex .*out of date/i;
+
+function updateRow(kind) {
+  const row = document.createElement("div");
+  row.className = "alter-switch";
+  row.innerHTML = `<button class="alter-link">Update ${kind === "codex" ? "Codex" : "Claude Code"}</button>`;
+  row.querySelector("button").addEventListener("click", async () => {
+    row.textContent = "Opening Terminal…";
+    const r = await send({ type: "cli-update", kind });
+    row.textContent = r && r.ok ? "Updating in Terminal. Run this again when it finishes." : (r && r.error) || "Couldn't start the update. Is Alter running?";
+  });
+  return row;
+}
+
 function modelSwitch(label) {
   const row = document.createElement("div");
   row.className = "alter-switch";
@@ -630,7 +644,8 @@ function pollRun(el, runId, opts) {
       b.className = "alter-banner";
       b.textContent = humanizeErr(msg);
       el.appendChild(b);
-      if (MODEL_BLOCKED.test(msg || "")) el.appendChild(modelSwitch(opts.label));
+      if (NEEDS_UPDATE.test(msg || "")) el.appendChild(updateRow(/codex/i.test(msg) ? "codex" : "claude"));
+      else if (MODEL_BLOCKED.test(msg || "")) el.appendChild(modelSwitch(opts.label));
       resolve("");
     };
 

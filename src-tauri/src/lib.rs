@@ -627,7 +627,7 @@ async fn claude_title(text: String) -> Result<String, String> {
     let prompt = format!(
         "Generate a 3-6 word title in Title Case (no quotes, no trailing punctuation) for a chat that starts with this message. Reply with ONLY the title.\n\nMessage: {snippet}"
     );
-    let out = tokio::process::Command::new("claude")
+    let out = tokio::process::Command::new(crate::local_cli::claude_bin())
         .arg("-p")
         .arg(&prompt)
         .arg("--model")
@@ -655,7 +655,7 @@ async fn complete_once(
 ) -> Result<String, String> {
     if base_url.starts_with("claude-code") {
         let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
-        let mut cmd = tokio::process::Command::new("claude");
+        let mut cmd = tokio::process::Command::new(crate::local_cli::claude_bin());
         cmd.arg("-p").arg(&full);
         if !model.is_empty() && model != "claude-code" {
             cmd.arg("--model").arg(&model);
@@ -1014,7 +1014,7 @@ async fn claude_code(
             let _ = old.child.kill().await;
         }
         procs.evict_idle(&conv_id).await;
-        let mut cmd = Command::new("claude");
+        let mut cmd = Command::new(crate::local_cli::claude_bin());
         cmd.arg("-p")
             .arg("--input-format").arg("stream-json")
             .arg("--output-format").arg("stream-json")
@@ -1648,7 +1648,7 @@ async fn run_due_routines(dir: &std::path::Path) {
 
         let content = if is_cc {
             let full = format!("{system}\n\n{prompt}");
-            let mut cmd = tokio::process::Command::new("claude");
+            let mut cmd = tokio::process::Command::new(crate::local_cli::claude_bin());
             cmd.arg("-p").arg(&full);
             if !model.is_empty() && model != "claude-code" {
                 cmd.arg("--model").arg(&model);

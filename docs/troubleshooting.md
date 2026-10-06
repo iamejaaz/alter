@@ -132,3 +132,5 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 - The app's log: run the dev build with `npm run dev` and watch the terminal, or `Console.app` filtered on `alter` for a release build.
 - The run's steps: open the folded steps in the panel. Each tool call and its first line of output is there.
 - The bridge directly: `curl -H "Authorization: Bearer $(cat ~/Library/Application\ Support/com.ejaaz.alter/bridge.token)" http://127.0.0.1:8765/runs`
+
+| `Claude Code 2.1.x does not support this model; version … or newer is required` | An older `claude` was used for the run | Alter now uses the newest `claude` it can find: PATH, the usual install folders, and the copy the Claude desktop app keeps in `~/Library/Application Support/Claude/claude-code`. A path set with Locate… still wins. If every copy is old, the error shows **Update Claude Code**, which runs `brew upgrade --cask claude-code` or `claude update` in Terminal |

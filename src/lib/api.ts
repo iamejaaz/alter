@@ -209,7 +209,7 @@ export interface CliStatus {
 }
 
 export const cliStatus = (kind: "claude" | "codex") => invoke<CliStatus>("cli_status", { kind });
-export const cliInstallTerminal = (kind: "claude" | "codex") => invoke<string>("cli_install_terminal", { kind });
+export const cliInstallTerminal = (kind: "claude" | "codex", update = false) => invoke<string>("cli_install_terminal", { kind, update });
 export const cliSetPath = (kind: "claude" | "codex", path: string | null) => invoke<string>("cli_set_path", { kind, path });
 export const cliLogin = (kind: "claude" | "codex") => invoke<string>("cli_login", { kind });
 export const cliLoginTerminal = (kind: "claude" | "codex") => invoke<void>("cli_login_terminal", { kind });

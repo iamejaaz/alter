@@ -80,6 +80,7 @@ import {
   AgentRun,
   ToolAsk,
   answerAsk,
+  cliInstallTerminal,
   localAsk,
   setChatMcp,
   ChatResult,
@@ -2811,6 +2812,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     text={(activeId && convErrors[activeId]) || error || ""}
                     cls="shrink-0 rounded-md border border-red-800 px-2.5 py-1 text-red-200 hover:bg-red-900/40"
                   />
+                )}
+                {/claude update|or newer is required|update the claude/i.test((activeId && convErrors[activeId]) || error || "") && (
+                  <button
+                    onClick={() => void cliInstallTerminal("claude", true).then(() => setInfo("Updating Claude Code in Terminal. Send again when it finishes.")).catch((e) => setError(String(e)))}
+                    className="shrink-0 rounded-md border border-red-800 px-2.5 py-1 text-red-200 hover:bg-red-900/40"
+                  >
+                    Update Claude Code
+                  </button>
                 )}
                 {/Sign in to continue/.test((activeId && convErrors[activeId]) || error || "") && (
                   <button
