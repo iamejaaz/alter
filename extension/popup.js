@@ -32,8 +32,9 @@ $("update").addEventListener("click", async () => {
     return;
   }
   const u = r.data;
+  const moved = u.switchedFrom ? ` Switched from the branch ${u.switchedFrom} to master, which is kept as it was.` : "";
   if (!u.updated) {
-    note.textContent = `Already up to date (${u.head}).`;
+    note.textContent = `Already up to date (${u.head}).${moved}`;
     return;
   }
   const parts = [];
@@ -42,7 +43,7 @@ $("update").addEventListener("click", async () => {
   if (u.skills) parts.push("restart Alter to install the new skills");
   const list = u.commits.slice(0, 6).map((c) => `<li>${window.ALTER.escapeHtml(c)}</li>`).join("");
   note.innerHTML =
-    `Updated to ${u.head}, ${u.commits.length} new commit${u.commits.length === 1 ? "" : "s"}.` +
+    `Updated to ${u.head}, ${u.commits.length} new commit${u.commits.length === 1 ? "" : "s"}.${moved}` +
     (parts.length ? ` Note: ${parts.join(", ")}.` : "") +
     `<ul>${list}</ul>` +
     (u.extension ? "Reloading the extension, then refresh open GitHub and helpdesk tabs." : "");

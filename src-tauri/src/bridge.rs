@@ -96,6 +96,9 @@ fn git_out(root: &std::path::Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+const ALTER_REPO: &str = "https://github.com/iamejaaz/alter.git";
+const ALTER_BRANCH: &str = "master";
+
 pub fn self_update() -> serde_json::Value {
     let root = repo_root();
     let run = || -> Result<serde_json::Value, String> {
@@ -103,9 +106,22 @@ pub fn self_update() -> serde_json::Value {
             return Err(format!("{} is not a git checkout, so Alter can't update itself.", root.display()));
         }
         let before = git_out(&root, &["rev-parse", "HEAD"])?;
-        git_out(&root, &["pull", "--ff-only", "--quiet"]).map_err(|e| {
+        let branch = git_out(&root, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+        git_out(&root, &["fetch", "--quiet", ALTER_REPO, ALTER_BRANCH]).map_err(|e| format!("Couldn't fetch {ALTER_REPO}: {e}"))?;
+        if branch != ALTER_BRANCH {
+            if !git_out(&root, &["status", "--porcelain", "--untracked-files=no"])?.is_empty() {
+                return Err(format!("You are on the branch {branch} with uncommitted changes. Commit or stash them, then update to switch back to {ALTER_BRANCH}."));
+            }
+            let has_local = git_out(&root, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{ALTER_BRANCH}")]).is_ok();
+            if has_local {
+                git_out(&root, &["checkout", "--quiet", ALTER_BRANCH])?;
+            } else {
+                git_out(&root, &["checkout", "--quiet", "-b", ALTER_BRANCH, "FETCH_HEAD"])?;
+            }
+        }
+        git_out(&root, &["merge", "--ff-only", "--quiet", "FETCH_HEAD"]).map_err(|e| {
             if e.contains("Not possible to fast-forward") || e.contains("diverge") {
-                "Your local branch has commits that are not on the remote, so it can't be fast forwarded. Pull it by hand.".to_string()
+                format!("Your local {ALTER_BRANCH} has commits that are not in {ALTER_REPO}, so it can't be fast forwarded. Pull it by hand.")
             } else if e.contains("would be overwritten") {
                 "You have local changes to files the update touches. Commit or stash them, then update.".to_string()
             } else {
@@ -113,8 +129,9 @@ pub fn self_update() -> serde_json::Value {
             }
         })?;
         let after = git_out(&root, &["rev-parse", "HEAD"])?;
+        let switched = (branch != ALTER_BRANCH).then_some(branch);
         if before == after {
-            return Ok(serde_json::json!({ "ok": true, "updated": false, "head": &after[..7.min(after.len())] }));
+            return Ok(serde_json::json!({ "ok": true, "updated": false, "head": &after[..7.min(after.len())], "switchedFrom": switched }));
         }
         let range = format!("{before}..{after}");
         let log = git_out(&root, &["log", "--format=%s", &range]).unwrap_or_default();
@@ -124,6 +141,7 @@ pub fn self_update() -> serde_json::Value {
             "ok": true,
             "updated": true,
             "head": &after[..7.min(after.len())],
+            "switchedFrom": switched,
             "commits": log.lines().collect::<Vec<_>>(),
             "extension": changed("extension/"),
             "backend": changed("src-tauri/"),

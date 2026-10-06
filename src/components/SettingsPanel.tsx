@@ -249,9 +249,10 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     setUpdating(true);
     setUpdateNote(null);
     try {
-      const u = await invoke<{ ok: boolean; error?: string; updated?: boolean; head?: string; commits?: string[]; backend?: boolean; extension?: boolean; skills?: boolean }>("app_update");
+      const u = await invoke<{ ok: boolean; error?: string; updated?: boolean; head?: string; commits?: string[]; backend?: boolean; extension?: boolean; skills?: boolean; switchedFrom?: string }>("app_update");
+      const moved = u.switchedFrom ? ` Switched from the branch ${u.switchedFrom} to master, which is kept as it was.` : "";
       if (!u.ok) setUpdateNote({ ok: false, text: u.error ?? "Update failed." });
-      else if (!u.updated) setUpdateNote({ ok: true, text: `Already up to date (${u.head}).` });
+      else if (!u.updated) setUpdateNote({ ok: true, text: `Already up to date (${u.head}).${moved}` });
       else {
         const n = u.commits?.length ?? 0;
         const after = [
@@ -259,7 +260,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
           u.extension ? "reload the extension (its popup has Update too)" : "",
           u.skills ? "restart Alter to install the new skills" : "",
         ].filter(Boolean);
-        setUpdateNote({ ok: true, text: `Updated to ${u.head}, ${n} new commit${n === 1 ? "" : "s"}.${after.length ? ` Next: ${after.join(", ")}.` : ""}` });
+        setUpdateNote({ ok: true, text: `Updated to ${u.head}, ${n} new commit${n === 1 ? "" : "s"}.${moved}${after.length ? ` Next: ${after.join(", ")}.` : ""}` });
       }
       void invoke<{ root: string; head: string }>("app_version_info").then(setVersion).catch(() => {});
     } catch (e) {
