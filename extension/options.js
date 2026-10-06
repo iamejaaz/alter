@@ -31,7 +31,7 @@ async function loadConnections() {
     const sel = $("m-" + a);
     sel.innerHTML = "";
     const needsAgent = a === "prReview" || a === "support";
-    const eligible = needsAgent ? conns.filter((c) => c.isClaudeCode) : conns;
+    const eligible = needsAgent ? conns.filter((c) => c.isAgent || c.isClaudeCode) : conns;
     const saved = eligible.some((c) => c.id === models[a]) ? models[a] : null;
     const fallback = needsAgent && claude && (models[a] || a === "support") ? claude.id : null;
     const preferred = saved || fallback || (eligible.length === 1 ? eligible[0].id : null);

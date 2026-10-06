@@ -1,6 +1,6 @@
 ---
 name: frappe-pr-review
-description: Review a Frappe-ecosystem pull request (frappe, erpnext, hrms, helpdesk, any app) the way a framework maintainer does — root cause, mechanism, residue, sibling bugs, conventions — verify every finding against the code, optionally reproduce on a bench, and return findings plus review comments in the maintainer's voice. Never posts. Use for any PR review in a Frappe app, the daily digest, or a /review trigger. Argument: PR number, optional focus text.
+description: "Review a Frappe-ecosystem pull request (frappe, erpnext, hrms, helpdesk, any app) the way a framework maintainer does — root cause, mechanism, residue, sibling bugs, conventions — verify every finding against the code, optionally reproduce on a bench, and return findings plus review comments in the maintainer's voice. Never posts. Use for any PR review in a Frappe app, the daily digest, or a /review trigger. Argument: PR number, optional focus text."
 ---
 
 # Frappe PR review
@@ -93,6 +93,19 @@ Only when the PR or its linked issue gives concrete steps, and the fix looks cor
 - Read-only bias. If a write is needed, end with `frappe.db.rollback()` or delete the throwaway record. Never commit, never migrate, never touch real fixtures, never switch branches.
 - One focused attempt. If it does not reproduce in a couple of tries, report that; a non-reproducing "fix" is itself a signal.
 - `Reproduced: no` needs a reason you actually hit — a command that was denied, a fixture you could not build, a step the PR never gave. Never a guess about what the tooling can do. Before writing it, ask whether the claim is a few lines of Python; if it is, run it.
+
+### 5b. Run the PR's own code
+
+Only when asked to verify on a bench, or when the verdict turns on whether the PR's change actually behaves. Use a repro bench when one is configured (the caller lists them), else `BENCH`. This is the one place a branch may change, and it is always put back in the same run.
+
+1. In `<bench>/apps/<APP>`: save the current branch (`git rev-parse --abbrev-ref HEAD`). Stop if `git status --short` shows changes: never stash someone's work.
+2. `git fetch <REMOTE> pull/<PR>/head` then `git checkout --detach FETCH_HEAD`. Detached, so no branch is left behind.
+3. If the diff touches a doctype `.json` or `patches.txt`, run `bench --site <SITE> migrate` first, and say so in the result.
+4. Run the PR's own tests (`bench --site <SITE> run-tests --module <module>`), else a short script through the console that exercises the change and rolls back. When the review found an issue, run the user steps of that issue too, so the result can say whether it really happens.
+5. When a test is new, check it bites: put back only the non-test files from the base (`git checkout <BASE_REF> -- <files>`), rerun, then `git checkout FETCH_HEAD -- <files>`.
+6. Always restore: `git checkout <saved branch>`. Report the bench as found, or what stayed changed (a migrate, a config flag).
+
+Report what a user would see, not how you ran it: the issue in plain words (a user does X, gets Y, should get Z), whether the run confirmed it, and the fix. Commands and logs stay out of the result unless asked.
 
 ## 6. Result
 

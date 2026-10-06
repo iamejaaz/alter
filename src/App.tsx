@@ -500,6 +500,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     void invoke("bridge_sync", { connections: settings.connections ?? [] }).catch(() => {});
   }, [settings.connections]);
   useEffect(() => {
+    void invoke("bridge_set_skills", { skills }).catch(() => {});
+  }, [skills]);
+  useEffect(() => {
     void invoke("bridge_set_repro_root", {
       root: settings.reproRoot ?? "",
       benches: settings.reproBenches ?? {},

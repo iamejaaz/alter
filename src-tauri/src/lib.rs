@@ -1946,6 +1946,7 @@ pub fn run() {
             pr_auto_merge,
             bridge::bridge_info,
             bridge::bridge_sync,
+            bridge::bridge_set_skills,
             bridge::bridge_set_repro_root,
             browser::browser_open,
             browser::browser_read,

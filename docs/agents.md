@@ -1,6 +1,6 @@
 # Browser agents
 
-Runs started from the extension are one shot `claude -p` processes started by the bridge, with the bundled skill as instructions and a tool allowlist that depends on the kind of run. Nothing here uses the app's chat window. Each run shows in the popup and in the app sidebar until 12 hours after it ends, or until you remove it.
+Runs started from the extension are one shot `claude -p` or `codex exec` processes started by the bridge (the extension's PR review and Support pickers decide which), with the bundled skill as instructions and a tool allowlist that depends on the kind of run. Nothing here uses the app's chat window. Each run shows in the popup and in the app sidebar until 12 hours after it ends, or until you remove it.
 
 ## Settings the agents depend on
 
@@ -14,7 +14,7 @@ All in the desktop app, Settings.
 | Support agent, Frappe credentials (site, key, secret) | `FRAPPE_SITE`, `FRAPPE_API_KEY`, `FRAPPE_API_SECRET` | `fr` reads these instead of the macOS keychain, which would prompt on every run. **Import from fr** copies them from the frappectl config |
 | Browser extension, Review bot and Repos to watch | `pr_bot`, `pr_repos` | Which GitHub account posts bot reviews and where replies are watched |
 
-Also needed on PATH: `claude` signed in, `gh` signed in, `fr`.
+Also needed on PATH: `claude` or `codex` signed in, `gh` signed in, `fr`.
 
 ## Kinds of run
 
@@ -61,3 +61,14 @@ Installed into `~/.claude/skills` on every start from `skills/` in the repo. Edi
 
 - [bridge-and-extension.md](bridge-and-extension.md) for the panels and routes
 - [troubleshooting.md](troubleshooting.md#browser-agents) for run errors
+
+## Codex runs
+
+A Codex connection runs the same kinds of run with the same allowlists, translated for Codex:
+
+- Each mode gets its own Codex home under `~/Library/Application Support/com.ejaaz.alter/codex/<mode>`. It holds `rules/alter.rules` (the allowlist as `prefix_rule` allow lines, the deny list as forbidden lines), links to your `auth.json` and `config.toml`, and a `skills` folder with every skill from `~/.claude/skills`, `~/.codex/skills` and the skills added in Alter.
+- Review, follow up, support and verify run in the read only sandbox. Allowed commands run outside it, everything else stays read only with no network, so a review run cannot write files. Its git reads stay inside the sandbox.
+- Fix this PR runs in the workspace write sandbox, in the working folder.
+- The push guard is passed to every command through `shell_environment_policy.set`, so `git -C <app> push` is blocked as well as `git push`. Only Push to PR runs without it.
+- Skill front matter is quoted in the Codex copy, because Codex rejects a description with an unquoted `: ` that Claude Code accepts.
+- Sign in refreshes are copied back to `~/.codex/auth.json`, so the Codex app stays signed in.

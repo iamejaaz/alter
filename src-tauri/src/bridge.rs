@@ -23,6 +23,12 @@ impl BridgeConn {
     fn is_claude_code(&self) -> bool {
         self.base_url.starts_with("claude-code")
     }
+    fn is_codex(&self) -> bool {
+        self.base_url.starts_with("codex://")
+    }
+    fn is_agent(&self) -> bool {
+        self.is_claude_code() || self.is_codex()
+    }
 }
 
 #[derive(Default)]
@@ -222,6 +228,8 @@ struct ConnInfo {
     name: String,
     #[serde(rename = "isClaudeCode")]
     is_claude_code: bool,
+    #[serde(rename = "isAgent")]
+    is_agent: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -686,6 +694,9 @@ fn spawn_agent_run(
     max_turns: Option<u32>,
     resume: Option<String>,
 ) {
+    if conn.is_codex() {
+        return spawn_codex_run(conn, system, prompt, run_id, mode, repro_root, running, progress, resume);
+    }
     let is_pr = mode.as_deref() == Some("pr");
     let is_pr_push = mode.as_deref() == Some("pr-push");
     let is_verify = mode.as_deref() == Some("verify");
@@ -696,7 +707,7 @@ fn spawn_agent_run(
         Some(dir) => format!("{prompt}\n\nSCRATCHPAD: write any script or temp file ONLY under `{}` — it is the one writable place; /tmp, the bench and your memory folder are not.", dir.display()),
         None => prompt,
     };
-    let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
+    let full = format!("{}{}", if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") }, alter_skills_index());
     let mut cmd = std::process::Command::new("claude");
     cmd.arg("-p")
         .arg(&full);
@@ -889,14 +900,14 @@ fn resolve_conn(state: &BridgeState, id: &str, needs_agent: bool) -> Result<Brid
         return Ok(c.clone());
     }
     if needs_agent {
-        if let Some(c) = conns.iter().find(|c| c.is_claude_code()) {
+        if let Some(c) = conns.iter().find(|c| c.is_claude_code()).or_else(|| conns.iter().find(|c| c.is_codex())) {
             return Ok(c.clone());
         }
     }
     let msg = if conns.is_empty() {
         "Alter hasn't loaded its models yet. Open the Alter window, then try again."
     } else if needs_agent {
-        "This action needs Claude Code, and Alter has no Claude Code model. Add one in Alter under Settings, Models."
+        "This action needs Claude Code or Codex, and Alter has neither. Add one in Alter under Settings, Connections."
     } else {
         "The model picked for this action was removed from Alter. Open the Alter extension settings and pick a model again."
     };
@@ -911,6 +922,54 @@ pub fn bridge_info(state: State<BridgeState>) -> serde_json::Value {
 #[tauri::command]
 pub fn bridge_sync(state: State<BridgeState>, connections: Vec<BridgeConn>) {
     *state.conns.lock().unwrap_or_else(|e| e.into_inner()) = connections;
+}
+
+#[derive(serde::Deserialize)]
+pub struct AlterSkill {
+    name: String,
+    #[serde(default)]
+    description: String,
+    instructions: String,
+}
+
+fn skill_slug(name: &str) -> String {
+    let s: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    s.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-")
+}
+
+#[tauri::command]
+pub fn bridge_set_skills(skills: Vec<AlterSkill>) -> Result<(), String> {
+    let dir = alter_skills_dir();
+    let _ = std::fs::remove_dir_all(&dir);
+    for s in skills {
+        let slug = skill_slug(&s.name);
+        if slug.is_empty() || s.instructions.trim().is_empty() {
+            continue;
+        }
+        let d = dir.join(&slug);
+        std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+        let desc = s.description.replace('\n', " ").replace('"', "'");
+        std::fs::write(d.join("SKILL.md"), format!("---\nname: {slug}\ndescription: \"{desc}\"\n---\n\n{}\n", s.instructions.trim())).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn alter_skills_index() -> String {
+    let Ok(rd) = std::fs::read_dir(alter_skills_dir()) else { return String::new() };
+    let mut lines: Vec<String> = rd
+        .flatten()
+        .filter_map(|e| {
+            let f = e.path().join("SKILL.md");
+            let raw = std::fs::read_to_string(&f).ok()?;
+            let desc = raw.lines().find_map(|l| l.strip_prefix("description: ")).unwrap_or("").trim_matches('"').to_string();
+            Some(format!("- {}: {desc} (read {} when it applies)", e.file_name().to_string_lossy(), f.display()))
+        })
+        .collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    lines.sort();
+    format!("\n\nSkills added in Alter:\n{}", lines.join("\n"))
 }
 
 #[tauri::command]
@@ -1343,6 +1402,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                     id: c.id.clone(),
                     name: if c.is_claude_code() { "Claude Code".into() } else { c.name.clone() },
                     is_claude_code: c.is_claude_code(),
+                    is_agent: c.is_agent(),
                 })
                 .collect();
             (200, serde_json::to_string(&list).unwrap_or_else(|_| "[]".into()))
@@ -1474,13 +1534,11 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Ok(c) => c,
                 Err(e) => return e,
             };
-            if !conn.is_claude_code() {
-                return (400, "{\"error\":\"the support agent needs the Claude Code connection (it uses tools)\"}".into());
+            if !conn.is_agent() {
+                return (400, "{\"error\":\"this action needs an agent connection (Claude Code or Codex) because it uses tools\"}".into());
             }
-            if let Some(m) = req.model.as_deref() {
-                if !m.is_empty() {
-                    conn.model = m.to_string();
-                }
+            if let Some(m) = req.model.as_deref().filter(|m| !m.is_empty() && conn.is_claude_code()) {
+                conn.model = m.to_string();
             }
             let system = if resuming { String::new() } else { build_system(req.include_memory, Some(&system)) };
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
@@ -1912,13 +1970,11 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 Ok(c) => c,
                 Err(e) => return e,
             };
-            if !conn.is_claude_code() {
-                return (400, "{\"error\":\"the support agent needs the Claude Code connection (it uses tools)\"}".into());
+            if !conn.is_agent() {
+                return (400, "{\"error\":\"this action needs an agent connection (Claude Code or Codex) because it uses tools\"}".into());
             }
-            if let Some(m) = req.model.as_deref() {
-                if !m.is_empty() {
-                    conn.model = m.to_string();
-                }
+            if let Some(m) = req.model.as_deref().filter(|m| !m.is_empty() && conn.is_claude_code()) {
+                conn.model = m.to_string();
             }
             let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
             let benches = repro_benches_block();
@@ -2145,3 +2201,327 @@ fn kill_group(pid: u32) {
     }
 }
 
+
+fn alter_support_dir() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    std::path::Path::new(&home).join("Library/Application Support/com.ejaaz.alter")
+}
+
+pub fn alter_skills_dir() -> std::path::PathBuf {
+    alter_support_dir().join("skills")
+}
+
+fn rule_patterns(list: &str) -> Vec<Vec<String>> {
+    list.split("Bash(")
+        .skip(1)
+        .filter_map(|rest| rest.split_once(":*)").map(|(p, _)| p.split_whitespace().map(str::to_string).collect::<Vec<_>>()))
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+fn starlark_str(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn codex_rules(allow: &str, deny: &str, sandboxed_git: bool) -> String {
+    let line = |p: &[String], decision: &str| {
+        format!("prefix_rule(pattern=[{}], decision=\"{decision}\")\n", p.iter().map(|t| starlark_str(t)).collect::<Vec<_>>().join(", "))
+    };
+    let mut out = String::new();
+    for p in rule_patterns(allow) {
+        if sandboxed_git && p[0] == "git" {
+            continue;
+        }
+        out.push_str(&line(&p, "allow"));
+    }
+    let mut denies = rule_patterns(deny);
+    denies.push(vec!["git".into(), "push".into()]);
+    for p in denies {
+        out.push_str(&line(&p, "forbidden"));
+    }
+    out
+}
+
+fn link(target: &std::path::Path, at: &std::path::Path) {
+    let _ = std::fs::remove_file(at);
+    #[cfg(unix)]
+    let _ = std::os::unix::fs::symlink(target, at);
+}
+
+fn sync_codex_auth(home: &std::path::Path, real: &std::path::Path) {
+    let ours = home.join("auth.json");
+    let is_link = std::fs::symlink_metadata(&ours).map(|m| m.file_type().is_symlink()).unwrap_or(false);
+    if !is_link && ours.is_file() {
+        let newer = |p: &std::path::Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        if newer(&ours) > newer(&real.join("auth.json")) {
+            let tmp = real.join("auth.json.alter-tmp");
+            if std::fs::copy(&ours, &tmp).is_ok() {
+                let _ = std::fs::rename(&tmp, real.join("auth.json"));
+            }
+        }
+    }
+    link(&real.join("auth.json"), &ours);
+}
+
+fn codex_home(mode: &str, rules: &str) -> std::io::Result<std::path::PathBuf> {
+    let user_home = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
+    let real = std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| user_home.join(".codex"));
+    let home = alter_support_dir().join("codex").join(mode);
+    std::fs::create_dir_all(home.join("rules"))?;
+    std::fs::write(home.join("rules/alter.rules"), rules)?;
+    sync_codex_auth(&home, &real);
+    if real.join("config.toml").is_file() {
+        link(&real.join("config.toml"), &home.join("config.toml"));
+    }
+    let skills = home.join("skills");
+    let _ = std::fs::remove_dir_all(&skills);
+    std::fs::create_dir_all(&skills)?;
+    for src in [user_home.join(".claude/skills"), real.join("skills"), alter_skills_dir()] {
+        if let Ok(rd) = std::fs::read_dir(&src) {
+            for e in rd.flatten() {
+                let name = e.file_name();
+                let path = e.path();
+                if name.to_string_lossy().starts_with('.') || !path.join("SKILL.md").is_file() || skills.join(&name).exists() {
+                    continue;
+                }
+                let _ = mirror_skill(&path, &skills.join(&name));
+            }
+        }
+    }
+    Ok(home)
+}
+
+fn quote_frontmatter(raw: &str) -> String {
+    let Some(rest) = raw.strip_prefix("---\n") else { return raw.to_string() };
+    let Some(end) = rest.find("\n---") else { return raw.to_string() };
+    let fm: Vec<String> = rest[..end]
+        .lines()
+        .map(|l| match l.split_once(": ") {
+            Some((k @ ("name" | "description"), v)) if !v.starts_with(['"', '\'', '>', '|']) => format!("{k}: {}", serde_json::Value::String(v.trim().to_string())),
+            _ => l.to_string(),
+        })
+        .collect();
+    format!("---\n{}{}", fm.join("\n"), &rest[end..])
+}
+
+fn mirror_skill(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for e in std::fs::read_dir(src)?.flatten() {
+        let name = e.file_name();
+        if name == "SKILL.md" {
+            std::fs::write(dst.join("SKILL.md"), quote_frontmatter(&std::fs::read_to_string(e.path())?))?;
+        } else {
+            link(&e.path(), &dst.join(&name));
+        }
+    }
+    Ok(())
+}
+
+fn shell_unwrap(cmd: &str) -> String {
+    for pre in ["/bin/zsh -lc ", "/bin/bash -lc ", "bash -lc ", "zsh -lc "] {
+        if let Some(rest) = cmd.strip_prefix(pre) {
+            let r = rest.trim();
+            if r.len() >= 2 && ((r.starts_with('\'') && r.ends_with('\'')) || (r.starts_with('"') && r.ends_with('"'))) {
+                return r[1..r.len() - 1].to_string();
+            }
+            return r.to_string();
+        }
+    }
+    cmd.to_string()
+}
+
+fn output_label(out: &str, failed: bool) -> String {
+    let lines: Vec<&str> = out.lines().map(|l| l.trim_end()).filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return if failed { "error: no output".into() } else { "no output".into() };
+    }
+    let head: String = lines[0].chars().take(120).collect();
+    let more = lines.len() - 1;
+    format!("{}{head}{}", if failed { "error: " } else { "" }, if more > 0 { format!(" (+{more} lines)") } else { String::new() })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_codex_run(
+    conn: BridgeConn,
+    system: String,
+    prompt: String,
+    run_id: String,
+    mode: Option<String>,
+    repro_root: String,
+    running: Arc<Mutex<std::collections::HashMap<String, u32>>>,
+    progress: Arc<Mutex<std::collections::HashMap<String, AgentProgress>>>,
+    resume: Option<String>,
+) {
+    progress.lock().unwrap_or_else(|e| e.into_inner()).insert(run_id.clone(), AgentProgress::default());
+    let mode_name = match mode.as_deref() {
+        Some("pr") => "pr",
+        Some("pr-push") => "pr-push",
+        Some("verify") => "verify",
+        _ => "agent",
+    };
+    let (rules, sandbox) = match mode_name {
+        "pr" => (codex_rules(&pr_allowed_tools(), &pr_disallowed_tools(), false), "workspace-write"),
+        "pr-push" => (codex_rules(&pr_push_allowed_tools(), "", false).replace("prefix_rule(pattern=[\"git\", \"push\"], decision=\"forbidden\")\n", ""), "read-only"),
+        "verify" => (codex_rules(&verify_allowed_tools(), "", false), "read-only"),
+        _ => (codex_rules(&agent_allowed_tools(), &agent_disallowed_tools(), true), "read-only"),
+    };
+    let home = match codex_home(mode_name, &rules) {
+        Ok(h) => h,
+        Err(e) => return finish_progress(&progress, &run_id, None, Some(format!("can't prepare the Codex folder: {e}"))),
+    };
+    let Some(bin) = crate::local_cli::find("codex") else {
+        return finish_progress(&progress, &run_id, None, Some("Codex is not installed. Install it in Alter, Settings, Connections, Codex.".into()));
+    };
+    let resuming = resume.as_ref().filter(|s| !s.is_empty()).cloned();
+    let note = if sandbox == "read-only" {
+        "\n\nYou cannot create or edit files in this run. Pipe any script to the repro helper on stdin with `-` instead of writing a file."
+    } else {
+        ""
+    };
+    let full = if system.is_empty() { format!("{prompt}{note}") } else { format!("{system}\n\n{prompt}{note}") };
+    let repro = repro_benches().into_iter().map(|(_, d)| d).find(|d| std::path::Path::new(d).is_dir());
+    let dir = if mode_name == "verify" { repro.unwrap_or_else(agent_workdir) } else { agent_workdir() };
+
+    let mut cmd = std::process::Command::new(&bin);
+    cmd.arg("exec");
+    if let Some(sid) = &resuming {
+        cmd.arg("resume").arg(sid);
+    }
+    cmd.arg("--json").arg("--skip-git-repo-check");
+    if resuming.is_none() && !dir.is_empty() {
+        cmd.arg("-C").arg(&dir);
+    }
+    cmd.arg("-c").arg(format!("sandbox_mode=\"{sandbox}\""));
+    cmd.arg("-c").arg("approval_policy=\"never\"");
+    cmd.arg("-c").arg("model_reasoning_effort=\"medium\"");
+    if mode_name != "pr-push" {
+        let keys: Vec<String> = ["https://", "git@", "ssh://"]
+            .iter()
+            .enumerate()
+            .map(|(i, p)| format!("GIT_CONFIG_KEY_{i}=\"url.blocked://alter-no-push/.pushInsteadOf\",GIT_CONFIG_VALUE_{i}=\"{p}\""))
+            .collect();
+        cmd.arg("-c").arg(format!("shell_environment_policy.set={{GIT_CONFIG_COUNT=\"3\",{}}}", keys.join(",")));
+    }
+    if !conn.model.is_empty() && conn.model != "codex" {
+        cmd.arg("-m").arg(&conn.model);
+    }
+    cmd.arg(&full);
+    cmd.env("CODEX_HOME", &home);
+    if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
+        cmd.current_dir(&dir);
+    }
+    if !repro_root.is_empty() {
+        cmd.env("ALTER_REPRO_ROOT", &repro_root);
+    }
+    cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    std::thread::spawn(move || {
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                finish_progress(&progress, &run_id, None, Some(format!("can't run codex: {e}")));
+                return;
+            }
+        };
+        running.lock().unwrap_or_else(|e| e.into_inner()).insert(run_id.clone(), child.id());
+        let stderr_buf = Arc::new(Mutex::new(String::new()));
+        if let Some(mut err) = child.stderr.take() {
+            let sb = stderr_buf.clone();
+            std::thread::spawn(move || {
+                let mut s = String::new();
+                let _ = err.read_to_string(&mut s);
+                *sb.lock().unwrap_or_else(|e| e.into_inner()) = s;
+            });
+        }
+        let mut final_text = String::new();
+        let mut last_error = String::new();
+        if let Some(out) = child.stdout.take() {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+                let item = &v["item"];
+                match v["type"].as_str().unwrap_or("") {
+                    "thread.started" => {
+                        if let Some(sid) = v["thread_id"].as_str() {
+                            if let Some(p) = progress.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&run_id) {
+                                p.session_id.get_or_insert_with(|| sid.to_string());
+                            }
+                        }
+                    }
+                    "item.started" if item["type"] == "command_execution" => {
+                        let c: String = shell_unwrap(item["command"].as_str().unwrap_or("")).chars().take(160).collect();
+                        push_step(&progress, &run_id, format!("\u{25B8} Bash: {c}"));
+                    }
+                    "item.completed" => match item["type"].as_str().unwrap_or("") {
+                        "command_execution" => {
+                            let failed = item["status"] == "failed" || item["exit_code"].as_i64().map(|c| c != 0).unwrap_or(false);
+                            push_step(&progress, &run_id, format!("\u{21B3} {}", output_label(item["aggregated_output"].as_str().unwrap_or(""), failed)));
+                        }
+                        "agent_message" => {
+                            let t = item["text"].as_str().unwrap_or("").trim().to_string();
+                            if !t.is_empty() {
+                                push_step(&progress, &run_id, t.clone());
+                                final_text = t;
+                            }
+                        }
+                        "file_change" => {
+                            let files: Vec<String> = item["changes"]
+                                .as_array()
+                                .map(|a| a.iter().filter_map(|c| c["path"].as_str().map(|p| p.rsplit('/').next().unwrap_or(p).to_string())).collect())
+                                .unwrap_or_default();
+                            push_step(&progress, &run_id, format!("\u{25B8} Edit: {}", files.join(", ")));
+                        }
+                        "mcp_tool_call" => {
+                            push_step(&progress, &run_id, format!("\u{25B8} {}: {}", item["server"].as_str().unwrap_or("tool"), item["tool"].as_str().unwrap_or("")));
+                        }
+                        "web_search" => {
+                            push_step(&progress, &run_id, format!("\u{25B8} Search: {}", item["query"].as_str().unwrap_or("")));
+                        }
+                        "error" => {
+                            last_error = item["message"].as_str().unwrap_or("").to_string();
+                        }
+                        _ => {}
+                    },
+                    "turn.completed" => {
+                        finish_progress(&progress, &run_id, Some(final_text.clone()), None);
+                    }
+                    "turn.failed" => {
+                        let m = v["error"]["message"].as_str().unwrap_or("Codex stopped with an error").to_string();
+                        finish_progress(&progress, &run_id, None, Some(crate::local_cli::signin_hint(&m).unwrap_or(m)));
+                    }
+                    "error" => {
+                        last_error = v["message"].as_str().unwrap_or("").to_string();
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let _ = child.wait();
+        running.lock().unwrap_or_else(|e| e.into_inner()).remove(&run_id);
+        let user_home = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
+        let real = std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| user_home.join(".codex"));
+        sync_codex_auth(&home, &real);
+        let mut map = progress.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(p) = map.get_mut(&run_id) {
+            if !p.done {
+                let err = stderr_buf.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let tail = err.lines().filter(|l| !l.contains("models_manager") && !l.trim().is_empty() && !l.starts_with("Reading additional input")).last().unwrap_or("").to_string();
+                if !final_text.is_empty() {
+                    if p.steps.last().map(|s| s.as_str()) == Some(final_text.as_str()) {
+                        p.steps.pop();
+                    }
+                    p.text = final_text;
+                } else {
+                    let m = [last_error, tail].into_iter().find(|s| !s.trim().is_empty()).unwrap_or_else(|| "Codex stopped without an answer (it may have been stopped).".into());
+                    p.error = Some(crate::local_cli::signin_hint(&m).unwrap_or(m));
+                }
+                p.done = true;
+                p.finished_at = Some(std::time::Instant::now());
+            }
+        }
+    });
+}

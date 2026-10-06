@@ -105,7 +105,7 @@ async function runVerbInner(verb) {
   const connectionId = models && models.support;
   openPanel(verb);
   if (!connectionId)
-    return setBody('<span class="sup-err">Pick a model for support in the Alter extension settings (use Claude Code — it needs tools).</span>');
+    return setBody('<span class="sup-err">Pick a model for support in the Alter extension settings (Claude Code or Codex, it needs tools).</span>');
 
   // Triage (summarize/diagnose/draft/follow-ups) runs on the FAST model — it's a
   // read task and a heavy model there is pure latency (7-8 min vs ~1-2). The
