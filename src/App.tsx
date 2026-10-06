@@ -1840,16 +1840,18 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const fam = m ? FAMILIES.indexOf(m[1]) : 99;
     return [fam < 0 ? 98 : fam, -(m ? Number(m[2]) * 100 + Number(m[3] ?? 0) : 0)];
   };
-  const CLAUDE_MODELS: { id: string; label: string; group?: string }[] = [
+  const KNOWN_CLAUDE_MODELS = ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5-20251001"];
+  const CLAUDE_MODELS: { id: string; label: string }[] = [
     { id: "claude-code", label: "Default" },
-    ...FAMILIES.map((f) => ({ id: f, label: `${f[0].toUpperCase()}${f.slice(1)} (latest)`, group: "Always the newest" })),
-    ...[...new Set([...seenClaudeModels, ...(settings.model?.startsWith("claude-") && settings.model !== "claude-code" ? [settings.model] : [])])]
+    ...[...new Set([...KNOWN_CLAUDE_MODELS, ...seenClaudeModels, ...(settings.model?.startsWith("claude-") && settings.model !== "claude-code" ? [settings.model] : [])])]
       .sort((a, b) => {
         const [fa, va] = versionKey(a);
         const [fb, vb] = versionKey(b);
         return fa - fb || va - vb;
       })
-      .map((id) => ({ id, label: modelLabel(id), group: "Specific versions" })),
+      .filter((id, i, all) => all.findIndex((o) => modelLabel(o) === modelLabel(id)) === i)
+      .map((id) => ({ id, label: modelLabel(id) })),
+    ...(FAMILIES.includes(settings.model) ? [{ id: settings.model, label: `${settings.model[0].toUpperCase()}${settings.model.slice(1)}` }] : []),
   ];
   const claudeCodeActive = isClaudeCodeUrl(settings.baseUrl);
   const [claudeSkills, setClaudeSkills] = useState<{ name: string; description: string }[]>([]);
@@ -3255,7 +3257,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   <ComposerSelect
                     value={CLAUDE_MODELS.some((m) => m.id === settings.model) ? settings.model : "claude-code"}
                     onChange={setClaudeModel}
-                    options={CLAUDE_MODELS.map((m) => ({ value: m.id, label: m.label, group: m.group }))}
+                    options={CLAUDE_MODELS.map((m) => ({ value: m.id, label: m.label }))}
                     title="Claude Code model"
                   />
                 )}

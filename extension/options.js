@@ -16,7 +16,9 @@ async function loadConnections() {
   $("auto-review-post").checked = stored.autoReviewPost !== false;
   $("helpdesk-site").value = stored.helpdeskSite || "";
   $("grammar-everywhere").checked = stored.grammarEverywhere !== false;
-  $("claude-model").value = stored.claudeModel != null ? stored.claudeModel : "sonnet";
+  const alias = { fable: "claude-fable-5-1", opus: "claude-opus-5-5", sonnet: "claude-sonnet-5-5", haiku: "claude-haiku-4-5-20251001" };
+  const cm = stored.claudeModel != null ? stored.claudeModel : "sonnet";
+  $("claude-model").value = alias[cm] || cm;
 
   const r = await send({ type: "connections" });
   if (!r || !r.ok) {
