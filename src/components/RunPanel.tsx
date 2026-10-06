@@ -57,6 +57,7 @@ export default function RunPanel({ runId, onClose, onStop }: { runId: string; on
   }, [runId]);
 
   const result = run ? cleanResult(run.text || "") : "";
+  const now = run ? [...run.steps].reverse().find((x) => !x.startsWith("\u21B3")) : undefined;
   const took = run && run.done && run.endedAgoMs != null ? Date.now() - run.endedAgoMs - run.startedAt : null;
   const status = !run
     ? ""
@@ -120,7 +121,7 @@ export default function RunPanel({ runId, onClose, onStop }: { runId: string; on
               </div>
             ) : (
               <p className="text-[13px] text-[var(--txt-faint)]">
-                {run.done ? "It finished without a written result." : `Working. ${run.steps.length ? `Now: ${run.steps[run.steps.length - 1]}` : "Starting up."}`}
+                {run.done ? "It finished without a written result." : `Working. ${now ? `Now: ${now}` : "Starting up."}`}
               </p>
             )}
             {run.steps.length > 0 && (

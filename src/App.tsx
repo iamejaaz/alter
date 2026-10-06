@@ -2385,14 +2385,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         )}
         <header
           data-tauri-drag-region
-          className="flex items-center gap-2 h-12 px-5 shrink-0 border-b border-[var(--bd-soft)]"
+          className="flex items-center gap-2 h-12 px-5 shrink-0 overflow-hidden border-b border-[var(--bd-soft)]"
         >
-          <span className="truncate text-sm font-medium text-[var(--txt)] pointer-events-none max-w-[40%]">
+          <span className="min-w-0 truncate text-sm font-medium text-[var(--txt)] pointer-events-none max-w-[40%]">
             {active && active.messages.length > 0 ? active.title : ""}
           </span>
           {/* Working folder lives here (like Claude Code shows the cwd after the title). */}
           {folder ? (
-            <div className="flex h-[22px] items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 text-xs text-[var(--txt-dim)] max-w-[240px]">
+            <div className="flex h-[22px] min-w-0 items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 text-xs text-[var(--txt-dim)] max-w-[240px]">
               <IconFolder />
               <span className="font-mono truncate">{folder.split("/").pop()}</span>
               <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)] px-0.5" title="Detach folder">
@@ -2412,7 +2412,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           {/* The chat's own project, so it can be filed without hunting for the
               row menu or switching the sidebar first. */}
           {active && (
-            <div className="relative">
+            <div className="relative min-w-0">
               <select
                 value={active.projectId ?? ""}
                 onChange={(e) => {
@@ -2420,7 +2420,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   if (v === "__new__") return newProject(active.id);
                   updateConversation(active.id, (c) => ({ ...c, projectId: v || undefined }));
                 }}
-                className="h-[22px] cursor-pointer appearance-none rounded-lg bg-transparent hover:bg-[var(--panel-2)] pl-2 pr-5 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)] focus:outline-none transition-colors"
+                className="h-[22px] w-full max-w-full cursor-pointer appearance-none truncate rounded-lg bg-transparent hover:bg-[var(--panel-2)] pl-2 pr-5 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)] focus:outline-none transition-colors"
                 title="Project for this chat"
               >
                 <option value="" className="bg-[var(--modal)]">
@@ -2448,7 +2448,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 }
                 setBrowserPane(open);
               }}
-              className={`rounded-lg px-2.5 py-1.5 text-xs transition-colors ${browserPane ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-dim)] hover:bg-[var(--panel-2)]"}`}
+              className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs transition-colors ${browserPane ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-dim)] hover:bg-[var(--panel-2)]"}`}
               title="Show the agent browser next to the chat"
             >
               Browser
@@ -2459,14 +2459,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               <button
                 onClick={regenerate}
                 disabled={activeStreaming}
-                className="rounded-lg hover:bg-[var(--panel-2)] disabled:opacity-40 px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
+                className="shrink-0 rounded-lg hover:bg-[var(--panel-2)] disabled:opacity-40 px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
                 title="Regenerate last reply"
               >
                 Regenerate
               </button>
               <button
                 onClick={exportConversation}
-                className="rounded-lg hover:bg-[var(--panel-2)] px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
+                className="shrink-0 rounded-lg hover:bg-[var(--panel-2)] px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
                 title="Export as markdown"
               >
                 Export
