@@ -695,10 +695,7 @@ fn spawn_agent_run(
     }
     cmd.arg("--effort").arg("medium");
     cmd.env("CLAUDE_CODE_ENTRYPOINT", "claude-desktop");
-    let repro = ["DEVELOP", "VERSION_16", "VERSION_15"]
-        .iter()
-        .filter_map(|v| std::env::var(format!("ALTER_REPRO_{v}")).ok())
-        .find(|d| !d.is_empty() && std::path::Path::new(d).is_dir());
+    let repro = repro_benches().into_iter().map(|(_, d)| d).find(|d| std::path::Path::new(d).is_dir());
     let dir = if is_verify { repro.unwrap_or_else(agent_workdir) } else { agent_workdir() };
     if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
         cmd.current_dir(&dir);
@@ -1218,18 +1215,20 @@ fn skill_dir() -> Option<std::path::PathBuf> {
 // Literal per-version repro bench paths for the verify prompt. The agent can't
 // expand $ALTER_REPRO_* itself (Claude Code denies any command with shell
 // expansion), so the bridge resolves the paths and injects them as {benches}.
+fn repro_benches() -> Vec<(&'static str, String)> {
+    ["develop", "version-16", "version-15"]
+        .into_iter()
+        .filter_map(|v| {
+            let path = std::env::var(format!("ALTER_REPRO_{}", v.to_uppercase().replace('-', "_"))).ok()?;
+            (!path.is_empty()).then_some((v, path))
+        })
+        .collect()
+}
+
 fn repro_benches_block() -> String {
-    let mut lines = Vec::new();
-    for v in ["develop", "version-16", "version-15"] {
-        let key = format!("ALTER_REPRO_{}", v.to_uppercase().replace('-', "_"));
-        if let Ok(path) = std::env::var(&key) {
-            if !path.is_empty() {
-                lines.push(format!("{v} → {path}"));
-            }
-        }
-    }
+    let lines: Vec<String> = repro_benches().into_iter().map(|(v, path)| format!("{v} → {path}")).collect();
     if lines.is_empty() {
-        "(no repro benches configured — tell the user to set them in Alter → Settings → Repro benches, then stop)".to_string()
+        "(no repro benches configured. Tell the user to set them in Alter, Settings, Support agent, Repro benches, then stop)".to_string()
     } else {
         lines.join("; ")
     }
@@ -1333,13 +1332,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
         (tiny_http::Method::Get, "/repro-info") => {
             // Which repro benches are configured (so the extension can gate the
             // Verify-on-bench action). Read the same env the agents get.
-            let mut versions: Vec<String> = Vec::new();
-            for v in ["develop", "version-16", "version-15"] {
-                let key = format!("ALTER_REPRO_{}", v.to_uppercase().replace('-', "_"));
-                if std::env::var(&key).map(|s| !s.is_empty()).unwrap_or(false) {
-                    versions.push(v.to_string());
-                }
-            }
+            let versions: Vec<&str> = repro_benches().into_iter().map(|(v, _)| v).collect();
             let has_root = std::env::var("ALTER_REPRO_ROOT").map(|s| !s.is_empty()).unwrap_or(false);
             let configured = has_root || !versions.is_empty();
             (200, serde_json::json!({ "configured": configured, "versions": versions, "bot": pr_bot() }).to_string())
