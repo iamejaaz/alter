@@ -262,6 +262,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [farFromBottom, setFarFromBottom] = useState(false);
   const atBottomRef = useRef(true);
   const speechSupported =
     typeof window !== "undefined" &&
@@ -2518,7 +2519,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }}
           onScroll={() => {
             const el = scrollRef.current;
-            if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+            if (!el) return;
+            const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+            atBottomRef.current = gap < 120;
+            setFarFromBottom(gap > 400);
           }}
           className="flex-1 overflow-y-auto overflow-x-hidden"
         >
@@ -2760,7 +2764,22 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         </div>
 
         <div className="px-4 pb-4 pt-1">
-          <div className="max-w-3xl mx-auto">
+          <div className="relative max-w-3xl mx-auto">
+            {farFromBottom && view === "chat" && (
+              <button
+                onClick={() => {
+                  const el = scrollRef.current;
+                  if (!el) return;
+                  atBottomRef.current = true;
+                  el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+                }}
+                className="absolute -top-11 left-1/2 z-10 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-[var(--bd)] bg-[var(--panel)] text-[15px] text-[var(--txt-dim)] shadow-md hover:bg-[var(--panel-2)] hover:text-[var(--txt)]"
+                title="Scroll to the latest message"
+                aria-label="Scroll to bottom"
+              >
+                ↓
+              </button>
+            )}
             {((activeId && convErrors[activeId]) || error) && (
               <div className="mb-2 flex items-center gap-2 rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-xs text-red-300">
                 <span className="min-w-0 flex-1">{(activeId && convErrors[activeId]) || error}</span>
