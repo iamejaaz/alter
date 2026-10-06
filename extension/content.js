@@ -772,8 +772,9 @@ async function refreshBadge() {
 
 function ensureButton() {
   const isIssue = !!issueParts();
-  if (!prParts() && !isIssue) return;
-  if (document.getElementById("alter-actions")) return;
+  const existing = document.getElementById("alter-actions");
+  if (!prParts() && !isIssue) return existing && existing.remove();
+  if (existing) return;
   const wrap = document.createElement("div");
   wrap.id = "alter-actions";
   const b = document.createElement("button");
@@ -1162,6 +1163,8 @@ setInterval(() => {
     }
     // Coming back to the PR we just left should re-attach to its run.
     if (left) reconnected.delete(left);
+    const actions = document.getElementById("alter-actions");
+    if (actions) actions.remove();
   }
   ensureButton();
   reconnectIfActive();
