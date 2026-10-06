@@ -433,3 +433,20 @@
   font-weight: 600;
   cursor: pointer;
 }
+.alter-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+.alter-switch select {
+  background: #232329;
+  border: 1px solid #34343c;
+  color: #e4e4e7;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font: inherit;
+}

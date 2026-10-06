@@ -69,6 +69,27 @@ async function saveReview(key, rec) {
 
 // Ignore re-clicks while a review is in flight: a second run() would clear the
 // panel and detach the live block.
+const MODEL_BLOCKED = /usage credits|switch to another model|not available (?:on|for) your|model .*(?:unavailable|not found|not supported)/i;
+const CLAUDE_CHOICES = [
+  ["claude-opus-5-5", "Opus 5.5"],
+  ["claude-sonnet-5-5", "Sonnet 5.5"],
+  ["claude-haiku-4-5-20251001", "Haiku 4.5"],
+];
+
+function modelSwitch(label) {
+  const row = document.createElement("div");
+  row.className = "alter-switch";
+  row.innerHTML = `<span>Use another Claude model:</span><select>${CLAUDE_CHOICES.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select><button class="alter-link">${label === "review" ? "Retry review" : "Save"}</button>`;
+  row.querySelector("button").addEventListener("click", async () => {
+    const model = row.querySelector("select").value;
+    await chrome.storage.local.set({ claudeModel: model });
+    if (session) session.model = model;
+    if (label === "review") return run(true);
+    row.innerHTML = `<span>Saved. Click the action again to run it on ${escapeHtml(CLAUDE_CHOICES.find(([v]) => v === model)[1])}.</span>`;
+  });
+  return row;
+}
+
 async function run(fresh) {
   if (running) return;
   const parts = prParts();
@@ -609,6 +630,7 @@ function pollRun(el, runId, opts) {
       b.className = "alter-banner";
       b.textContent = humanizeErr(msg);
       el.appendChild(b);
+      if (MODEL_BLOCKED.test(msg || "")) el.appendChild(modelSwitch(opts.label));
       resolve("");
     };
 
