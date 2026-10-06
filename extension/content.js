@@ -904,7 +904,7 @@ function openPanel() {
     <div id="alter-panel-head">
       <span id="alter-panel-title">Alter — PR review</span>
       <div>
-        <button id="alter-copy" title="Copy the review, or the comments while you preview them">Copy</button>
+        <button id="alter-copy" title="Copy the review, or the comments while you preview them" aria-label="Copy">${window.ALTER.ICON_COPY}</button>
         <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
         <button id="alter-min" title="Minimize">–</button>
         <button id="alter-close" title="Close">×</button>
@@ -921,8 +921,7 @@ function openPanel() {
     const text = !session ? "" : previewing && session.draft ? session.draft : withoutJsonFence(session.review || "");
     if (!text) return;
     navigator.clipboard.writeText(text);
-    b.textContent = "Copied";
-    setTimeout(() => (b.textContent = "Copy"), 1500);
+    window.ALTER.copiedFlash(b);
   });
   el.querySelector("#alter-min").addEventListener("click", () => {
     const min = el.classList.toggle("alter-collapsed");

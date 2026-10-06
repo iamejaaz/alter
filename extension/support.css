@@ -427,3 +427,8 @@
 #sup-panel .sup-ctx-row b { font-weight: 600; min-width: 4.5em; }
 #sup-panel .sup-ctx-src { opacity: .6; }
 #sup-panel .sup-ctx-gap { opacity: .75; }
+#sup-copy {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}

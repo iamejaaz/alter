@@ -628,7 +628,7 @@ function openPanel(verb) {
         <span id="sup-title"></span>
         <div>
           <button id="sup-stop" title="Stop the agent" style="display:none">Stop</button>
-          <button id="sup-copy" title="Copy">Copy</button>
+          <button id="sup-copy" title="Copy" aria-label="Copy">${window.ALTER.ICON_COPY}</button>
           <button id="sup-min" title="Minimize">–</button>
           <button id="sup-close" title="Close">×</button>
         </div>
@@ -655,8 +655,7 @@ function openPanel(verb) {
     el.querySelector("#sup-copy").addEventListener("click", () => {
       const copy = el.querySelector("#sup-copy");
       navigator.clipboard.writeText(supSession && supSession.last ? supSession.last : "");
-      copy.textContent = "Copied";
-      setTimeout(() => (copy.textContent = "Copy"), 1500);
+      window.ALTER.copiedFlash(copy);
     });
   }
   const titles = { summarize: "Ticket summary", diagnose: "Diagnosis", draft: "Draft reply" };
