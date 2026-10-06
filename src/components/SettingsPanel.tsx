@@ -331,9 +331,13 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     setTestResult(null);
   };
   const deleteConnection = async (id: string) => {
-    const remaining = conns.filter((c) => c.id !== id);
+    const remaining = syncedConnections().filter((c) => c.id !== id);
     if (remaining.length === 0) return;
-    if (!(await confirmDialog(`Delete the connection "${conns.find((c) => c.id === id)?.name ?? ""}"?`))) return;
+    if (!(await confirmDialog(`Delete the connection "${conns.find((c) => c.id === id)?.name ?? ""}"? Chats that used it keep their history.`))) return;
+    if (id !== activeId) {
+      setDraft({ ...draft, connections: remaining });
+      return;
+    }
     const next = remaining[0];
     setDraft({ ...draft, connections: remaining, activeConnectionId: next.id, baseUrl: next.baseUrl, apiKey: next.apiKey, model: next.model });
   };
@@ -509,10 +513,10 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 {conns.map((c) => {
                   const on = c.id === activeId;
                   return (
+                    <div key={c.id} className="group flex items-center gap-3 border-b border-[var(--bd-soft)]">
                     <button
-                      key={c.id}
                       onClick={() => selectConnection(c.id)}
-                      className="flex w-full items-center gap-4 border-b border-[var(--bd-soft)] py-3 text-left"
+                      className="flex min-w-0 flex-1 items-center gap-4 py-3 text-left"
                     >
                       <span
                         className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${on ? "border-[var(--txt)]" : "border-[var(--bd)]"}`}
@@ -528,6 +532,16 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                       </span>
                       {on && <span className="shrink-0 text-[12px] text-[var(--txt-faint)]">Used for new chats</span>}
                     </button>
+                    {conns.length > 1 && (
+                      <button
+                        onClick={() => void deleteConnection(c.id)}
+                        className="shrink-0 rounded-md px-2 py-0.5 text-[12px] text-[var(--txt-faint)] opacity-0 hover:bg-[var(--panel-2)] hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                        aria-label={`Delete ${c.name}`}
+                      >
+                        Delete
+                      </button>
+                    )}
+                    </div>
                   );
                 })}
                 <Row title="Add a connection" desc="Start from a provider, or add your own OpenAI compatible endpoint.">
