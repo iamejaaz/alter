@@ -43,6 +43,13 @@ It prints a session id. Open `http://<site>:<port>/app?sid=<id>` in the browser 
 - Background jobs: `logs/worker.error.log` and the `RQ Job` list. Scheduler state: `bench --site <site> doctor`.
 - Client errors: the browser console. A `frappe.throw` shows as a dialog, and its message is in the response body.
 
-## 6. Report
+## 6. Clean up what you started
 
-Say what a user sees, the cause with `file:line`, and the fix. Then what you ran to prove it, and anything you left changed (a migrate, a config flag, a restarted server). Never claim it works without having run it.
+- Before starting anything, note what already runs: `lsof -nP -iTCP:<port> -sTCP:LISTEN` and `pgrep -fl "bench|frappe|redis"`. Those are the user's. Never stop them.
+- Start servers so you can find them again: note the PID it prints, or start it in the background and record `$!` in your scratchpad.
+- Before you finish, stop every process you started (`bench start`, `bench serve`, `bench watch`, redis, a test server) with `kill <pid>`, and confirm the port is free again. If you restarted the user's own server, start it again the way it was running.
+- Put back anything else you changed for the check: a branch, a config flag, a temporary file.
+
+## 7. Report
+
+Say what a user sees, the cause with `file:line`, and the fix. Then what you ran to prove it, which processes you stopped, and anything you left changed on purpose (a migrate, a config flag). Never claim it works without having run it.
