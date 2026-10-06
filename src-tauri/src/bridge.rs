@@ -322,7 +322,7 @@ fn bench_rules() -> Vec<String> {
 }
 
 fn verify_allowed_tools() -> String {
-    let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch"].iter().map(|s| s.to_string()).collect();
+    let mut t: Vec<String> = ["Read", "Grep", "Glob", "WebFetch", "Bash(cd:*)", "Bash(pwd:*)", "Bash(ls:*)"].iter().map(|s| s.to_string()).collect();
     t.push("Bash(git:*)".to_string());
     t.extend(bench_rules());
     for g in ["gh pr view", "gh pr diff", "gh pr checkout", "gh pr checks", "gh pr list", "gh issue view"] {
@@ -677,7 +677,11 @@ fn spawn_agent_run(
     }
     cmd.arg("--effort").arg("medium");
     cmd.env("CLAUDE_CODE_ENTRYPOINT", "claude-desktop");
-    let dir = agent_workdir();
+    let repro = ["DEVELOP", "VERSION_16", "VERSION_15"]
+        .iter()
+        .filter_map(|v| std::env::var(format!("ALTER_REPRO_{v}")).ok())
+        .find(|d| !d.is_empty() && std::path::Path::new(d).is_dir());
+    let dir = if is_verify { repro.unwrap_or_else(agent_workdir) } else { agent_workdir() };
     if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
         cmd.current_dir(&dir);
     }

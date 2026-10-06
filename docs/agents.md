@@ -47,7 +47,7 @@ Two guards sit under the allowlists:
 1. **Review with Alter** on a pull request runs the `frappe-pr-review` skill: gather, pre checks, the rubric, verification, result and comments in the maintainer's voice. The review is saved per PR in the extension and reopens on the next visit with **Run again**.
 2. **Preview comments**, then **Post review** as yourself through `gh`, or as the bot through the repo's `post-review.yml` workflow when a bot is configured and that workflow exists on the repo. The bot option is hidden otherwise.
 3. **Fix this PR** prepares one commit on a local branch `pr-<number>` on top of the PR in your checkout and stops. **Push to PR** appears only when a commit exists, asks for confirmation, pushes fast forward only to the PR's own branch, then switches your checkout back.
-4. **Verify on bench** checks the PR out on a repro bench and runs what the skill asks for. Hidden when no bench is configured.
+4. **Verify on bench** checks the PR out on a repro bench and runs it. The run starts inside the first configured repro bench (develop, then v16, then v15), not the agent working folder, and may `cd` into the bench that matches the PR's base branch. With no repro bench set, the button explains where to set one.
 
 ## Bundled skills
 

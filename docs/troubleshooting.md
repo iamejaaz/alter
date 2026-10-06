@@ -124,6 +124,7 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 | `The PR changed after this review was drafted, so its comments may point at old code.` | New commits since the review | Run again before posting |
 | `fr assistant handoff is only wired for macOS right now` | Not macOS | Use Continue in Alter chat instead |
 | Push to PR refused | Pushes are blocked by the push guard in every step except the explicit push, and that step is fast forward only | Use Push to PR after Fix this PR made a commit. If the PR branch moved, run Fix this PR again |
+| Verify on bench says a command was blocked, or `bench` says it is not in a bench folder | Older builds started verify in the agent working folder and did not allow `cd`, so a repro bench elsewhere could not be reached | Update Alter. Verify now starts inside the repro bench and may `cd` between repro benches |
 | The run's result says parts are unverified | The turn budget ran out | Ask a follow up for the unverified part, it continues the same session |
 
 ## Where to look when nothing above matches

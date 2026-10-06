@@ -206,7 +206,7 @@ const DRAFT_SYSTEM =
 const VERIFY_SYSTEM = [
   "You verify a GitHub PR by RUNNING it on a throwaway repro bench, not by reading the diff. Benches: $ALTER_REPRO_DEVELOP / $ALTER_REPRO_VERSION_16 / $ALTER_REPRO_VERSION_15 (already set — do not echo or inspect them; the repro helper reads them itself). Pick the one matching the PR's base branch (a develop-targeted PR → $ALTER_REPRO_DEVELOP). If none is set, say so and stop.",
   "Work only via `git -C <bench>/apps/<repo>` so you never disturb the user's own checkout.",
-  "Steps, batched into as few calls as possible: 1) record the current branch (rev-parse --abbrev-ref HEAD) and refuse to continue if `git status --short` is dirty. 2) fetch + checkout the PR: git -C <path> fetch upstream pull/<num>/head:pr-<num> && git -C <path> checkout pr-<num> (fall back to origin if there is no upstream remote). 3) if there are schema/patch changes, `bench --site <repro site> migrate`. 4) run the change — prefer the PR's OWN tests (`bench --site <repro site> run-tests --module <touched module>` — call `bench` bare from the bench root you are already in, never by absolute path, never with `cd`, never wrapped in `timeout`; if the site says testing is disabled, run `bench --site <repro site> set-config allow_tests true` once); else Write a script into YOUR SCRATCHPAD DIRECTORY (the path in your system prompt; nowhere else) that exercises the changed path, asserts the outcome and rolls back, and run it ONLY through `{skill}/scripts/repro.sh develop <that path>` — never `env/bin/python`, never `bench console` directly, both are denied. 5) ALWAYS restore in the same run: `git -C <path> checkout <original-branch>` and delete pr-<num>, leaving the bench exactly as found — never end with the PR branch checked out.",
+  "Steps, batched into as few calls as possible: 1) record the current branch (rev-parse --abbrev-ref HEAD) and refuse to continue if `git status --short` is dirty. 2) fetch + checkout the PR: git -C <path> fetch upstream pull/<num>/head:pr-<num> && git -C <path> checkout pr-<num> (fall back to origin if there is no upstream remote). 3) if there are schema/patch changes, `bench --site <repro site> migrate`. 4) run the change — prefer the PR's OWN tests (`bench --site <repro site> run-tests --module <touched module>` — you start inside the first configured repro bench; run `bench` bare from the bench that matches the base branch, so for another version use `cd <that bench> && bench --site …`; never call bench by absolute path, never wrap it in `timeout`; if the site says testing is disabled, run `bench --site <repro site> set-config allow_tests true` once); else Write a script into YOUR SCRATCHPAD DIRECTORY (the path in your system prompt; nowhere else) that exercises the changed path, asserts the outcome and rolls back, and run it ONLY through `{skill}/scripts/repro.sh develop <that path>` — never `env/bin/python`, never `bench console` directly, both are denied. 5) ALWAYS restore in the same run: `git -C <path> checkout <original-branch>` and delete pr-<num>, leaving the bench exactly as found — never end with the PR branch checked out.",
   "Output: **Verified** — works on <version> (what you ran + the result), or **Failed** — what broke (paste the error), or **Couldn't verify** — why (no repro bench, no tests to run, etc.). Terse and honest — NEVER claim verified without actually running something.",
 ].join(" ");
 
@@ -899,7 +899,7 @@ function renderFooter() {
     : session && session.review
       ? `<button id="alter-post-review" class="alter-primary">Preview comments</button>${
           session.fixPrepared ? '<button id="alter-pr-push">Push to PR</button>' : '<button id="alter-pr-fix">Fix this PR</button>'
-        }<button id="alter-verify" hidden>Verify on bench</button>`
+        }<button id="alter-verify">Verify on bench</button>`
       : "";
   foot.innerHTML = `
     <div id="alter-foot-btns">${btns}</div>
@@ -923,14 +923,21 @@ function renderFooter() {
   if (pushBtn) pushBtn.addEventListener("click", (e) => { e.target.disabled = true; pushIssueFix(); });
   const verifyBtn = foot.querySelector("#alter-verify");
   if (verifyBtn) {
-    verifyBtn.addEventListener("click", (e) => {
-      e.target.disabled = true;
+    verifyBtn.addEventListener("click", async (e) => {
+      const btn = e.target;
+      btn.disabled = true;
+      const info = await send({ type: "repro-info" });
+      if (!(info && info.ok && info.data && info.data.configured)) {
+        appendBlock("user").textContent = "Verify on bench";
+        appendBlock("assistant").innerHTML = info && info.ok
+          ? "No repro bench is set yet. In Alter, open <b>Settings, Support agent, Repro benches</b> and choose your bench folder for develop (and v16 or v15 if you have them). Then click Verify on bench again."
+          : `<span class="alter-err">${escapeHtml((info && info.error) || "Couldn't reach Alter. Is the app running?")}</span>`;
+        if (btn.isConnected) btn.disabled = false;
+        return;
+      }
       verifyOnBench().finally(() => {
-        if (e.target.isConnected) e.target.disabled = false;
+        if (btn.isConnected) btn.disabled = false;
       });
-    });
-    send({ type: "repro-info" }).then((r) => {
-      if (r && r.ok && r.data && r.data.configured) verifyBtn.hidden = false;
     });
   }
   const postBtn = foot.querySelector("#alter-post-review");

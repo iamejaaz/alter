@@ -55,7 +55,7 @@ GitHub pull requests get **Review with Alter**. Helpdesk tickets get **Summarize
 - takes follow up questions while a run is going: the message queues, **Send now** interrupts the run and continues it after answering
 - shows **Copy**, minimise and close in the header
 
-PR panel extras: **Copy**, **Preview comments** and **Post review** (the preview is the confirmation: one click on Comment, Request changes or Post as the bot posts what the cards show, and the note under the buttons names the PR), **Fix this PR** and **Push to PR**, **Verify on bench** when a bench is configured. The badge on the button says `reviewed, not posted` when a review exists.
+PR panel extras: **Copy**, **Preview comments** and **Post review** (the preview is the confirmation: one click on Comment, Request changes or Post as the bot posts what the cards show, and the note under the buttons names the PR), **Fix this PR** and **Push to PR**, **Verify on bench** (always shown; with no repro bench set it says where to set one). The badge on the button says `reviewed, not posted` when a review exists.
 
 Ticket panel extras: **Continue in** Alter chat, fr assistant, or Prepare fix. **Approve & run** cards for any site write the agent proposes.
 
