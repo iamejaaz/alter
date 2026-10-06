@@ -80,6 +80,7 @@ import {
   AgentRun,
   ToolAsk,
   answerAsk,
+  localAsk,
   setChatMcp,
   ChatResult,
   claudeClose,
@@ -1313,6 +1314,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         }));
 
         const toolResults: NonNullable<Message["toolResults"]> = [];
+        const approveHere = (tool: string, input: Record<string, unknown>, description: string) =>
+          localAsk(convId!, tool, input, description, (ask) => {
+            setAsks((a) => ({ ...a, [convId!]: [...(a[convId!] ?? []), ask] }));
+            if (convId === activeIdRef.current && document.hasFocus()) return;
+            updateConversation(convId!, (c) => ({ ...c, unread: true }));
+            const conv = convsRef.current.find((c) => c.id === convId);
+            if (!conv?.muted) void invoke("notify", { title: conv?.title || "Alter", body: "Needs your permission to continue." }).catch(() => {});
+          });
         for (const tc of result.toolCalls) {
           let args: Record<string, unknown> = {};
           try {
@@ -1346,10 +1355,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           } else if (tc.function.name === "write_file" && typeof args.path === "string") {
             const path = args.path;
             const before = await invoke<string | null>("file_read_full", { path }).catch(() => undefined);
-            output = await executeTool(tc.function.name, args, mode, convsRef.current.find((x) => x.id === convId)?.title);
+            output = await executeTool(tc.function.name, args, mode, approveHere);
             if (output.startsWith("wrote") && before !== undefined) await recordChange(convId!, path, before, String(args.content ?? ""));
           } else {
-            output = await executeTool(tc.function.name, args, mode, convsRef.current.find((x) => x.id === convId)?.title);
+            output = await executeTool(tc.function.name, args, mode, approveHere);
           }
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
           toolResults.push({ id: tc.id, name: tc.function.name, output: output.slice(0, 6000) });

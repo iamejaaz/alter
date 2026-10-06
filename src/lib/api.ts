@@ -547,8 +547,20 @@ export interface ToolAsk {
   description?: string;
   suggestions: Record<string, unknown>[];
   questions?: AskQuestion[];
-  engine?: "codex";
+  engine?: "codex" | "local";
   rpcId?: number | string;
+}
+
+const localWaiting = new Map<string, (ok: boolean) => void>();
+const localAllowed = new Map<string, Set<string>>();
+
+export function localAsk(convId: string, tool: string, input: Record<string, unknown>, description: string, show: (ask: ToolAsk) => void): Promise<boolean> {
+  if (localAllowed.get(convId)?.has(tool)) return Promise.resolve(true);
+  const ask: ToolAsk = { id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`, tool, input, description, suggestions: [{ type: "addRules" }], engine: "local" };
+  return new Promise((resolve) => {
+    localWaiting.set(ask.id, resolve);
+    show(ask);
+  });
 }
 
 const codexAnswer = (ask: ToolAsk, a: Record<string, unknown>): Record<string, unknown> => {
@@ -564,6 +576,13 @@ const codexAnswer = (ask: ToolAsk, a: Record<string, unknown>): Record<string, u
 };
 
 export function answerAsk(convId: string, ask: ToolAsk, response: Record<string, unknown>) {
+  if (ask.engine === "local") {
+    const allow = response.behavior === "allow";
+    if (allow && response.updatedPermissions) localAllowed.set(convId, new Set([...(localAllowed.get(convId) ?? []), ask.tool]));
+    localWaiting.get(ask.id)?.(allow);
+    localWaiting.delete(ask.id);
+    return Promise.resolve();
+  }
   const message =
     ask.engine === "codex"
       ? { id: ask.rpcId, result: codexAnswer(ask, response) }

@@ -206,11 +206,11 @@ export async function executeTool(
   name: string,
   args: Record<string, unknown>,
   mode: "auto" | "ask" | "plan" | "chat" = "auto",
-  from?: string
+  approve?: (tool: string, input: Record<string, unknown>, description: string) => Promise<boolean>
 ): Promise<string> {
-  const who = from ? `From the chat “${from}”\n\n` : "";
+  const ask = approve ?? ((tool: string, input: Record<string, unknown>, description: string) => confirmDialog(`Alter wants to use ${tool}:\n${description || JSON.stringify(input, null, 2)}\n\nAllow?`));
   if (mode === "ask" && name !== "write_file") {
-    const ok = await confirmDialog(`${who}Alter wants to run ${name}:\n${JSON.stringify(args, null, 2)}\n\nAllow?`);
+    const ok = await ask(name, args, "");
     if (!ok) return "User denied this action.";
   }
   if (name === "write_file") {
@@ -226,8 +226,7 @@ export async function executeTool(
       existing === null
         ? `Create new file (${next.split("\n").length} lines).`
         : `Overwrite existing file: ${existing.split("\n").length} → ${next.split("\n").length} lines.`;
-    const preview = next.split("\n").slice(0, 12).join("\n");
-    const ok = await confirmDialog(`${who}Alter wants to write:\n${path}\n\n${summary}\n\nPreview:\n${preview}\n\nAllow?`);
+    const ok = await ask("Write", { file_path: path, content: next }, summary);
     if (!ok) return "User denied the write.";
   }
   try {

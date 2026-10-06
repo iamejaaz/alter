@@ -20,6 +20,8 @@ In Ask first mode a Claude Code or Codex turn pauses and shows a card above the 
 - **Permission card:** the tool and its input, with Allow once, rule buttons the CLI suggested (for the rest of the session), and Deny. Deny ends that action with a message to the model.
 - **Question card:** one question at a time, with the options the model offered and a free text box. Skip skips only that question. Skipping all answers nothing and the model continues.
 
+HTTP models (OpenRouter, DeepSeek and the rest) use the same inline cards above the composer for file writes, and in Ask first for every tool. **Always allow in this chat** stops asking for that tool until Alter restarts. A chat waiting on a card shows as unread and sends a notification when you are looking elsewhere.
+
 Cards appear in any mode when the model asks a question. In Chat only mode permission requests are denied automatically.
 
 If you are on another chat when a card appears, that chat is marked unread and Alter sends a notification.
