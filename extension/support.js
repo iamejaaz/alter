@@ -436,7 +436,7 @@ function pollRun(el, runId, opts) {
       if (p.sessionId && supSession) supSession.sessionId = p.sessionId;
       renderSteps(p.steps || []);
       if (p.done) {
-        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run — run it again." : p.error);
+        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run. Click the action again." : p.error);
         if (!(p.text || "").trim()) return fail("The model returned an empty reply. Try again.");
         done = true;
         cleanup();

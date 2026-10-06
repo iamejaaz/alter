@@ -90,6 +90,22 @@ function updateRow(kind) {
   return row;
 }
 
+function retryFor(label) {
+  if (label === "review") return () => run(true);
+  if (!session) return null;
+  const q = session.lastQ;
+  const map = {
+    verify: () => queue.exclusive(verifyOnBench),
+    "Fix PR": () => queue.exclusive(fixPr),
+    "Push to PR": () => queue.exclusive(pushPrFix),
+    draft: () => queue.exclusive(draftComment),
+    "Prepare fix": () => runIssueFix(),
+    "Follow-up": q && (() => followUp(q)),
+    "Draft comment": q && (() => followUp(q)),
+  };
+  return map[label] || null;
+}
+
 function modelSwitch(label) {
   const row = document.createElement("div");
   row.className = "alter-switch";
@@ -233,6 +249,7 @@ async function runFollowUp(q) {
 
 async function followUp(q) {
   if (!session || !q.trim()) return;
+  session.lastQ = q;
   appendBlock("user").textContent = q;
   if (session.resumeReview) return continueReview(q);
   if (session.kind !== "issue" && RUN_INTENT.test(q) && !REPLY_INTENT.test(q)) return runFollowUp(q);
@@ -646,6 +663,19 @@ function pollRun(el, runId, opts) {
       el.appendChild(b);
       if (NEEDS_UPDATE.test(msg || "")) el.appendChild(updateRow(/codex/i.test(msg) ? "codex" : "claude"));
       else if (MODEL_BLOCKED.test(msg || "")) el.appendChild(modelSwitch(opts.label));
+      else {
+        const again = retryFor(opts.label);
+        if (again) {
+          const row = document.createElement("div");
+          row.className = "alter-switch";
+          row.innerHTML = '<button class="alter-link">Retry</button>';
+          row.querySelector("button").addEventListener("click", () => {
+            row.remove();
+            again();
+          });
+          el.appendChild(row);
+        }
+      }
       resolve("");
     };
 
@@ -663,7 +693,7 @@ function pollRun(el, runId, opts) {
       if (p.sessionId && session) session.sessionId = p.sessionId;
       renderSteps(p.steps || []);
       if (p.done) {
-        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run — run it again." : p.error);
+        if (p.error) return fail(p.error === "run not found" ? "Alter restarted and lost this run." : p.error);
         if (!(p.text || "").trim()) return fail("The model returned an empty reply. Try again.");
         done = true;
         cleanup();
