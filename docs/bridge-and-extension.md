@@ -81,3 +81,7 @@ Shows connection status, runs in progress with Stop, and runs finished in the la
 ## Related
 
 - [troubleshooting.md](troubleshooting.md#extension-and-bridge) for pairing and panel errors
+
+## Staying current
+
+The extension asks the bridge for the last commit that touched `extension/` (`GET /ext-version`) when you start something, at most every 15 seconds. When that differs from the version it loaded with, it reloads itself and asks you to refresh the page. A run that is already polling is never interrupted. You only reload it by hand once, to get this check.

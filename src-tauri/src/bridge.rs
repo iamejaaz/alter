@@ -1407,6 +1407,10 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 .collect();
             (200, serde_json::to_string(&list).unwrap_or_else(|_| "[]".into()))
         }
+        (tiny_http::Method::Get, "/ext-version") => {
+            let v = git_out(&repo_root(), &["log", "-1", "--format=%h", "--", "extension/"]).unwrap_or_default();
+            (200, serde_json::json!({ "version": v }).to_string())
+        }
         (tiny_http::Method::Get, "/repro-info") => {
             // Which repro benches are configured (so the extension can gate the
             // Verify-on-bench action). Read the same env the agents get.

@@ -127,10 +127,29 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   chrome.scripting.executeScript({ target: { tabId: tab.id }, func: replaceSelectionInPage, args: [r.body.content] });
 });
 
+async function stale() {
+  const { loadedVersion, checkedAt } = await chrome.storage.session.get(["loadedVersion", "checkedAt"]);
+  if (loadedVersion && checkedAt && Date.now() - checkedAt < 15000) return false;
+  const r = await bridge("/ext-version", { signal: AbortSignal.timeout(3000) }).catch(() => null);
+  const v = r && r.ok && r.body && r.body.version;
+  if (!v) return false;
+  await chrome.storage.session.set({ checkedAt: Date.now() });
+  if (!loadedVersion) {
+    await chrome.storage.session.set({ loadedVersion: v });
+    return false;
+  }
+  return loadedVersion !== v;
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
     try {
+      if (!["update", "agent-poll", "cancel"].includes(msg.type) && (await stale())) {
+        sendResponse({ ok: false, error: "Alter's extension just got new code and is reloading. Refresh this page, then try again." });
+        setTimeout(() => chrome.runtime.reload(), 300);
+        return;
+      }
       if (msg.type === "diff") {
         // GitHub's .diff 302-redirects to patch-diff.githubusercontent.com (a
         // different origin), so a page-context fetch is CORS-blocked. The worker
