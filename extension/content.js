@@ -432,7 +432,7 @@ async function postToGh(event, text, btn) {
 function showPostResult(r, okHtml) {
   const note = document.querySelector("#alter-foot-note");
   if (!note) return;
-  if (r && r.ok) note.innerHTML = okHtml;
+  if (r && r.ok) note.innerHTML = `<span class="alter-ok">${okHtml}</span>`;
   else if (r && r.stale) {
     note.innerHTML = `<span class="alter-err">${escapeHtml(r.error)}</span> <button id="alter-rerun" class="alter-link">Re-run review</button>`;
     note.querySelector("#alter-rerun").addEventListener("click", () => run());
@@ -1121,6 +1121,9 @@ function renderPostPreview(text, suggested) {
     btn("approve").hidden = asks;
     btn("request_changes").hidden = !asks;
     btn("comment").disabled = empty;
+    btn("approve").classList.toggle("alter-primary", !asks && !empty);
+    btn("request_changes").classList.toggle("alter-primary", asks);
+    btn("comment").classList.remove("alter-primary");
     if (session) session.draft = current();
     const dest = session ? `${session.parts.owner}/${session.parts.repo}#${session.parts.num}` : "this PR";
     const n = d.comments.length;

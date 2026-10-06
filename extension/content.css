@@ -220,8 +220,11 @@
 #alter-foot-note {
   margin-top: 6px;
   font-size: 11px;
-  color: #4ade80;
+  color: #a1a1aa;
   min-height: 13px;
+}
+#alter-foot-note .alter-ok {
+  color: #4ade80;
 }
 .alter-step {
   color: #8b8b94;
