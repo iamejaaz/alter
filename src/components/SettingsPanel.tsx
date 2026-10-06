@@ -4,7 +4,7 @@ import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Routine, Settings, Skill, newId } from "../lib/store";
 import { listen } from "@tauri-apps/api/event";
-import { cliLogin, cliLoginTerminal, cliStatus, CliStatus, codexCheck, testConnection } from "../lib/api";
+import { cliInstallTerminal, cliLogin, cliLoginTerminal, cliSetPath, cliStatus, CliStatus, codexCheck, testConnection } from "../lib/api";
 import { IconBlocks, IconBookmark, IconClock, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconSettings, IconSparkles } from "./Icons";
 import SkillsPage from "./SkillsPage";
 import RoutinesPage from "./RoutinesPage";
@@ -59,12 +59,49 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
       setSigning(false);
     }
   };
+  const [installing, setInstalling] = useState<string | null>(null);
+  const locate = async () => {
+    setProblem(null);
+    const picked = await open({
+      title: `Choose the ${kind} program, or the app that contains it`,
+      defaultPath: "/Applications",
+    }).catch(() => null);
+    if (typeof picked !== "string") return;
+    try {
+      await cliSetPath(kind, picked);
+      setInstalling(null);
+      await load();
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : String(e));
+    }
+  };
   const expired = kind === "codex" && live !== "checking" && live !== null && !live.ok;
   const signedIn = status?.signedIn !== false && !expired;
   return (
     <div className="space-y-1 border-b border-[var(--bd-soft)] py-4">
       <div className="flex items-center gap-6">
         <p className="flex-1 text-[14px] text-[var(--txt)]">{name} on this Mac</p>
+        {status && !status.installed && (
+          <>
+            <button
+              onClick={async () => {
+                setProblem(null);
+                try {
+                  const cmd = await cliInstallTerminal(kind);
+                  setInstalling(cmd);
+                } catch (e) {
+                  setProblem(e instanceof Error ? e.message : String(e));
+                }
+              }}
+              className={`${action} border-[var(--txt-dim)] bg-[var(--panel-2)]`}
+            >
+              Install
+            </button>
+            <button onClick={() => void locate()} className={action}>
+              Locate…
+            </button>
+          </>
+        )}
         {status?.installed && (
           <button
             onClick={signIn}
@@ -79,9 +116,10 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
         <p className="text-[13px] text-[var(--txt-faint)]">Checking…</p>
       ) : !status.installed ? (
         <p className="text-[13px] text-red-400">
-          {kind === "claude"
-            ? "Claude Code isn't installed. Install it from claude.com/code, then come back here and sign in."
-            : "Codex isn't installed. Install the Codex app from openai.com/codex, then come back here and sign in."}
+          {name} isn't installed, or Alter can't find it. It looked in your shell's PATH, the usual install folders and inside {kind === "codex" ? "Codex and ChatGPT" : "Claude"} apps in Applications.{" "}
+          <span className="text-[var(--txt-dim)]">
+            Install opens Terminal on {kind === "claude" ? "Anthropic's installer" : "npm install -g @openai/codex"}. If it is installed somewhere else, use Locate and pick the {kind} file or the app.
+          </span>
         </p>
       ) : (
         <p className="text-[13px] text-[var(--txt-dim)]">
@@ -100,6 +138,12 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
           {status.version}
         </p>
       )}
+      {installing && status && !status.installed && (
+        <p className="text-[13px] text-[var(--txt-dim)]">
+          Installing in Terminal with <code className="text-[12px]">{installing}</code>. When it finishes, come back here. Alter checks again when you switch to it.
+        </p>
+      )}
+      {status?.installed && status.path && <p className="truncate font-mono text-[12px] text-[var(--txt-faint)]" title={status.path}>{status.path}</p>}
       {signing && (
         <p className="text-[13px] text-[var(--txt-dim)]">
           Finish signing in in your browser, then come back here.

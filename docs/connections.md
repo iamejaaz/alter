@@ -35,7 +35,9 @@ A connection with base URL `claude-code://local`. Alter runs the `claude` CLI wi
 
 A connection with base URL `codex://local`. Alter runs `codex app-server` over stdio with your ChatGPT plan.
 
-**How Alter finds it:** the same PATH as above, then the Codex app at `/Applications/Codex.app` or `~/Applications/Codex.app`.
+**How Alter finds it:** the same PATH as above, then inside any app in `/Applications` or `~/Applications` whose name contains Codex or ChatGPT, looking for a file named exactly `codex` (the app's own `Codex` program is skipped).
+
+**Not found?** The card shows **Install**, which opens Terminal on `npm install -g @openai/codex` (or `brew install codex` without npm), and **Locate…**, which lets you pick the `codex` file or the app that contains it. Alter checks the pick answers `--version` and remembers it in `cli-paths.json` in the app data folder. Claude Code's card has the same two buttons; its Install runs Anthropic's installer, `curl -fsSL https://claude.ai/install.sh | bash`.
 
 **Status:** Settings runs `codex login status`, then makes one real request (`codex exec` with a read only sandbox, up to 90 seconds) because Codex can report signed in after its login expired. `Login expired` means that request failed.
 

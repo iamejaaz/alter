@@ -803,7 +803,7 @@ async fn codex_chat(
     use tokio::io::{AsyncBufReadExt, BufReader};
     cancel.clear(&conv_id);
     replies.take(&conv_id);
-    let bin = local_cli::find("codex").ok_or("Codex isn't installed. Install the Codex app or the codex CLI, then sign in.")?;
+    let bin = local_cli::find("codex").ok_or("Codex isn't installed. Settings, Connections, Codex has an Install button.")?;
     let dir = cwd
         .filter(|d| std::path::Path::new(d).is_dir())
         .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/".into()));
@@ -1899,6 +1899,8 @@ pub fn run() {
             local_cli::cli_status,
             local_cli::cli_login,
             local_cli::cli_login_terminal,
+            local_cli::cli_install_terminal,
+            local_cli::cli_set_path,
             local_cli::codex_check,
             bridge_runs,
             bridge_cancel,

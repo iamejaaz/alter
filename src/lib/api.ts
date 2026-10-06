@@ -209,6 +209,8 @@ export interface CliStatus {
 }
 
 export const cliStatus = (kind: "claude" | "codex") => invoke<CliStatus>("cli_status", { kind });
+export const cliInstallTerminal = (kind: "claude" | "codex") => invoke<string>("cli_install_terminal", { kind });
+export const cliSetPath = (kind: "claude" | "codex", path: string | null) => invoke<string>("cli_set_path", { kind, path });
 export const cliLogin = (kind: "claude" | "codex") => invoke<string>("cli_login", { kind });
 export const cliLoginTerminal = (kind: "claude" | "codex") => invoke<void>("cli_login_terminal", { kind });
 export const codexCheck = () => invoke<string>("codex_check");
@@ -216,13 +218,13 @@ export const codexCheck = () => invoke<string>("codex_check");
 export async function testConnection(settings: Settings): Promise<string> {
   if (isClaudeCodeUrl(settings.baseUrl)) {
     const s = await cliStatus("claude");
-    if (!s.installed) throw new Error("Claude Code isn't installed. Install it from claude.com/code, then click Sign in.");
+    if (!s.installed) throw new Error("Claude Code isn't installed. Settings, Connections, Claude Code has an Install button.");
     if (s.signedIn === false) throw new Error("Claude Code is installed but not signed in. Click Sign in.");
     return `Claude Code ready · ${s.version}${s.account ? ` · ${s.account}` : ""}`;
   }
   if (isCodexUrl(settings.baseUrl)) {
     const s = await cliStatus("codex");
-    if (!s.installed) throw new Error("Codex isn't installed. Install the Codex app or the codex CLI, then click Sign in.");
+    if (!s.installed) throw new Error("Codex isn't installed. Settings, Connections, Codex has an Install button.");
     return invoke<string>("codex_check");
   }
   const url = settings.baseUrl.replace(/\/$/, "");
