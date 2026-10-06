@@ -2298,7 +2298,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           setBgRuns((l) => l.filter((r) => (runId ? r.runId !== runId : !r.done)));
         }}
         onOpenSettings={() => setShowSettings(true)}
-        onOpenExtension={() => setShowSettings(true, "extension")}
         onOpenRoutines={() => setShowSettings(true, "routines")}
         onOpenRuns={(id) => {
           if (runsRoutineId === id) return setRunsRoutineId(null);

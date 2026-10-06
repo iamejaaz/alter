@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Conversation, Project, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
-import { IconClock, IconPlus, IconPuzzle, IconSearch, IconSettings } from "./Icons";
+import { IconClock, IconPlus, IconSearch, IconSettings } from "./Icons";
 
 export interface BackgroundRun {
   runId: string;
@@ -40,7 +40,6 @@ interface Props {
   onToggleMute: (id: string) => void;
   onOpenSettings: () => void;
   onOpenRoutines: () => void;
-  onOpenExtension: () => void;
   onOpenRuns: (routineId: string) => void;
   onOpenPalette?: () => void;
 }
@@ -75,7 +74,6 @@ export default function Sidebar({
   onToggleMute,
   onOpenSettings,
   onOpenRoutines,
-  onOpenExtension,
   onOpenRuns,
   onOpenPalette,
 }: Props) {
@@ -476,7 +474,6 @@ export default function Sidebar({
         <div className="space-y-0.5">
           {[
             { label: "Routines", icon: <IconClock />, run: onOpenRoutines },
-            { label: "Browser extension", icon: <IconPuzzle />, run: onOpenExtension },
             { label: "Settings", icon: <IconSettings />, run: onOpenSettings },
           ].map((it) => (
             <button
