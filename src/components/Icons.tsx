@@ -117,3 +117,10 @@ export const IconBlocks = () => (
     <path d="M17.5 14v7M14 17.5h7" />
   </svg>
 );
+
+export const IconGlobe = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" {...s} strokeWidth={1.8}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+  </svg>
+);

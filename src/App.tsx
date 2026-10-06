@@ -15,7 +15,7 @@ import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPa
 import RunsPanel from "./components/RunsPanel";
 import ChangesPanel from "./components/ChangesPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
-import { IconArrowUp, IconChevronRight, IconFolder, IconMic, IconPaperclip } from "./components/Icons";
+import { IconArrowUp, IconChevronRight, IconFolder, IconMic, IconPaperclip, IconGlobe } from "./components/Icons";
 
 function extractArtifacts(content: string): ArtifactType[] {
   const arts: ArtifactType[] = [];
@@ -1572,22 +1572,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     };
   }, []);
 
-  const regenerate = () => {
-    if (!active || activeStreaming) return;
-    const msgs = active.messages;
-    let lastUser = -1;
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].role === "user") {
-        lastUser = i;
-        break;
-      }
-    }
-    if (lastUser < 0) return;
-    const prompt = msgs[lastUser].content;
-    const prefix = msgs.slice(0, lastUser);
-    updateConversation(active.id, (c) => ({ ...c, messages: prefix }));
-    void send({ text: prompt, historyOverride: prefix });
-  };
+
 
   const editMessage = (idx: number) => {
     if (!active || activeStreaming) return;
@@ -2201,7 +2186,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const system = [
       `You are Alter, a macOS desktop AI chat app, in a live conversation with ${peer.name}, another AI agent session on the same Mac.`,
       "Talk like a colleague: short plain paragraphs, answer what they said, disagree when you think they are wrong, and ask one question when it moves things forward. No headings, no bullet walls.",
-      "What Alter has today: chats with per chat connection, model and effort; any OpenAI compatible provider plus the local Claude Code CLI; fallback to another connection when one fails; projects with a working folder and instructions; memory; skills; routines on a schedule with a runs panel; a message scheduled to send later into a chat; a command palette; artifacts panel; image, PDF and text attachments; voice input; branch and edit a message; regenerate; export to Markdown; pinned chats and search; a menubar tray with a global hotkey; a browser extension for GitHub PR review and helpdesk ticket diagnosis through a local bridge; and messaging with Claude Code sessions, which is how you are talking now.",
+      "What Alter has today: chats with per chat connection, model and effort; any OpenAI compatible provider plus the local Claude Code CLI; fallback to another connection when one fails; projects with a working folder and instructions; memory; skills; routines on a schedule with a runs panel; a message scheduled to send later into a chat; a command palette; artifacts panel; image, PDF and text attachments; voice input; branch and edit a message; export to Markdown; pinned chats and search; a menubar tray with a global hotkey; a browser extension for GitHub PR review and helpdesk ticket diagnosis through a local bridge; and messaging with Claude Code sessions, which is how you are talking now.",
     ].join("\n");
     try {
       const res = await streamChat(
@@ -2504,22 +2489,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 }
                 setBrowserPane(open);
               }}
-              className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs transition-colors ${browserPane ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-dim)] hover:bg-[var(--panel-2)]"}`}
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${browserPane ? "bg-[var(--panel-2)] text-[var(--txt)]" : "text-[var(--txt-dim)] hover:bg-[var(--panel-2)] hover:text-[var(--txt)]"}`}
               title="Show the agent browser next to the chat"
+              aria-label="Browser"
             >
-              Browser
+              <IconGlobe />
             </button>
           )}
           {active && active.messages.length > 0 && (
             <>
-              <button
-                onClick={regenerate}
-                disabled={activeStreaming}
-                className="shrink-0 rounded-lg hover:bg-[var(--panel-2)] disabled:opacity-40 px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
-                title="Regenerate last reply"
-              >
-                Regenerate
-              </button>
               <button
                 onClick={exportConversation}
                 className="shrink-0 rounded-lg hover:bg-[var(--panel-2)] px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
@@ -3204,7 +3182,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 className="relative w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[13px] leading-[1.5] focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               </div>
-              <div className="flex items-center gap-1 px-2.5 pb-2.5 text-[13px]">
+              <div className="flex min-w-0 flex-wrap items-center gap-1 px-2.5 pb-2.5 text-[13px]">
                 {/* Left: what you put in — attach, dictate, how tools are used */}
                 <button
                   onClick={() => fileInputRef.current?.click()}

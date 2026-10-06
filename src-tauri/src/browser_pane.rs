@@ -7,13 +7,29 @@ use std::time::Duration;
 #[derive(Default)]
 pub struct PaneState(pub Mutex<Option<Browser>>);
 
+static FOLLOW: std::sync::Mutex<Option<(String, std::collections::HashMap<String, String>)>> = std::sync::Mutex::new(None);
+
 fn front_target() -> Option<String> {
     let list: serde_json::Value = serde_json::from_str(&crate::agent_browser::cdp_get("/json/list")?).ok()?;
-    list.as_array()?
+    let pages: Vec<(String, String)> = list
+        .as_array()?
         .iter()
-        .find(|t| t["type"] == "page" && !t["url"].as_str().unwrap_or("").starts_with("devtools://"))
-        .and_then(|t| t["id"].as_str())
-        .map(|s| s.to_string())
+        .filter(|t| t["type"] == "page")
+        .filter_map(|t| Some((t["id"].as_str()?.to_string(), t["url"].as_str().unwrap_or("").to_string())))
+        .filter(|(_, u)| !u.starts_with("devtools://"))
+        .collect();
+    let blank = |u: &str| u.is_empty() || u == "about:blank" || u.starts_with("data:") || u.starts_with("chrome://newtab") || u.starts_with("brave://newtab");
+    let mut guard = FOLLOW.lock().ok()?;
+    let (current, seen) = guard.get_or_insert_with(|| (String::new(), std::collections::HashMap::new()));
+    let moved = pages.iter().filter(|(id, u)| !blank(u) && seen.get(id).map(|old| old != u).unwrap_or(true)).last().map(|(id, _)| id.clone());
+    *seen = pages.iter().cloned().collect();
+    if let Some(id) = moved {
+        *current = id;
+    }
+    if !pages.iter().any(|(id, _)| id == current) {
+        *current = pages.iter().find(|(_, u)| !blank(u)).or(pages.first()).map(|(id, _)| id.clone())?;
+    }
+    Some(current.clone())
 }
 
 fn tab(state: &PaneState) -> Result<Arc<Tab>, String> {
