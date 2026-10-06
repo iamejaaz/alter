@@ -1197,6 +1197,26 @@ fn skill_dir() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".claude/skills/frappe-support-diagnosis"))
 }
 
+// Literal per-version repro bench paths for the verify prompt. The agent can't
+// expand $ALTER_REPRO_* itself (Claude Code denies any command with shell
+// expansion), so the bridge resolves the paths and injects them as {benches}.
+fn repro_benches_block() -> String {
+    let mut lines = Vec::new();
+    for v in ["develop", "version-16", "version-15"] {
+        let key = format!("ALTER_REPRO_{}", v.to_uppercase().replace('-', "_"));
+        if let Ok(path) = std::env::var(&key) {
+            if !path.is_empty() {
+                lines.push(format!("{v} → {path}"));
+            }
+        }
+    }
+    if lines.is_empty() {
+        "(no repro benches configured — tell the user to set them in Alter → Settings → Repro benches, then stop)".to_string()
+    } else {
+        lines.join("; ")
+    }
+}
+
 fn reply_voice(fallback: &str) -> String {
     let body = skill_dir()
         .and_then(|d| std::fs::read_to_string(d.with_file_name("plain-writing").join("SKILL.md")).ok())
@@ -1473,8 +1493,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 }
             }
             let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
-            let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill);
-            let prompt = req.prompt.replace("{skill}", &skill);
+            let benches = repro_benches_block();
+            let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill).replace("{benches}", &benches);
+            let prompt = req.prompt.replace("{skill}", &skill).replace("{benches}", &benches);
             let reg = req.run_id.as_deref().map(|id| (&*state.running, id));
             let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &prompt, req.agent, reg));
             match result {
@@ -1871,8 +1892,9 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
                 }
             }
             let skill = skill_dir().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
-            let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill);
-            let prompt = req.prompt.replace("{skill}", &skill);
+            let benches = repro_benches_block();
+            let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill).replace("{benches}", &benches);
+            let prompt = req.prompt.replace("{skill}", &skill).replace("{benches}", &benches);
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             prune_progress(&mut state.progress.lock().unwrap_or_else(|e| e.into_inner()));
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
