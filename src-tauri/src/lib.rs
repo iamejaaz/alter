@@ -1494,43 +1494,6 @@ fn attachment_path(app: &tauri::AppHandle, id: &str) -> Result<std::path::PathBu
     Ok(dir.join(id))
 }
 
-fn snapshot_path(app: &tauri::AppHandle, key: &str) -> Result<std::path::PathBuf, String> {
-    if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Err("bad snapshot key".into());
-    }
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("snapshots");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join(key))
-}
-
-#[tauri::command]
-fn file_read_full(path: String) -> Result<Option<String>, String> {
-    match std::fs::read_to_string(&path) {
-        Ok(c) => Ok(Some(c)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-#[tauri::command]
-fn file_remove(path: String) -> Result<(), String> {
-    std::fs::remove_file(&path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn snapshot_save(app: tauri::AppHandle, key: String, content: String) -> Result<(), String> {
-    std::fs::write(snapshot_path(&app, &key)?, content).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn snapshot_load(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
-    match std::fs::read_to_string(snapshot_path(&app, &key)?) {
-        Ok(c) => Ok(Some(c)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
 #[tauri::command]
 fn save_attachment(app: tauri::AppHandle, id: String, data_url: String) -> Result<(), String> {
     std::fs::write(attachment_path(&app, &id)?, data_url).map_err(|e| e.to_string())
@@ -1941,10 +1904,6 @@ pub fn run() {
             bridge_cancel,
             bridge_dismiss,
             bridge_run,
-            file_read_full,
-            file_remove,
-            snapshot_save,
-            snapshot_load,
             save_attachment,
             load_attachment,
             list_claude_skills,

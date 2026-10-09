@@ -13,7 +13,6 @@ import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
 import RunsPanel from "./components/RunsPanel";
-import ChangesPanel from "./components/ChangesPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
 import { IconArrowUp, IconChevronRight, IconFolder, IconMic, IconPaperclip, IconGlobe } from "./components/Icons";
 
@@ -194,7 +193,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     setView("chat");
   };
   const [input, setInput] = useState("");
-  const [showChanges, setShowChanges] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [agents, setAgents] = useState<Record<string, AgentRun[]>>({});
@@ -1095,7 +1093,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             setJobs((j) => (j[convId!] ? { ...j, [convId!]: { ...j[convId!], step: label } } : j));
             if (label.startsWith("Browser:") && convId === activeIdRef.current && !paneDismissed.current) {
               setArtifact(null);
-              setShowChanges(false);
               setBrowserPane(true);
             }
             updateConversation(convId!, (c) => {
@@ -1354,11 +1351,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               .slice(0, 20);
             updateConversation(convId!, (c) => ({ ...c, plan: items.length ? items : undefined }));
             output = items.length ? "Plan shown to the user." : "Plan cleared.";
-          } else if (tc.function.name === "write_file" && typeof args.path === "string") {
-            const path = args.path;
-            const before = await invoke<string | null>("file_read_full", { path }).catch(() => undefined);
-            output = await executeTool(tc.function.name, args, mode, approveHere);
-            if (output.startsWith("wrote") && before !== undefined) await recordChange(convId!, path, before, String(args.content ?? ""));
           } else {
             output = await executeTool(tc.function.name, args, mode, approveHere);
           }
@@ -2074,24 +2066,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       }));
     }
   }, [conversations, streamingIds]);
-  const recordChange = async (cid: string, path: string, before: string | null, after: string) => {
-    let h = 5381;
-    for (const ch of cid + path) h = ((h << 5) + h + ch.charCodeAt(0)) >>> 0;
-    const key = `c${h.toString(36)}`;
-    const known = convsRef.current.find((c) => c.id === cid)?.changes?.find((x) => x.path === path);
-    try {
-      if (!known && before !== null) await invoke("snapshot_save", { key: `${key}-before`, content: before });
-      await invoke("snapshot_save", { key: `${key}-after`, content: after });
-    } catch {
-      return;
-    }
-    updateConversation(cid, (c) => {
-      const prev = c.changes?.find((x) => x.path === path);
-      const entry = { path, key, created: prev ? prev.created : before === null, at: Date.now() };
-      return { ...c, changes: [...(c.changes ?? []).filter((x) => x.path !== path), entry] };
-    });
-  };
-  const [resume, setResume] = useState<{ id: string; ago: string; was: string; drifted: number } | null>(null);
+
+  const [resume, setResume] = useState<{ id: string; ago: string; was: string } | null>(null);
   useEffect(() => {
     setResume(null);
     const c = convsRef.current.find((x) => x.id === activeId);
@@ -2104,22 +2080,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const now = c.plan?.find((p) => p.status === "in_progress") ?? c.plan?.find((p) => p.status === "pending");
     const lastAsk = [...c.messages].reverse().find((m) => m.role === "user" && m.content)?.content ?? "";
     const was = (now?.text ?? lastAsk).replace(/\s+/g, " ").slice(0, 120);
-    let gone = false;
-    Promise.all(
-      (c.changes ?? []).slice(-20).map(async (ch) => {
-        const [after, cur] = await Promise.all([
-          invoke<string | null>("snapshot_load", { key: `${ch.key}-after` }),
-          invoke<string | null>("file_read_full", { path: ch.path }),
-        ]);
-        return after !== cur;
-      })
-    )
-      .then((flags) => flags.filter(Boolean).length)
-      .catch(() => 0)
-      .then((drifted) => !gone && setResume({ id: c.id, ago, was, drifted }));
-    return () => {
-      gone = true;
-    };
+    setResume({ id: c.id, ago, was });
   }, [activeId]);
   useEffect(() => {
     if (view !== "chat") {
@@ -2333,7 +2294,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         backgroundRuns={bgRuns}
         onOpenRun={(id) => {
           setArtifact(null);
-          setShowChanges(false);
           setBrowserPane(false);
           setOpenRun(id);
           setView("chat");
@@ -2485,7 +2445,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 paneDismissed.current = !open;
                 if (open) {
                   setArtifact(null);
-                  setShowChanges(false);
                 }
                 setBrowserPane(open);
               }}
@@ -2889,18 +2848,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 <span className="min-w-0 flex-1 truncate text-[var(--txt-dim)]">
                   <span className="text-[var(--txt)]">Last active {resume.ago}</span>
                   {resume.was && <> · was on: {resume.was}</>}
-                  {resume.drifted > 0 && (
-                    <span className="text-amber-400">
-                      {" "}
-                      · {resume.drifted} {resume.drifted === 1 ? "file" : "files"} changed since
-                    </span>
-                  )}
                 </span>
                 <button
                   onClick={() => {
                     setResume(null);
                     void send({
-                      text: `We're picking this chat back up after a break. In a few lines: what we were doing, where it stands, and the next step.${resume.drifted ? ` ${resume.drifted} of the files you edited changed since then, so check them before relying on them.` : ""}`,
+                      text: `We're picking this chat back up after a break. In a few lines: what we were doing, where it stands, and the next step.`,
                       display: "Pick up where we left off",
                     });
                   }}
@@ -2965,17 +2918,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </div>
               );
             })()}
-            {!!active?.changes?.length && (
-              <button
-                onClick={() => {
-                  setArtifact(null);
-                  setShowChanges((v) => !v);
-                }}
-                className="mb-2 mr-2 inline-flex w-fit items-center gap-1.5 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1 text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]"
-              >
-                Changes · {active.changes.length} {active.changes.length === 1 ? "file" : "files"}
-              </button>
-            )}
             {active?.parentId && conversations.some((c) => c.id === active.parentId) && (
               <button
                 onClick={() => openChat(active.parentId!)}
@@ -3323,29 +3265,19 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       </main>
 
       {artifact && <ArtifactPanel artifact={artifact} onClose={() => setArtifact(null)} />}
-      {openRun && !artifact && !showChanges && !browserPane && (
+      {openRun && !artifact && !browserPane && (
         <RunPanel
           runId={openRun}
           onClose={() => setOpenRun(null)}
           onStop={(runId) => void invoke("bridge_cancel", { runId }).catch(() => {})}
         />
       )}
-      {browserPane && !artifact && !showChanges && (
+      {browserPane && !artifact && (
         <BrowserPane
           onClose={() => {
             paneDismissed.current = true;
             setBrowserPane(false);
           }}
-        />
-      )}
-      {showChanges && !artifact && active && (
-        <ChangesPanel
-          key={active.id}
-          changes={active.changes ?? []}
-          onClose={() => setShowChanges(false)}
-          onReverted={(path) =>
-            updateConversation(active.id, (c) => ({ ...c, changes: (c.changes ?? []).filter((x) => x.path !== path) }))
-          }
         />
       )}
       {(() => {

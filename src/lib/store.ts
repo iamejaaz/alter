@@ -31,12 +31,6 @@ export interface PlanItem {
   status: "pending" | "in_progress" | "done" | "blocked";
 }
 
-export interface FileChange {
-  path: string;
-  key: string;
-  created: boolean;
-  at: number;
-}
 
 export interface Conversation {
   id: string;
@@ -58,7 +52,6 @@ export interface Conversation {
   prsHidden?: string[]; // ones dismissed from that bar
   unread?: boolean;
   parentId?: string;
-  changes?: FileChange[];
   plan?: PlanItem[];
   lastAt?: number;
   handoffDone?: boolean;
