@@ -134,12 +134,20 @@ async function stale() {
   const v = r && r.ok && r.body && r.body.version;
   if (!v) return false;
   await chrome.storage.session.set({ checkedAt: Date.now() });
-  if (!loadedVersion) {
+  if (!loadedVersion || loadedVersion === v) {
+    if (!loadedVersion) await chrome.storage.session.set({ loadedVersion: v });
+    return false;
+  }
+  const { reloadedAt } = await chrome.storage.local.get("reloadedAt");
+  if (reloadedAt && Date.now() - reloadedAt < 120000) {
     await chrome.storage.session.set({ loadedVersion: v });
     return false;
   }
-  return loadedVersion !== v;
+  await chrome.storage.local.set({ reloadedAt: Date.now() });
+  return true;
 }
+
+chrome.runtime.onInstalled.addListener(() => void chrome.storage.session.remove(["loadedVersion", "checkedAt"]));
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
