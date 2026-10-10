@@ -232,6 +232,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [editConnId, setEditConnId] = useState<string | null>(null);
   const [bridge, setBridge] = useState<{ port: number; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -305,7 +306,8 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     setTesting(true);
     setTestResult(null);
     try {
-      const msg = await testConnection(draft);
+      const c = syncedConnections().find((x) => x.id === editConnId);
+      const msg = await testConnection(c ? { ...draft, baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model } : draft);
       setTestResult({ ok: true, msg });
     } catch (e) {
       setTestResult({ ok: false, msg: e instanceof Error ? e.message : String(e) });
@@ -356,7 +358,6 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
 
   const conns = draft.connections ?? [];
   const activeId = draft.activeConnectionId ?? conns[0]?.id;
-  const activeConn = conns.find((c) => c.id === activeId);
   const syncedConnections = () =>
     conns.map((c) =>
       c.id === activeId ? { ...c, baseUrl: draft.baseUrl, apiKey: draft.apiKey, model: draft.model } : c
@@ -370,24 +371,28 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     setTestResult(null);
   };
   const addConnection = () => {
-    const synced = syncedConnections();
     const conn = { id: newId(), name: "New connection", baseUrl: "", apiKey: "", model: "" };
-    setDraft({ ...draft, connections: [...synced, conn], activeConnectionId: conn.id, baseUrl: "", apiKey: "", model: "" });
+    setDraft({ ...draft, connections: [...syncedConnections(), conn] });
+    setEditConnId(conn.id);
+    setTestResult(null);
+  };
+  const updateConn = (id: string, patch: Partial<{ name: string; baseUrl: string; apiKey: string; model: string }>) => {
+    const next = syncedConnections().map((c) => (c.id === id ? { ...c, ...patch } : c));
+    const top = id === activeId ? next.find((c) => c.id === id)! : null;
+    setDraft({ ...draft, connections: next, ...(top ? { baseUrl: top.baseUrl, apiKey: top.apiKey, model: top.model } : {}) });
     setTestResult(null);
   };
   const deleteConnection = async (id: string) => {
     const remaining = syncedConnections().filter((c) => c.id !== id);
     if (remaining.length === 0) return;
     if (!(await confirmDialog(`Delete the connection "${conns.find((c) => c.id === id)?.name ?? ""}"? Chats that used it keep their history.`))) return;
+    setEditConnId(null);
     if (id !== activeId) {
       setDraft({ ...draft, connections: remaining });
       return;
     }
     const next = remaining[0];
     setDraft({ ...draft, connections: remaining, activeConnectionId: next.id, baseUrl: next.baseUrl, apiKey: next.apiKey, model: next.model });
-  };
-  const renameConnection = (name: string) => {
-    setDraft({ ...draft, connections: conns.map((c) => (c.id === activeId ? { ...c, name } : c)) });
   };
   // A preset spins up its own connection (or fills the current empty one) so it
   // never overwrites a configured connection like a gateway or Claude Code.
@@ -396,17 +401,9 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     if (!preset) return;
     const [baseUrl, model] = [preset.baseUrl, preset.models[0]];
     name = name.replace(/ \(local\)$/, "");
-    if (!draft.baseUrl && !draft.model) {
-      setDraft({
-        ...draft,
-        baseUrl,
-        model,
-        connections: conns.map((c) => (c.id === activeId ? { ...c, name, baseUrl, model } : c)),
-      });
-    } else {
-      const conn = { id: newId(), name, baseUrl, apiKey: "", model };
-      setDraft({ ...draft, connections: [...syncedConnections(), conn], activeConnectionId: conn.id, baseUrl, apiKey: "", model });
-    }
+    const conn = { id: newId(), name, baseUrl, apiKey: "", model };
+    setDraft({ ...draft, connections: [...syncedConnections(), conn] });
+    setEditConnId(conn.id);
     setTestResult(null);
   };
   // Every change lands as it is made: there is no Save to forget and nothing
@@ -550,143 +547,162 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
         </div>
             )}
 
-            {tab === "connections" && (
-              <div>
-                <p className="pb-2 text-[13px] text-[var(--txt-faint)]">
-                  Where Alter sends your messages. The selected one is used for new chats, and each chat remembers its own.
-                </p>
-                {conns.map((c) => {
-                  const on = c.id === activeId;
-                  return (
-                    <div key={c.id} className="group flex items-center gap-3 border-b border-[var(--bd-soft)]">
-                    <button
-                      onClick={() => selectConnection(c.id)}
-                      className="flex min-w-0 flex-1 items-center gap-4 py-3 text-left"
-                    >
-                      <span
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${on ? "border-[var(--txt)]" : "border-[var(--bd)]"}`}
-                        aria-hidden
-                      >
-                        {on && <span className="h-2 w-2 rounded-full bg-[var(--txt)]" />}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className={`block truncate text-[14px] ${on ? "text-[var(--txt)]" : "text-[var(--txt-dim)]"}`}>{c.name}</span>
-                        <span className="mt-0.5 block truncate text-[12px] text-[var(--txt-faint)]">
-                          {isLocalAgentUrl(c.baseUrl) ? "Runs on this Mac with your plan" : `${c.model || "no model"} · ${c.baseUrl.replace(/^https?:\/\//, "") || "no URL"}`}
-                        </span>
-                      </span>
-                      {on && <span className="shrink-0 text-[12px] text-[var(--txt-faint)]">Default</span>}
-                    </button>
-                    {conns.length > 1 && (
-                      <button
-                        onClick={() => void deleteConnection(c.id)}
-                        className="shrink-0 rounded-md px-2 py-0.5 text-[12px] text-[var(--txt-faint)] opacity-0 hover:bg-[var(--panel-2)] hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
-                        aria-label={`Delete ${c.name}`}
-                      >
-                        Delete
-                      </button>
-                    )}
-                    </div>
-                  );
-                })}
-                <Row title="Add a connection" desc="Start from a provider, or add your own OpenAI compatible endpoint.">
-                  <div className="flex flex-wrap gap-2">
-                    {Object.keys(PROVIDER_PRESETS).map((name) => (
-                      <button key={name} onClick={() => applyPreset(name)} className={action}>
-                        {name.replace(/ \(local\)$/, "")}
-                      </button>
-                    ))}
-                    <button onClick={addConnection} className={action}>
-                      Custom
-                    </button>
+            {tab === "connections" && (() => {
+              const editing = conns.find((c) => c.id === editConnId) ? syncedConnections().find((c) => c.id === editConnId)! : null;
+              if (!editing)
+                return (
+                  <div>
+                    <p className="pb-2 text-[13px] text-[var(--txt-faint)]">
+                      Where Alter sends your messages. New chats use the default, and each chat remembers its own.
+                    </p>
+                    {conns.map((c) => {
+                      const on = c.id === activeId;
+                      return (
+                        <div key={c.id} className="group flex items-center gap-3 border-b border-[var(--bd-soft)] last:border-b-0">
+                          <button onClick={() => { setEditConnId(c.id); setTestResult(null); }} className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left">
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2">
+                                <span className="truncate text-[14px] text-[var(--txt)]">{c.name}</span>
+                                {on && <span className="shrink-0 rounded-md bg-[var(--panel-2)] px-1.5 py-px text-[11px] text-[var(--txt-dim)]">Default</span>}
+                              </span>
+                              <span className="mt-0.5 block truncate text-[12px] text-[var(--txt-faint)]">
+                                {isLocalAgentUrl(c.baseUrl) ? "Runs on this Mac with your plan" : `${c.model || "no model"} · ${c.baseUrl.replace(/^https?:\/\//, "") || "no URL"}`}
+                              </span>
+                            </span>
+                          </button>
+                          {!on && (
+                            <button
+                              onClick={() => selectConnection(c.id)}
+                              className="shrink-0 rounded-md px-2 py-0.5 text-[12px] text-[var(--txt-faint)] opacity-0 hover:bg-[var(--panel-2)] hover:text-[var(--txt)] focus:opacity-100 group-hover:opacity-100"
+                            >
+                              Make default
+                            </button>
+                          )}
+                          <span className="shrink-0 text-[var(--txt-faint)] group-hover:text-[var(--txt)]">›</span>
+                        </div>
+                      );
+                    })}
+                    <Row title="Add a connection" desc="Start from a provider, or add your own OpenAI compatible endpoint.">
+                      <div className="flex flex-wrap gap-2">
+                        {Object.keys(PROVIDER_PRESETS).map((name) => (
+                          <button key={name} onClick={() => applyPreset(name)} className={action}>
+                            {name.replace(/ \(local\)$/, "")}
+                          </button>
+                        ))}
+                        <button onClick={addConnection} className={action}>
+                          Custom
+                        </button>
+                      </div>
+                    </Row>
                   </div>
-                </Row>
-
-                <p className="pt-6 pb-1 text-[14px] font-medium text-[var(--txt)]">{activeConn?.name || "Connection"}</p>
-                <Row
-                  title="Name"
-                  control={<input value={activeConn?.name ?? ""} onChange={(e) => renameConnection(e.target.value)} className={`${field} w-72`} />}
-                />
-                {isLocalAgentUrl(draft.baseUrl) ? (
-                  <LocalAgentCard kind={isCodexUrl(draft.baseUrl) ? "codex" : "claude"} />
-                ) : (
-                  <>
-                    <Row
-                      title="Base URL"
-                      control={
-                        <input
-                          value={draft.baseUrl}
-                          onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
-                          placeholder="https://api.example.com/v1"
-                          className={`${field} w-72 font-mono`}
-                        />
-                      }
-                    />
-                    <Row
-                      title="Model"
-                      control={
-                        <>
+                );
+              const isDefault = editing.id === activeId;
+              return (
+                <div>
+                  <button
+                    onClick={() => setEditConnId(null)}
+                    className="mt-1 flex items-center gap-1.5 text-[13px] text-[var(--txt-dim)] hover:text-[var(--txt)] transition-colors"
+                  >
+                    ‹ All connections
+                  </button>
+                  <Row
+                    title="Name"
+                    control={<input value={editing.name} onChange={(e) => updateConn(editing.id, { name: e.target.value })} className={`${field} w-72`} />}
+                  />
+                  {isLocalAgentUrl(editing.baseUrl) ? (
+                    <LocalAgentCard kind={isCodexUrl(editing.baseUrl) ? "codex" : "claude"} />
+                  ) : (
+                    <>
+                      <Row
+                        title="Base URL"
+                        control={
                           <input
-                            value={draft.model}
-                            onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-                            list="model-suggestions"
+                            value={editing.baseUrl}
+                            onChange={(e) => updateConn(editing.id, { baseUrl: e.target.value })}
+                            placeholder="https://api.example.com/v1"
                             className={`${field} w-72 font-mono`}
                           />
-                          <datalist id="model-suggestions">
-                            {Object.values(PROVIDER_PRESETS)
-                              .flatMap((p) => p.models)
-                              .map((m) => (
-                                <option key={m} value={m} />
-                              ))}
-                          </datalist>
-                        </>
-                      }
-                    />
-                    <Row
-                      title="API key"
-                      desc="Stored only on this device."
-                      control={
-                        <input
-                          type="password"
-                          value={draft.apiKey}
-                          onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
-                          placeholder="sk-..."
-                          className={`${field} w-72 font-mono`}
-                        />
-                      }
-                    />
-                  </>
-                )}
-                <Row
-                  title="Test connection"
-                  desc={
-                    testResult ? (
-                      <span className={testResult.ok ? "text-green-400" : "text-red-400"}>{testResult.msg}</span>
-                    ) : !draft.apiKey && !isLocalAgentUrl(draft.baseUrl) ? (
-                      "Enter an API key first."
-                    ) : (
-                      "Sends one small request to check it answers."
-                    )
-                  }
-                  control={
-                    <button onClick={runTest} disabled={testing || (!draft.apiKey && !isLocalAgentUrl(draft.baseUrl))} className={action}>
-                      {testing ? "Testing…" : "Test"}
-                    </button>
-                  }
-                />
-                {conns.length > 1 && (
+                        }
+                      />
+                      <Row
+                        title="Model"
+                        control={
+                          <>
+                            <input
+                              value={editing.model}
+                              onChange={(e) => updateConn(editing.id, { model: e.target.value })}
+                              list="model-suggestions"
+                              className={`${field} w-72 font-mono`}
+                            />
+                            <datalist id="model-suggestions">
+                              {Object.values(PROVIDER_PRESETS)
+                                .flatMap((p) => p.models)
+                                .map((m) => (
+                                  <option key={m} value={m} />
+                                ))}
+                            </datalist>
+                          </>
+                        }
+                      />
+                      <Row
+                        title="API key"
+                        desc="Stored only on this device."
+                        control={
+                          <input
+                            type="password"
+                            value={editing.apiKey}
+                            onChange={(e) => updateConn(editing.id, { apiKey: e.target.value })}
+                            placeholder="sk-..."
+                            className={`${field} w-72 font-mono`}
+                          />
+                        }
+                      />
+                    </>
+                  )}
                   <Row
-                    title="Delete connection"
-                    desc="Chats that used it keep their history."
+                    title="Test connection"
+                    desc={
+                      testResult ? (
+                        <span className={testResult.ok ? "text-green-400" : "text-red-400"}>{testResult.msg}</span>
+                      ) : !editing.apiKey && !isLocalAgentUrl(editing.baseUrl) ? (
+                        "Enter an API key first."
+                      ) : (
+                        "Sends one small request to check it answers."
+                      )
+                    }
                     control={
-                      <button onClick={() => void deleteConnection(activeId)} className={`${action} text-red-400`}>
-                        Delete
+                      <button onClick={runTest} disabled={testing || (!editing.apiKey && !isLocalAgentUrl(editing.baseUrl))} className={action}>
+                        {testing ? "Testing…" : "Test"}
                       </button>
                     }
                   />
-                )}
-              </div>
-            )}
+                  <Row
+                    title="Default"
+                    desc={isDefault ? "New chats use this connection." : "Use this connection for new chats."}
+                    control={
+                      isDefault ? (
+                        <span className="text-[12px] text-[var(--txt-faint)]">Default</span>
+                      ) : (
+                        <button onClick={() => selectConnection(editing.id)} className={action}>
+                          Make default
+                        </button>
+                      )
+                    }
+                  />
+                  {conns.length > 1 && (
+                    <Row
+                      title="Delete connection"
+                      desc="Chats that used it keep their history."
+                      control={
+                        <button onClick={() => void deleteConnection(editing.id)} className={`${action} text-red-400`}>
+                          Delete
+                        </button>
+                      }
+                    />
+                  )}
+                </div>
+              );
+            })()}
 
             {tab === "support" && (
               <div>
