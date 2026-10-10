@@ -393,18 +393,19 @@ fn append_user_memory(fact: String) -> Result<(), String> {
 
 // Open an http(s) link in the user's default browser (never inside the app webview).
 #[tauri::command]
-fn open_privacy_settings(pane: String) -> Result<(), String> {
-    let anchor = match pane.as_str() {
-        "speech" => "Privacy_SpeechRecognition",
-        _ => "Privacy_Microphone",
-    };
-    std::process::Command::new("open")
-        .arg(format!("x-apple.systempreferences:com.apple.preference.security?{anchor}"))
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+fn start_dictation(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    app.run_on_main_thread(|| unsafe {
+        use objc2::runtime::{AnyObject, Bool, Sel};
+        use objc2::{class, msg_send, sel};
+        let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        let nil: *mut AnyObject = std::ptr::null_mut();
+        let action: Sel = sel!(startDictation:);
+        let _: Bool = msg_send![ns_app, sendAction: action, to: nil, from: nil];
+    })
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
-
 #[tauri::command]
 fn open_external(url: String) -> Result<(), String> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
@@ -1941,7 +1942,7 @@ pub fn run() {
             read_user_memory,
             append_user_memory,
             open_external,
-            open_privacy_settings,
+            start_dictation,
             quick_complete,
             claude_title,
             complete_once,

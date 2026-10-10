@@ -40,8 +40,6 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 | Message | Cause | Fix |
 | --- | --- | --- |
 | `Couldn't save your chats — local storage is full.` | Web storage quota | Delete old chats. Images already live on disk and do not count |
-| `Voice dictation isn't supported in this app's webview yet.` | WebKit has no speech API here | Use the Mac's own dictation shortcut in the text box |
-| `Alter can't use the microphone yet.` | macOS was asked once and the answer was no, | Click **Open Settings**, turn Alter on under Microphone and under Speech Recognition, then click the mic again. Alter declares both in `src-tauri/Info.plist`. In dev, started from a terminal, Alter relaunches itself in place at startup so macOS treats it as responsible for its own privacy prompts instead of the terminal app (without this, macOS killed it on the mic click) |
 | `Folder picker is only available in the desktop app` | You are on the Vite dev page in a browser | Use the Tauri window |
 | `The app was quit while you were working. Please continue from where you left off.` appears in a chat | Alter quit or restarted while that chat was running, so it resumes the turn once on the next start. The dead turn's empty reply is removed first, so only one resume shows | Nothing to do. In development every Rust change restarts the app, so avoid long jobs while editing `src-tauri` |
 | A permission or question card appeared and I cannot type | The turn is waiting for the card | Answer, Skip or Deny. Esc interrupts the turn |
@@ -135,3 +133,4 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 - The bridge directly: `curl -H "Authorization: Bearer $(cat ~/Library/Application\ Support/com.ejaaz.alter/bridge.token)" http://127.0.0.1:8765/runs`
 
 | `Claude Code 2.1.x does not support this model; version … or newer is required` | An older `claude` was used for the run | Alter now uses the newest `claude` it can find: PATH, the usual install folders, and the copy the Claude desktop app keeps in `~/Library/Application Support/Claude/claude-code`. A path set with Locate… still wins. If every copy is old, the error shows **Update Claude Code**, which runs `brew upgrade --cask claude-code` or `claude update` in Terminal |
+| The mic button does nothing | The mic button starts macOS Dictation (the same as pressing Fn twice) in the message box | If Dictation is off, macOS offers to turn it on; you can also enable it in System Settings, Keyboard, Dictation. The first time, macOS asks for the microphone itself |

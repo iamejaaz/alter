@@ -248,7 +248,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const dragDepth = useRef(0);
   const [preview, setPreview] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<ArtifactType | null>(null);
-  const [listening, setListening] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [peerIdx, setPeerIdx] = useState(0);
@@ -259,56 +258,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const abortsRef = useRef<Record<string, AbortController>>({}); // one per streaming conversation
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [farFromBottom, setFarFromBottom] = useState(false);
   const atBottomRef = useRef(true);
-  const speechSupported =
-    typeof window !== "undefined" &&
-    // @ts-expect-error vendor-prefixed
-    !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
-  const MIC_BLOCKED = "Alter can't use the microphone yet. Turn on Alter under Microphone and Speech Recognition.";
-  const toggleMic = () => {
-    // @ts-expect-error vendor-prefixed
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-    const rec = new SR();
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.lang = "en-US";
-    // Replace only the previous interim transcript, so anything typed mid-dictation survives.
-    let prev = "";
-    rec.onresult = (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => {
-      let t = "";
-      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
-      setInput((cur) => {
-        const head = prev && cur.endsWith(prev) ? cur.slice(0, -prev.length) : cur ? cur + " " : "";
-        prev = t;
-        return head + t;
-      });
-    };
-    rec.onend = () => setListening(false);
-    rec.onerror = (e: { error?: string }) => {
-      setListening(false);
-      setError(
-        e?.error === "not-allowed" || e?.error === "service-not-allowed"
-          ? MIC_BLOCKED
-          : "Voice dictation isn't supported in this app's webview yet."
-      );
-    };
-    recognitionRef.current = rec;
-    setListening(true);
-    try {
-      rec.start();
-    } catch {
-      setListening(false);
-      setError("Voice dictation isn't supported in this app's webview yet.");
-    }
+  const dictate = () => {
+    composerRef.current?.focus();
+    void invoke("start_dictation").catch((e) => setError(String(e)));
   };
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -2759,17 +2715,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     Update Claude Code
                   </button>
                 )}
-                {((activeId && convErrors[activeId]) || error) === MIC_BLOCKED && (
-                  <button
-                    onClick={() => {
-                      void invoke("open_privacy_settings", { pane: "microphone" });
-                      setError(null);
-                    }}
-                    className="shrink-0 rounded-md border border-red-800 px-2.5 py-1 text-red-200 hover:bg-red-900/40"
-                  >
-                    Open Settings
-                  </button>
-                )}
                 {/Sign in to continue/.test((activeId && convErrors[activeId]) || error || "") && (
                   <button
                     disabled={signingIn}
@@ -3146,19 +3091,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 >
                   <IconPaperclip />
                 </button>
-                {speechSupported && (
-                  <button
-                    onClick={toggleMic}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                      listening ? "bg-red-500/15 text-red-400" : "hover:bg-[var(--panel-2)] text-[var(--txt-faint)] hover:text-[var(--txt)]"
-                    }`}
-                    title={listening ? "Stop dictation" : "Dictate"}
-                    aria-label={listening ? "Stop dictation" : "Dictate"}
-                    aria-pressed={listening}
-                  >
-                    <IconMic />
-                  </button>
-                )}
+                <button
+                  onClick={dictate}
+                  className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[var(--panel-2)] text-[var(--txt-faint)] hover:text-[var(--txt)]"
+                  title="Dictate (macOS Dictation)"
+                  aria-label="Dictate"
+                >
+                  <IconMic />
+                </button>
                 <ComposerSelect
                   value={settings.mode ?? "auto"}
                   onChange={(v) => {
