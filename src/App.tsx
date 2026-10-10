@@ -3020,11 +3020,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 }}
                 onPaste={handlePaste}
                 onKeyDown={(e) => {
-                  if (micStopRef.current && e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    micStopRef.current();
-                    return;
-                  }
                   if (showPeers) {
                     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                       e.preventDefault();
@@ -3097,6 +3092,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </button>
                 <MicButton
                   stopRef={micStopRef}
+                  onStart={() => composerRef.current?.focus()}
                   onInterim={setDictating}
                   onText={(t) => {
                     setInput((cur) => (cur.trim() ? `${cur.replace(/\s+$/, "")} ${t}` : t));

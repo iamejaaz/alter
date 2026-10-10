@@ -9,9 +9,10 @@ interface Props {
   onInterim: (text: string) => void;
   onText: (text: string) => void;
   stopRef: MutableRefObject<(() => void) | null>;
+  onStart?: () => void;
 }
 
-export default function MicButton({ onInterim, onText, stopRef }: Props) {
+export default function MicButton({ onInterim, onText, stopRef, onStart }: Props) {
   const [state, setState] = useState<State>("idle");
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string>(() => {
@@ -125,6 +126,7 @@ export default function MicButton({ onInterim, onText, stopRef }: Props) {
     audio.current = { stream, ctx };
     latest.current = "";
     setState("recording");
+    onStart?.();
   };
 
   const stop = () => {
@@ -135,6 +137,17 @@ export default function MicButton({ onInterim, onText, stopRef }: Props) {
     settle.current = window.setTimeout(commit, 4000);
   };
   stopRef.current = state === "recording" ? stop : null;
+  useEffect(() => {
+    if (state !== "recording") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      e.stopPropagation();
+      stopRef.current?.();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [state]);
 
   useEffect(
     () => () => {
