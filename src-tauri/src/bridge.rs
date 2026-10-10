@@ -618,7 +618,7 @@ fn build_system(include_memory: bool, system: Option<&str>) -> String {
 }
 
 fn wrap_up(session_id: &str, model: Option<&str>) -> Result<String, String> {
-    let mut cmd = std::process::Command::new(crate::local_cli::claude_bin());
+    let mut cmd = crate::agent_cmd(crate::local_cli::claude_bin());
     cmd.arg("-p")
         .arg("Your tool budget is exhausted. Do NOT call any tool. Write the final answer now, in the required format, from what you already found — say plainly which parts are unverified.")
         .arg("--resume")
@@ -708,7 +708,7 @@ fn spawn_agent_run(
         None => prompt,
     };
     let full = format!("{}{}", if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") }, alter_skills_index());
-    let mut cmd = std::process::Command::new(crate::local_cli::claude_bin());
+    let mut cmd = crate::agent_cmd(crate::local_cli::claude_bin());
     cmd.arg("-p")
         .arg(&full);
     if let Some(sid) = &session_id {
@@ -1078,7 +1078,7 @@ async fn run_completion(
             Some(s) if !s.is_empty() => format!("{s}\n\n{prompt}"),
             _ => prompt.to_string(),
         };
-        let mut cmd = std::process::Command::new(crate::local_cli::claude_bin());
+        let mut cmd = crate::agent_cmd(crate::local_cli::claude_bin());
         cmd.arg("-p").arg(&full);
         if !conn.model.is_empty() && conn.model != "claude-code" {
             cmd.arg("--model").arg(&conn.model);
@@ -2394,7 +2394,7 @@ fn spawn_codex_run(
     let repro = repro_benches().into_iter().map(|(_, d)| d).find(|d| std::path::Path::new(d).is_dir());
     let dir = if mode_name == "verify" { repro.unwrap_or_else(agent_workdir) } else { agent_workdir() };
 
-    let mut cmd = std::process::Command::new(&bin);
+    let mut cmd = crate::agent_cmd(&bin);
     cmd.arg("exec");
     if let Some(sid) = &resuming {
         cmd.arg("resume").arg(sid);

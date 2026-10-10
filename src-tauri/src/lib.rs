@@ -7,6 +7,18 @@ fn read_file(path: String) -> Result<String, String> {
     Ok(content)
 }
 
+pub const DISCLAIM_FLAG: &str = "--alter-run-disclaimed";
+
+pub fn agent_cmd(bin: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[cfg(target_os = "macos")]
+    if let Ok(exe) = std::env::current_exe() {
+        let mut c = std::process::Command::new(exe);
+        c.arg(DISCLAIM_FLAG).arg(bin);
+        return c;
+    }
+    std::process::Command::new(bin)
+}
+
 #[tauri::command]
 fn write_file(path: String, content: String) -> Result<String, String> {
     if let Some(parent) = std::path::Path::new(&path).parent() {
@@ -787,7 +799,7 @@ async fn claude_title(text: String) -> Result<String, String> {
     let prompt = format!(
         "Generate a 3-6 word title in Title Case (no quotes, no trailing punctuation) for a chat that starts with this message. Reply with ONLY the title.\n\nMessage: {snippet}"
     );
-    let out = tokio::process::Command::new(crate::local_cli::claude_bin())
+    let out = tokio::process::Command::from(agent_cmd(crate::local_cli::claude_bin()))
         .arg("-p")
         .arg(&prompt)
         .arg("--model")
@@ -815,7 +827,7 @@ async fn complete_once(
 ) -> Result<String, String> {
     if base_url.starts_with("claude-code") {
         let full = if system.is_empty() { prompt } else { format!("{system}\n\n{prompt}") };
-        let mut cmd = tokio::process::Command::new(crate::local_cli::claude_bin());
+        let mut cmd = tokio::process::Command::from(agent_cmd(crate::local_cli::claude_bin()));
         cmd.arg("-p").arg(&full);
         if !model.is_empty() && model != "claude-code" {
             cmd.arg("--model").arg(&model);
@@ -1006,7 +1018,7 @@ async fn codex_chat(
         overrides.push("-c".into());
         overrides.push(o);
     }
-    let mut child = tokio::process::Command::new(&bin)
+    let mut child = tokio::process::Command::from(agent_cmd(&bin))
         .args(["app-server", "--enable", "default_mode_request_user_input"])
         .args(&overrides)
         .current_dir(&dir)
@@ -1174,7 +1186,7 @@ async fn claude_code(
             let _ = old.child.kill().await;
         }
         procs.evict_idle(&conv_id).await;
-        let mut cmd = Command::new(crate::local_cli::claude_bin());
+        let mut cmd = Command::from(agent_cmd(crate::local_cli::claude_bin()));
         cmd.arg("-p")
             .arg("--input-format").arg("stream-json")
             .arg("--output-format").arg("stream-json")
@@ -1786,7 +1798,7 @@ async fn run_due_routines(dir: &std::path::Path) {
 
         let content = if is_cc {
             let full = format!("{system}\n\n{prompt}");
-            let mut cmd = tokio::process::Command::new(crate::local_cli::claude_bin());
+            let mut cmd = tokio::process::Command::from(agent_cmd(crate::local_cli::claude_bin()));
             cmd.arg("-p").arg(&full);
             if !model.is_empty() && model != "claude-code" {
                 cmd.arg("--model").arg(&model);
@@ -1896,7 +1908,7 @@ fn walk(dir: &std::path::Path, prefix: &str, depth: usize, out: &mut Vec<String>
 async fn run_command(command: String, cwd: Option<String>) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         use std::io::Read;
-        let mut cmd = std::process::Command::new("/bin/zsh");
+        let mut cmd = agent_cmd("/bin/zsh");
         cmd.arg("-lc").arg(&command).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(d) = cwd.filter(|d| std::path::Path::new(d).is_dir()) {
             cmd.current_dir(d);

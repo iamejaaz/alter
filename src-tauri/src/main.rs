@@ -1,22 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(target_os = "macos")]
-fn own_privacy_prompts() {
+fn exec_disclaimed(path: &std::ffi::OsStr, args: Vec<std::ffi::OsString>) {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
     extern "C" {
         fn responsibility_spawnattrs_setdisclaim(attr: *mut libc::posix_spawnattr_t, disclaim: libc::c_int) -> libc::c_int;
     }
-    if std::env::var_os("ALTER_OWN_TCC").is_some() {
-        return;
-    }
-    let Ok(exe) = std::env::current_exe() else { return };
-    if exe.to_string_lossy().contains(".app/Contents/MacOS/") {
-        return;
-    }
-    std::env::set_var("ALTER_OWN_TCC", "1");
-    let Ok(path) = CString::new(exe.as_os_str().as_bytes()) else { return };
-    let args: Vec<CString> = std::env::args_os().filter_map(|a| CString::new(a.as_bytes()).ok()).collect();
+    let Ok(path) = CString::new(path.as_bytes()) else { return };
+    let args: Vec<CString> = args.iter().filter_map(|a| CString::new(a.as_bytes()).ok()).collect();
     let envs: Vec<CString> = std::env::vars_os()
         .filter_map(|(k, v)| {
             let mut kv = k.as_bytes().to_vec();
@@ -37,9 +29,30 @@ fn own_privacy_prompts() {
         libc::posix_spawnattr_setflags(&mut attr, libc::POSIX_SPAWN_SETEXEC as libc::c_short);
         responsibility_spawnattrs_setdisclaim(&mut attr, 1);
         let mut pid: libc::pid_t = 0;
-        libc::posix_spawn(&mut pid, path.as_ptr(), std::ptr::null(), &attr, argv.as_ptr(), envp.as_ptr());
+        libc::posix_spawnp(&mut pid, path.as_ptr(), std::ptr::null(), &attr, argv.as_ptr(), envp.as_ptr());
         libc::posix_spawnattr_destroy(&mut attr);
     }
+}
+
+#[cfg(target_os = "macos")]
+fn own_privacy_prompts() {
+    let mut args = std::env::args_os();
+    if args.nth(1).as_deref() == Some(std::ffi::OsStr::new(alter_lib::DISCLAIM_FLAG)) {
+        let rest: Vec<std::ffi::OsString> = args.collect();
+        if let Some(bin) = rest.first().cloned() {
+            exec_disclaimed(&bin, rest);
+        }
+        std::process::exit(127);
+    }
+    if std::env::var_os("ALTER_OWN_TCC").is_some() {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else { return };
+    if exe.to_string_lossy().contains(".app/Contents/MacOS/") {
+        return;
+    }
+    std::env::set_var("ALTER_OWN_TCC", "1");
+    exec_disclaimed(exe.as_os_str(), std::env::args_os().collect());
 }
 
 fn main() {
