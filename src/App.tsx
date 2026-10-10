@@ -298,10 +298,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   useEffect(() => {
     void invoke<string>("read_user_memory").then(setSharedMemory).catch(() => {});
   }, []);
-  // Collapse the auto-grown composer back to one line once it's emptied (after send).
-  useEffect(() => {
-    if (input === "" && composerRef.current) composerRef.current.style.height = "auto";
-  }, [input]);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(Math.max(el.scrollHeight, overlayRef.current?.scrollHeight ?? 0), 200) + "px";
+  }, [input, dictating]);
   useEffect(() => {
     localStorage.setItem("alter.theme", theme);
     const mq = window.matchMedia("(prefers-color-scheme: light)");
@@ -3053,6 +3056,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               <div className="relative">
                 {(dictating || ghost) && (
                   <div
+                    ref={overlayRef}
                     aria-hidden
                     className="pointer-events-none absolute inset-0 px-4 pt-3 pb-1 text-[13px] leading-[1.5] whitespace-pre-wrap break-words"
                   >
@@ -3074,8 +3078,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 onChange={(e) => {
                   setInput(e.target.value);
                   setSlashIdx(0);
-                  e.target.style.height = "auto";
-                  e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
                 }}
                 onPaste={handlePaste}
                 onKeyDown={(e) => {
