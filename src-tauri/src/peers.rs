@@ -181,10 +181,14 @@ pub fn send(pid: u32, text: &str, from_name: &str, files: &[PeerFile]) -> Result
     let sock = v["messagingSocketPath"].as_str().ok_or("that session has no inbox")?.to_string();
     let msg_id = super::bridge::gen_token();
     let staged: Vec<serde_json::Value> = files.iter().filter_map(stage_file).collect();
+    let from = self_addr().unwrap_or_else(|| "bridge:alter".into());
+    let body = if text.is_empty() && !staged.is_empty() { "(see attached)" } else { text };
+    let content = format!("{body}\n\n(Sent from Alter, the user's desktop app. To answer, send your reply with SendMessage to \"{from}\" so it shows in Alter.)");
     let mut frame = serde_json::json!({
         "type": "user",
-        "message": { "role": "user", "content": if text.is_empty() && !staged.is_empty() { "(see attached)" } else { text } },
-        "from": self_addr().unwrap_or_else(|| "bridge:alter".into()),
+        "message": { "role": "user", "content": content },
+        "from": from,
+        "name": from_name,
         "from_name": from_name,
         "msg_id": msg_id,
         "from_mode": "bypass",
@@ -281,7 +285,7 @@ pub fn start(app: AppHandle) {
     let _ = std::fs::create_dir_all(SOCK_DIR);
     let _ = std::fs::set_permissions(SOCK_DIR, std::fs::Permissions::from_mode(0o700));
     let pid = std::process::id();
-    let sock = Path::new(SOCK_DIR).join(format!("{pid}.sock"));
+    let sock = Path::new(SOCK_DIR).join("alter.sock");
     let _ = std::fs::remove_file(&sock);
     let listener = match UnixListener::bind(&sock) {
         Ok(l) => l,
@@ -293,7 +297,19 @@ pub fn start(app: AppHandle) {
     let _ = std::fs::set_permissions(&sock, std::fs::Permissions::from_mode(0o600));
     let token = super::bridge::gen_token();
     let sock_str = sock.to_string_lossy().to_string();
-    let key = sessions.join(format!("{pid}.{}.key", sha256_hex(&sock_str)));
+    let suffix = format!(".{}.key", sha256_hex(&sock_str));
+    if let Ok(rd) = std::fs::read_dir(&sessions) {
+        for e in rd.flatten() {
+            let n = e.file_name().to_string_lossy().into_owned();
+            if n.ends_with(&suffix) {
+                if let Some(old_pid) = n.split('.').next() {
+                    let _ = std::fs::remove_file(sessions.join(format!("{old_pid}.json")));
+                }
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let key = sessions.join(format!("{pid}{suffix}"));
     let started = proc_start(pid);
     let _ = std::fs::write(
         &key,
