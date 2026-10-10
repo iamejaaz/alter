@@ -63,6 +63,7 @@ type RenderItem = { kind: "tools"; lines: string[]; key: string } | { kind: "msg
 function groupMessages(messages: Message[]): RenderItem[] {
   const items: RenderItem[] = [];
   messages.forEach((m, i) => {
+    if (m.hidden) return;
     if (m.role === "assistant" && !m.content && !m.peer && !m.handoff && i < messages.length - 1) return;
     if (m.role === "tool" && !m.handoff) {
       const lines = m.content.split("\n").filter(Boolean).map((l) => l.replace(/^▸\s*/, ""));
@@ -494,7 +495,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const openSeededRef = useRef<(prompt: string, title?: string, connectionId?: string, model?: string) => void>(
     () => {}
   );
-  const sendRef = useRef<(opts: { text: string; targetConvId: string; title?: string }) => unknown>(() => {});
+  const sendRef = useRef<(opts: { text: string; targetConvId: string; title?: string; hidden?: boolean }) => unknown>(() => {});
   openSeededRef.current = (prompt: string, title?: string, connectionId?: string, model_?: string) => {
     const conns = settings.connections ?? [];
     // Use the connection the extension picked (its support model); fall back to a
@@ -569,7 +570,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         prev.map((c) =>
           c.messages.some((m) => m.peer?.msgId === origMsgId)
             ? { ...c, messages: c.messages.map((m) => (m.peer?.msgId === origMsgId ? { ...m, peer: { ...m.peer!, status } } : m)) }
-            : c
+            : c.messages.some((m) => m.sentTo?.msgId === origMsgId)
+              ? { ...c, messages: c.messages.map((m) => (m.sentTo?.msgId === origMsgId ? { ...m, sentTo: { ...m.sentTo!, status } } : m)) }
+              : c
         )
       );
     }).then((u) => (gone ? u() : uns.push(u)));
@@ -752,6 +755,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
 
   const send = async (opts?: {
     text?: string;
+    hidden?: boolean;
     display?: string; // what the bubble shows when `text` carries extra context (e.g. a skill)
     forceNew?: boolean;
     title?: string;
@@ -906,7 +910,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       if (!opts?.background) setActiveId(convId);
     }
 
-    const userMsg: Message = { role: "user", content: shown, attachments: atts.length ? atts : undefined, quote: q ?? undefined };
+    const userMsg: Message = { role: "user", content: shown, attachments: atts.length ? atts : undefined, quote: q ?? undefined, hidden: opts?.hidden };
     const priorMessages = opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? [];
     updateConversation(convId, (c) => ({
       ...c,
@@ -1999,6 +2003,22 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       patch(`failed · ${String(e)}`);
     }
   };
+  const relayToPeer = async (convId: string, at: number, peer: { pid: number; name: string }, text: string) => {
+    const tag = (sentTo: Message["sentTo"]) =>
+      updateConversation(convId, (c) => ({
+        ...c,
+        peer: c.peer ? { ...c.peer, sentAt: Date.now() } : c.peer,
+        messages: c.messages.map((m, j) => (j === at ? { ...m, sentTo } : m)),
+      }));
+    tag({ name: peer.name, status: "sending" });
+    const title = conversations.find((c) => c.id === convId)?.title ?? "";
+    try {
+      const msgId = await invoke<string>("peer_send", { pid: peer.pid, text, fromName: `Alter · ${title}`, files: [] });
+      tag({ name: peer.name, status: "sent", msgId });
+    } catch (e) {
+      tag({ name: peer.name, status: `failed · ${String(e)}` });
+    }
+  };
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
   const convsRef = useRef(conversations);
@@ -2109,13 +2129,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         await sendRef.current({
           text: `${peer.name}, another Claude session working with us, sent this. Talk to them like a colleague in a normal conversation: share what you found with the evidence, react to what they found, agree or push back, say what you will take next, and ask what you need. Plain prose, no report formatting, a few short paragraphs at most.\n\n${incoming}`,
           targetConvId: c.id,
+          hidden: true,
         });
         await new Promise((r) => setTimeout(r, 80));
-        const reply = [...(convsRef.current.find((x) => x.id === c.id)?.messages ?? [])]
-          .reverse()
-          .find((m) => m.role === "assistant" && !m.peer && m.content)?.content?.trim();
+        const msgs = convsRef.current.find((x) => x.id === c.id)?.messages ?? [];
+        let at = msgs.length - 1;
+        while (at >= 0 && !(msgs[at].role === "assistant" && !msgs[at].peer && msgs[at].content)) at--;
+        const reply = msgs[at]?.content?.trim();
         if (!reply) return stop("Auto reply got an empty answer from Claude Code.");
-        await sendToPeer(c.id, peer, reply);
+        await relayToPeer(c.id, at, peer, reply);
       } catch (e) {
         stop(`Auto reply failed: ${String(e).slice(0, 160)}`);
       }
@@ -2598,6 +2620,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                           <Markdown text={m.content} />
                           {!(activeStreaming && i === active.messages.length - 1) && (
                             <MediaStrip text={m.content} base={active.folder ?? folder} onPreview={setPreview} />
+                          )}
+                          {m.sentTo && (
+                            <p className="mt-1 text-[11px] text-[var(--txt-faint)]">
+                              → {m.sentTo.name}{m.sentTo.status ? ` · ${m.sentTo.status}` : ""}
+                            </p>
                           )}
                         </>
                       ) : activeStreaming && i === active.messages.length - 1 ? (

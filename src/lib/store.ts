@@ -21,6 +21,8 @@ export interface Message {
   toolResults?: { id: string; name: string; output: string }[];
   attachments?: Attachment[];
   peer?: { name: string; dir: "in" | "out"; status?: string; msgId?: string }; // exchanged with a Claude Code session, not the model
+  sentTo?: { name: string; status?: string; msgId?: string };
+  hidden?: boolean;
   quote?: string; // the passage of an earlier answer this message replies to
   handoff?: { id: string; title: string; summary: string };
   needsClaudeCode?: boolean;
