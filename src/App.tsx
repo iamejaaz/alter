@@ -8,13 +8,14 @@ import SendLater from "./components/SendLater";
 import MediaStrip from "./components/MediaStrip";
 import BrowserPane from "./components/BrowserPane";
 import RunPanel from "./components/RunPanel";
+import MicButton from "./components/MicButton";
 import AttachmentImage from "./components/AttachmentImage";
 import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
 import RunsPanel from "./components/RunsPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
-import { IconArrowUp, IconChevronRight, IconFolder, IconMic, IconPaperclip, IconGlobe } from "./components/Icons";
+import { IconArrowUp, IconChevronRight, IconFolder, IconPaperclip, IconGlobe } from "./components/Icons";
 
 function extractArtifacts(content: string): ArtifactType[] {
   const arts: ArtifactType[] = [];
@@ -259,13 +260,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const micStopRef = useRef<(() => void) | null>(null);
+  const [dictating, setDictating] = useState("");
   const [farFromBottom, setFarFromBottom] = useState(false);
   const atBottomRef = useRef(true);
 
-  const dictate = () => {
-    composerRef.current?.focus();
-    void invoke("start_dictation").catch((e) => setError(String(e)));
-  };
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
@@ -3001,13 +3000,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </div>
               )}
               <div className="relative">
-                {ghost && (
+                {(dictating || ghost) && (
                   <div
                     aria-hidden
                     className="pointer-events-none absolute inset-0 px-4 pt-3 pb-1 text-[13px] leading-[1.5] whitespace-pre-wrap break-words"
                   >
                     <span className="invisible">{input}</span>
-                    <span className="text-[var(--txt-faint)]">{ghost}</span>
+                    <span className="text-[var(--txt-faint)]">{dictating ? `${input.trim() && !/\s$/.test(input) ? " " : ""}${dictating}` : ghost}</span>
                   </div>
                 )}
                 <textarea
@@ -3021,6 +3020,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 }}
                 onPaste={handlePaste}
                 onKeyDown={(e) => {
+                  if (micStopRef.current && e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    micStopRef.current();
+                    return;
+                  }
                   if (showPeers) {
                     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                       e.preventDefault();
@@ -3077,7 +3081,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   }
                 }}
                 rows={1}
-                placeholder={active?.peer ? `Message ${active.peer.name}` : "Type / for commands, @ for a Claude Code session"}
+                placeholder={dictating ? "" : active?.peer ? `Message ${active.peer.name}` : "Type / for commands, @ for a Claude Code session"}
                 className="relative w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[13px] leading-[1.5] focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               </div>
@@ -3091,14 +3095,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 >
                   <IconPaperclip />
                 </button>
-                <button
-                  onClick={dictate}
-                  className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[var(--panel-2)] text-[var(--txt-faint)] hover:text-[var(--txt)]"
-                  title="Dictate (macOS Dictation)"
-                  aria-label="Dictate"
-                >
-                  <IconMic />
-                </button>
+                <MicButton
+                  stopRef={micStopRef}
+                  onInterim={setDictating}
+                  onText={(t) => {
+                    setInput((cur) => (cur.trim() ? `${cur.replace(/\s+$/, "")} ${t}` : t));
+                    composerRef.current?.focus();
+                  }}
+                />
                 <ComposerSelect
                   value={settings.mode ?? "auto"}
                   onChange={(v) => {

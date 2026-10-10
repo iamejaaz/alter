@@ -392,19 +392,165 @@ fn append_user_memory(fact: String) -> Result<(), String> {
 }
 
 // Open an http(s) link in the user's default browser (never inside the app webview).
+#[cfg(target_os = "macos")]
+#[link(name = "Speech", kind = "framework")]
+extern "C" {}
+
+#[cfg(target_os = "macos")]
+fn speech_text(s: *mut objc2::runtime::AnyObject) -> String {
+    use objc2::msg_send;
+    if s.is_null() {
+        return String::new();
+    }
+    unsafe {
+        let p: *const std::os::raw::c_char = msg_send![s, UTF8String];
+        if p.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "AVFAudio", kind = "framework")]
+extern "C" {}
+
+#[cfg(target_os = "macos")]
+struct Dictation {
+    request: *mut objc2::runtime::AnyObject,
+    task: *mut objc2::runtime::AnyObject,
+    format: *mut objc2::runtime::AnyObject,
+}
+#[cfg(target_os = "macos")]
+unsafe impl Send for Dictation {}
+
+#[cfg(target_os = "macos")]
+static DICTATION: std::sync::Mutex<Option<Dictation>> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "macos")]
+fn speech_authorized() -> bool {
+    use block2::RcBlock;
+    use objc2::runtime::AnyClass;
+    use objc2::{class, msg_send};
+    let cls: &AnyClass = class!(SFSpeechRecognizer);
+    unsafe {
+        let status: isize = msg_send![cls, authorizationStatus];
+        if status != 0 {
+            return status == 3;
+        }
+        let (tx, rx) = std::sync::mpsc::channel::<isize>();
+        let block = RcBlock::new(move |s: isize| {
+            let _ = tx.send(s);
+        });
+        let _: () = msg_send![cls, requestAuthorization: &*block];
+        rx.recv_timeout(std::time::Duration::from_secs(120)).unwrap_or(0) == 3
+    }
+}
+
 #[tauri::command]
-fn start_dictation(app: tauri::AppHandle) -> Result<(), String> {
+async fn dictation_start(app: tauri::AppHandle, sample_rate: f64) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    app.run_on_main_thread(|| unsafe {
-        use objc2::runtime::{AnyObject, Bool, Sel};
-        use objc2::{class, msg_send, sel};
-        let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
-        let nil: *mut AnyObject = std::ptr::null_mut();
-        let action: Sel = sel!(startDictation:);
-        let _: Bool = msg_send![ns_app, sendAction: action, to: nil, from: nil];
-    })
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    {
+        if !tokio::task::spawn_blocking(speech_authorized).await.map_err(|e| e.to_string())? {
+            return Err("SPEECH_DENIED".into());
+        }
+        use block2::RcBlock;
+        use objc2::runtime::{AnyObject, Bool};
+        use objc2::{class, msg_send};
+        use tauri::Emitter;
+        unsafe {
+            if let Some(old) = DICTATION.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                let _: () = msg_send![old.task, cancel];
+            }
+            let recognizer: *mut AnyObject = msg_send![class!(SFSpeechRecognizer), new];
+            if recognizer.is_null() {
+                return Err("Speech recognition is not available for this Mac's language.".into());
+            }
+            let available: Bool = msg_send![recognizer, isAvailable];
+            if !available.as_bool() {
+                return Err("Speech recognition is not available right now. Check the internet connection, or turn on dictation in System Settings, Keyboard.".into());
+            }
+            let request: *mut AnyObject = msg_send![class!(SFSpeechAudioBufferRecognitionRequest), new];
+            let _: () = msg_send![request, setShouldReportPartialResults: Bool::YES];
+            let fmt_alloc: *mut AnyObject = msg_send![class!(AVAudioFormat), alloc];
+            let format: *mut AnyObject = msg_send![fmt_alloc, initStandardFormatWithSampleRate: sample_rate, channels: 1u32];
+            let handler = RcBlock::new(move |result: *mut AnyObject, error: *mut AnyObject| {
+                if !result.is_null() {
+                    let best: *mut AnyObject = msg_send![result, bestTranscription];
+                    let text: *mut AnyObject = msg_send![best, formattedString];
+                    let fin: Bool = msg_send![result, isFinal];
+                    let _ = app.emit("alter://dictation", serde_json::json!({ "text": speech_text(text), "final": fin.as_bool() }));
+                } else if !error.is_null() {
+                    let desc: *mut AnyObject = msg_send![error, localizedDescription];
+                    let _ = app.emit("alter://dictation", serde_json::json!({ "error": speech_text(desc), "final": true }));
+                }
+            });
+            let task: *mut AnyObject = msg_send![recognizer, recognitionTaskWithRequest: request, resultHandler: &*handler];
+            *DICTATION.lock().unwrap_or_else(|e| e.into_inner()) = Some(Dictation { request, task, format });
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, sample_rate);
+        Err("Dictation is only available on macOS.".into())
+    }
+}
+
+#[tauri::command]
+fn dictation_feed(samples: Vec<f32>) {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+        let guard = DICTATION.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(d) = guard.as_ref() else { return };
+        if samples.is_empty() {
+            return;
+        }
+        let n = samples.len() as u32;
+        let alloc: *mut AnyObject = msg_send![objc2::class!(AVAudioPCMBuffer), alloc];
+        let buf: *mut AnyObject = msg_send![alloc, initWithPCMFormat: d.format, frameCapacity: n];
+        if buf.is_null() {
+            return;
+        }
+        let _: () = msg_send![buf, setFrameLength: n];
+        let channels: *const *mut f32 = msg_send![buf, floatChannelData];
+        if !channels.is_null() {
+            std::ptr::copy_nonoverlapping(samples.as_ptr(), *channels, samples.len());
+            let _: () = msg_send![d.request, appendAudioPCMBuffer: buf];
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = samples;
+}
+
+#[tauri::command]
+fn dictation_stop(cancel: bool) {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use objc2::msg_send;
+        if let Some(d) = DICTATION.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            if cancel {
+                let _: () = msg_send![d.task, cancel];
+            } else {
+                let _: () = msg_send![d.request, endAudio];
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = cancel;
+}
+
+#[tauri::command]
+fn open_privacy_settings(pane: String) -> Result<(), String> {
+    let anchor = if pane == "speech" { "Privacy_SpeechRecognition" } else { "Privacy_Microphone" };
+    std::process::Command::new("open")
+        .arg(format!("x-apple.systempreferences:com.apple.preference.security?{anchor}"))
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 #[tauri::command]
 fn open_external(url: String) -> Result<(), String> {
@@ -1888,6 +2034,10 @@ pub fn run() {
     local_cli::fix_path();
     install_bundled_skills();
     tauri::Builder::default()
+        .on_permission_request(|_, kind| match kind {
+            tauri::webview::PermissionKind::Microphone => tauri::webview::PermissionResponse::Allow,
+            _ => tauri::webview::PermissionResponse::Default,
+        })
         .manage(browser::BrowserState::default())
         .manage(ChatCancel::default())
         .manage(ClaudeState::default())
@@ -1942,7 +2092,10 @@ pub fn run() {
             read_user_memory,
             append_user_memory,
             open_external,
-            start_dictation,
+            dictation_start,
+            dictation_feed,
+            dictation_stop,
+            open_privacy_settings,
             quick_complete,
             claude_title,
             complete_once,
