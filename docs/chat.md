@@ -150,3 +150,12 @@ When a reply mentions the path of an image (`png jpg jpeg gif webp svg`) or a vi
 ## PR chips
 
 A PR a chat opened shows as a chip above the composer with its checks and open review threads. **Auto-fix CI & address comments** sends the fix request into that same chat, so the agent keeps everything it knew when it made the PR. If the chat is busy, the request waits in its queue. It runs once per head commit, so its own push does not trigger it again. The chips are checked every 45 seconds while that chat is open.
+
+## Tools for HTTP models
+
+DeepSeek, OpenRouter and other HTTP connections get the same kind of reach as Claude Code, through Alter:
+
+- `run_command` runs a shell command in the chat's working folder (zsh, up to 5 minutes, output trimmed to the last 12,000 characters). Every command shows an inline card first: Allow once, Always allow in this chat, Deny.
+- `ask_user` shows a question card with up to four options and a free text answer, and the model waits for it. Plan steps that need you become questions instead of "blocked".
+- `use_skill` loads skills added in Alter and every skill in `~/.claude/skills` (frappe-debugging, frappe-pr-review and the rest), with the skill's folder so its scripts resolve.
+- The system prompt says the work is Frappe, to load frappe-debugging for anything on a local bench, and to log in with `bench browse --sid` rather than asking for a password.

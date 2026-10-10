@@ -8,7 +8,7 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "update_plan",
       description:
-        "Show the user a live checklist for a task with three or more real steps. Send the whole list every time, in order, with each step's status. Keep exactly one step in_progress while working. Mark a step blocked when it needs the user or something outside your reach. Never use it for a short question.",
+        "Show the user a live checklist for a task with three or more real steps. Send the whole list every time, in order, with each step's status. Keep exactly one step in_progress while working. When a step needs something from the user (a choice, a login, a site, a file), call ask_user and wait for the answer instead of marking it blocked. Mark a step blocked only when nothing you can run or ask would unblock it, and say why in the step. Never use it for a short question.",
       parameters: {
         type: "object",
         properties: {
@@ -152,6 +152,38 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "ask_user",
+      description:
+        "Ask the user a question and wait for the answer. Use it whenever you need a decision or a fact only they have (which site, which account, which option), instead of guessing or stopping. Offer 2 to 4 short options when the answer is a choice; the user can also type their own.",
+      parameters: {
+        type: "object",
+        properties: {
+          question: { type: "string", description: "One clear question" },
+          options: { type: "array", items: { type: "string" }, description: "2 to 4 short answers to pick from, when it is a choice" },
+        },
+        required: ["question"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "run_command",
+      description:
+        "Run a shell command on the user's Mac (zsh, in the chat's working folder unless cwd is given) and get its output and exit code. The user approves each command. Use it for builds, scripts, git, bench, and anything a terminal would do. Runs up to 5 minutes; start long-running servers in the background and stop them when done.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "The command line to run" },
+          cwd: { type: "string", description: "Absolute folder to run in (optional)" },
+        },
+        required: ["command"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "which_command",
       description:
         "Check whether a command-line tool is installed by locating its executable across the whole PATH and common bin directories. Use this to answer 'is X installed' / 'do I have X' — do not guess by listing a few folders.",
@@ -209,7 +241,10 @@ export async function executeTool(
   approve?: (tool: string, input: Record<string, unknown>, description: string) => Promise<boolean>
 ): Promise<string> {
   const ask = approve ?? ((tool: string, input: Record<string, unknown>, description: string) => confirmDialog(`Alter wants to use ${tool}:\n${description || JSON.stringify(input, null, 2)}\n\nAllow?`));
-  if (mode === "ask" && name !== "write_file") {
+  if (name === "run_command") {
+    const ok = await ask("Bash", { command: String(args.command ?? "") }, args.cwd ? `in ${String(args.cwd)}` : "");
+    if (!ok) return "User denied this command.";
+  } else if (mode === "ask" && name !== "write_file") {
     const ok = await ask(name, args, "");
     if (!ok) return "User denied this action.";
   }

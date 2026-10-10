@@ -48,18 +48,20 @@ For pages that need a real browser — JavaScript-rendered content, or clicking 
 
 When the user shares a lasting fact, preference, or instruction about themselves or how you should behave, append it at the very end of your reply on its own line wrapped exactly like: <memory>the fact, stated briefly</memory>. Only save genuinely lasting things, never small talk. Do not mention that you saved a memory.`;
 
-export function buildSystemPrompt(memories: MemoryItem[], mode: Mode = "auto", skills: Skill[] = []): string {
+export function buildSystemPrompt(memories: MemoryItem[], mode: Mode = "auto", skills: Skill[] = [], installed: { name: string; description: string }[] = []): string {
   let prompt = BASE_PROMPT;
   if (memories.length > 0) {
     const facts = memories.map((m) => `- ${m.text}`).join("\n");
     prompt += `\n\nWhat you remember about the user from past conversations:\n${facts}`;
   }
-  if (skills.length > 0) {
-    const list = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
-    prompt += `\n\nThe user has these saved skills. When a request matches one, call use_skill with its exact name to load its full instructions, then follow them:\n${list}`;
+  const all = [...skills.map((s) => ({ name: s.name, description: s.description })), ...installed.filter((x) => !skills.some((s) => s.name.toLowerCase() === x.name.toLowerCase()))];
+  if (all.length > 0) {
+    const list = all.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+    prompt += `\n\nThe user has these skills. When a request matches one, call use_skill with its exact name to load its full instructions, then follow them:\n${list}`;
   }
   prompt +=
-    "\n\nYou have no terminal, no git or GitHub access, and no sub-agents here. Only when a request truly needs one of those to be done, such as reading or acting on real PRs, running commands or tests, or committing, say in one short line that it needs Claude Code and end your reply with [needs-claude-code]. Writing or drafting text about PRs, code or GitHub needs none of that, so just do it.";
+    "\n\nThe user is a developer on the Frappe framework (frappe, erpnext, hrms and other Frappe apps) and works on local benches. For anything on a local bench or site (logging in, reproducing, testing, recording), load the frappe-debugging skill first. Never ask the user for a site password: on a local bench, log in with `bench --site <site> browse --user Administrator --sid` and open `/app?sid=<id>`. Read site names, ports and config from the bench yourself instead of asking." +
+    "\n\nYou can run shell commands on the user's Mac with run_command (git, gh, bench, scripts, builds); the user approves each one. When you need a decision or a fact only the user has, call ask_user with a short question and 2 to 4 options, and wait for the answer, instead of listing questions at the end of a reply or marking a step blocked. You have no sub-agents here. Only when a task truly needs parallel agents or a long autonomous session, say so in one short line and end your reply with [needs-claude-code].";
   if (mode !== "chat")
     prompt +=
       "\n\nFor a task with three or more real steps, call update_plan first with the steps, then call it again as each step starts, finishes or gets blocked. Skip it for questions and quick tasks.";
@@ -551,14 +553,32 @@ export interface ToolAsk {
   rpcId?: number | string;
 }
 
-const localWaiting = new Map<string, (ok: boolean) => void>();
+const localWaiting = new Map<string, (response: Record<string, unknown>) => void>();
 const localAllowed = new Map<string, Set<string>>();
 
 export function localAsk(convId: string, tool: string, input: Record<string, unknown>, description: string, show: (ask: ToolAsk) => void): Promise<boolean> {
   if (localAllowed.get(convId)?.has(tool)) return Promise.resolve(true);
   const ask: ToolAsk = { id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`, tool, input, description, suggestions: [{ type: "addRules" }], engine: "local" };
   return new Promise((resolve) => {
-    localWaiting.set(ask.id, resolve);
+    localWaiting.set(ask.id, (r) => resolve(r.behavior === "allow"));
+    show(ask);
+  });
+}
+
+export function localQuestion(question: string, options: string[], show: (ask: ToolAsk) => void): Promise<string> {
+  const ask: ToolAsk = {
+    id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    tool: "AskUserQuestion",
+    input: {},
+    suggestions: [],
+    questions: [{ question, options: options.slice(0, 4).map((label) => ({ label })) }],
+    engine: "local",
+  };
+  return new Promise((resolve) => {
+    localWaiting.set(ask.id, (r) => {
+      const answers = (r.updatedInput as { answers?: Record<string, string> } | undefined)?.answers;
+      resolve(r.behavior === "allow" && answers?.[question] ? `The user answered: ${answers[question]}` : String(r.message || "The user skipped the question. Use your best judgment and say what you assumed."));
+    });
     show(ask);
   });
 }
@@ -579,7 +599,7 @@ export function answerAsk(convId: string, ask: ToolAsk, response: Record<string,
   if (ask.engine === "local") {
     const allow = response.behavior === "allow";
     if (allow && response.updatedPermissions) localAllowed.set(convId, new Set([...(localAllowed.get(convId) ?? []), ask.tool]));
-    localWaiting.get(ask.id)?.(allow);
+    localWaiting.get(ask.id)?.(response);
     localWaiting.delete(ask.id);
     return Promise.resolve();
   }

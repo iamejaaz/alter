@@ -63,6 +63,7 @@ type RenderItem = { kind: "tools"; lines: string[]; key: string } | { kind: "msg
 function groupMessages(messages: Message[]): RenderItem[] {
   const items: RenderItem[] = [];
   messages.forEach((m, i) => {
+    if (m.role === "assistant" && !m.content && !m.peer && !m.handoff && i < messages.length - 1) return;
     if (m.role === "tool" && !m.handoff) {
       const lines = m.content.split("\n").filter(Boolean).map((l) => l.replace(/^▸\s*/, ""));
       const last = items[items.length - 1];
@@ -82,6 +83,7 @@ import {
   answerAsk,
   cliInstallTerminal,
   localAsk,
+  localQuestion,
   setChatMcp,
   ChatResult,
   claudeClose,
@@ -926,7 +928,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     );
     const projectInstructions = proj?.instructions?.trim();
     const systemContent =
-      buildSystemPrompt(memories, mode, skills) +
+      buildSystemPrompt(memories, mode, skills, claudeSkills) +
       (projectInstructions
         ? `\n\nProject "${proj!.name}" instructions (treat as authoritative):\n${projectInstructions}`
         : "") +
@@ -1290,12 +1292,28 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             break;
           }
           let output: string;
-          if (tc.function.name === "use_skill") {
+          if (tc.function.name === "ask_user") {
+            const opts = Array.isArray(args.options) ? (args.options as unknown[]).map(String).filter(Boolean) : [];
+            output = await localQuestion(String(args.question ?? ""), opts, (ask) => {
+              setAsks((a) => ({ ...a, [convId!]: [...(a[convId!] ?? []), ask] }));
+              if (convId === activeIdRef.current && document.hasFocus()) return;
+              updateConversation(convId!, (c) => ({ ...c, unread: true }));
+              const conv = convsRef.current.find((c) => c.id === convId);
+              if (!conv?.muted) void invoke("notify", { title: conv?.title || "Alter", body: "Has a question for you." }).catch(() => {});
+            });
+          } else if (tc.function.name === "run_command") {
+            const here = convsRef.current.find((x) => x.id === convId);
+            if (!args.cwd) args.cwd = here?.folder ?? folder ?? undefined;
+            output = await executeTool(tc.function.name, args, mode, approveHere);
+          } else if (tc.function.name === "use_skill") {
             const wanted = String(args.name ?? "").toLowerCase();
             const skill = skills.find((s) => s.name.toLowerCase() === wanted);
+            const installed = !skill ? await invoke<string>("read_claude_skill", { name: String(args.name ?? "") }).catch(() => "") : "";
             output = skill
-              ? `Skill "${skill.name}" instructions — follow these:\n\n${skill.instructions}`
-              : `No skill named "${args.name}". Available: ${skills.map((s) => s.name).join(", ") || "none"}.`;
+              ? `Skill "${skill.name}" instructions, follow these:\n\n${skill.instructions}`
+              : installed
+                ? `Skill "${args.name}" instructions, follow these:\n\n${installed}`
+                : `No skill named "${args.name}". Available: ${[...skills.map((s) => s.name), ...claudeSkills.map((s) => s.name)].join(", ") || "none"}.`;
           } else if (tc.function.name === "update_plan") {
             const statuses = ["pending", "in_progress", "done", "blocked"];
             const items = (Array.isArray(args.items) ? args.items : [])
@@ -1790,11 +1808,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const claudeCodeActive = isClaudeCodeUrl(settings.baseUrl);
   const [claudeSkills, setClaudeSkills] = useState<{ name: string; description: string }[]>([]);
   useEffect(() => {
-    if (!claudeCodeActive) return;
     invoke<{ name: string; description: string }[]>("list_claude_skills", { cwd: folder })
       .then(setClaudeSkills)
       .catch(() => setClaudeSkills([]));
-  }, [claudeCodeActive, folder]);
+  }, [folder]);
   const setEffort = (effort: string) => {
     const e = effort ? (effort as NonNullable<Settings["effort"]>) : undefined;
     const s = { ...settings, effort: e };

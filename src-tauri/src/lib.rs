@@ -1575,6 +1575,21 @@ fn read_frontmatter(path: &std::path::Path) -> (Option<String>, String) {
 }
 
 #[tauri::command]
+fn read_claude_skill(name: String) -> Result<String, String> {
+    if name.is_empty() || name.contains('/') || name.contains("..") {
+        return Err("bad skill name".into());
+    }
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    let dir = std::path::Path::new(&home).join(".claude/skills").join(&name);
+    let raw = std::fs::read_to_string(dir.join("SKILL.md")).map_err(|_| format!("no skill named {name}"))?;
+    let body = raw
+        .strip_prefix("---\n")
+        .and_then(|r| r.find("\n---").map(|i| r[i + 4..].trim_start().to_string()))
+        .unwrap_or(raw);
+    Ok(format!("This skill's folder: {}\n\n{}", dir.display(), body))
+}
+
+#[tauri::command]
 fn claude_models() -> Vec<String> {
     fn walk(v: &serde_json::Value, out: &mut std::collections::BTreeSet<String>) {
         match v {
@@ -1878,6 +1893,63 @@ fn walk(dir: &std::path::Path, prefix: &str, depth: usize, out: &mut Vec<String>
 }
 
 #[tauri::command]
+async fn run_command(command: String, cwd: Option<String>) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        use std::io::Read;
+        let mut cmd = std::process::Command::new("/bin/zsh");
+        cmd.arg("-lc").arg(&command).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+        if let Some(d) = cwd.filter(|d| std::path::Path::new(d).is_dir()) {
+            cmd.current_dir(d);
+        }
+        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+        let mut out = child.stdout.take();
+        let mut err = child.stderr.take();
+        let t_out = std::thread::spawn(move || {
+            let mut s = String::new();
+            if let Some(o) = out.as_mut() {
+                let _ = o.read_to_string(&mut s);
+            }
+            s
+        });
+        let t_err = std::thread::spawn(move || {
+            let mut s = String::new();
+            if let Some(e) = err.as_mut() {
+                let _ = e.read_to_string(&mut s);
+            }
+            s
+        });
+        let started = std::time::Instant::now();
+        let status = loop {
+            if let Some(st) = child.try_wait().map_err(|e| e.to_string())? {
+                break Some(st);
+            }
+            if started.elapsed() > std::time::Duration::from_secs(300) {
+                let _ = child.kill();
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(150));
+        };
+        let stdout = t_out.join().unwrap_or_default();
+        let stderr = t_err.join().unwrap_or_default();
+        let clip = |s: &str| -> String {
+            if s.chars().count() > 12000 {
+                let tail: String = s.chars().rev().take(12000).collect::<Vec<_>>().into_iter().rev().collect();
+                format!("…(earlier output cut)\n{tail}")
+            } else {
+                s.to_string()
+            }
+        };
+        let head = match status {
+            Some(st) => format!("exit code {}", st.code().unwrap_or(-1)),
+            None => "stopped after 5 minutes".to_string(),
+        };
+        Ok(format!("{head}\n{}{}", clip(stdout.trim_end()), if stderr.trim().is_empty() { String::new() } else { format!("\n[stderr]\n{}", clip(stderr.trim_end())) }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn which_command(name: String) -> Result<String, String> {
     if name.is_empty() || name.contains('/') || name.contains(char::is_whitespace) {
         return Err("Pass a plain command name (no slashes or spaces).".into());
@@ -2072,11 +2144,13 @@ pub fn run() {
             load_attachment,
             list_claude_skills,
             claude_models,
+            read_claude_skill,
             delete_attachments,
             list_dir,
             list_tree,
             search_files,
             which_command,
+            run_command,
             fetch_url,
             web_search,
             save_routine_state,
