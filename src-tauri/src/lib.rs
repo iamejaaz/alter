@@ -2059,45 +2059,67 @@ fn install_bundled_skills() {
         Ok(h) => h,
         Err(_) => return,
     };
-    let dir = std::path::Path::new(&home).join(".claude/skills/frappe-support-diagnosis");
-    let scripts = dir.join("scripts");
-    let review = std::path::Path::new(&home).join(".claude/skills/frappe-pr-review");
-    let review_scripts = review.join("scripts");
-    let writing = std::path::Path::new(&home).join(".claude/skills/plain-writing");
-    let debugging = std::path::Path::new(&home).join(".claude/skills/frappe-debugging");
-    if std::fs::create_dir_all(&scripts).is_err() || std::fs::create_dir_all(&review_scripts).is_err() || std::fs::create_dir_all(&writing).is_err() || std::fs::create_dir_all(&debugging).is_err() {
-        return;
-    }
-    let files: [(std::path::PathBuf, &str, bool); 12] = [
-        (writing.join("SKILL.md"), include_str!("../../skills/plain-writing/SKILL.md"), false),
-        (debugging.join("SKILL.md"), include_str!("../../skills/frappe-debugging/SKILL.md"), false),
-        (dir.join("SKILL.md"), include_str!("../../skills/frappe-support-diagnosis/SKILL.md"), false),
-        (dir.join("prompts.json"), include_str!("../../skills/frappe-support-diagnosis/prompts.json"), false),
-        (scripts.join("context.py"), include_str!("../../skills/frappe-support-diagnosis/scripts/context.py"), true),
-        (scripts.join("find-code.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/find-code.sh"), true),
-        (scripts.join("across-versions.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/across-versions.sh"), true),
-        (scripts.join("repro.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/repro.sh"), true),
-        (scripts.join("repro-setup.sh"), include_str!("../../skills/frappe-support-diagnosis/scripts/repro-setup.sh"), true),
-        (review.join("SKILL.md"), include_str!("../../skills/frappe-pr-review/SKILL.md"), false),
-        (review_scripts.join("pr-threads.sh"), include_str!("../../skills/frappe-pr-review/scripts/pr-threads.sh"), true),
-        (review_scripts.join("where.sh"), include_str!("../../skills/frappe-pr-review/scripts/where.sh"), true),
+    let root = std::path::Path::new(&home).join(".claude/skills");
+    let managed: &[(&str, &str, &str, bool)] = &[
+        ("plain-writing", "SKILL.md", include_str!("../../skills/plain-writing/SKILL.md"), false),
+        ("frappe-debugging", "SKILL.md", include_str!("../../skills/frappe-debugging/SKILL.md"), false),
+        ("frappe-support-diagnosis", "SKILL.md", include_str!("../../skills/frappe-support-diagnosis/SKILL.md"), false),
+        ("frappe-support-diagnosis", "prompts.json", include_str!("../../skills/frappe-support-diagnosis/prompts.json"), false),
+        ("frappe-support-diagnosis", "scripts/context.py", include_str!("../../skills/frappe-support-diagnosis/scripts/context.py"), true),
+        ("frappe-support-diagnosis", "scripts/find-code.sh", include_str!("../../skills/frappe-support-diagnosis/scripts/find-code.sh"), true),
+        ("frappe-support-diagnosis", "scripts/across-versions.sh", include_str!("../../skills/frappe-support-diagnosis/scripts/across-versions.sh"), true),
+        ("frappe-support-diagnosis", "scripts/repro.sh", include_str!("../../skills/frappe-support-diagnosis/scripts/repro.sh"), true),
+        ("frappe-support-diagnosis", "scripts/repro-setup.sh", include_str!("../../skills/frappe-support-diagnosis/scripts/repro-setup.sh"), true),
+        ("frappe-pr-review", "SKILL.md", include_str!("../../skills/frappe-pr-review/SKILL.md"), false),
+        ("frappe-pr-review", "scripts/pr-threads.sh", include_str!("../../skills/frappe-pr-review/scripts/pr-threads.sh"), true),
+        ("frappe-pr-review", "scripts/where.sh", include_str!("../../skills/frappe-pr-review/scripts/where.sh"), true),
     ];
-    for (path, body, exec) in &files {
-        let same = std::fs::read_to_string(path).map(|cur| cur == *body).unwrap_or(false);
-        if same {
-            continue;
+    let starter: &[(&str, &str, &str, bool)] = &[
+        ("frappectl", "SKILL.md", include_str!("../../skills/frappectl/SKILL.md"), false),
+        ("frappe-pr-deep-review", "SKILL.md", include_str!("../../skills/frappe-pr-deep-review/SKILL.md"), false),
+        ("fix-issue", "SKILL.md", include_str!("../../skills/fix-issue/SKILL.md"), false),
+        ("pr-description", "SKILL.md", include_str!("../../skills/pr-description/SKILL.md"), false),
+        ("demo-video", "SKILL.md", include_str!("../../skills/demo-video/SKILL.md"), false),
+        ("demo-video", "README.md", include_str!("../../skills/demo-video/README.md"), false),
+        ("demo-video", "capture_template.py", include_str!("../../skills/demo-video/capture_template.py"), false),
+        ("demo-video", "compositor.py", include_str!("../../skills/demo-video/compositor.py"), false),
+        ("demo-video", "example-multicase.py", include_str!("../../skills/demo-video/example-multicase.py"), false),
+    ];
+    let write = |skill: &str, rel: &str, body: &str, exec: bool| {
+        let path = root.join(skill).join(rel);
+        if std::fs::read_to_string(&path).map(|cur| cur == body).unwrap_or(false) {
+            return;
         }
-        if std::fs::write(path, body).is_err() {
-            continue;
+        if let Some(parent) = path.parent() {
+            if std::fs::create_dir_all(parent).is_err() {
+                return;
+            }
+        }
+        if std::fs::write(&path, body).is_err() {
+            return;
         }
         #[cfg(unix)]
-        if *exec {
+        if exec {
             use std::os::unix::fs::PermissionsExt;
-            if let Ok(meta) = std::fs::metadata(path) {
+            if let Ok(meta) = std::fs::metadata(&path) {
                 let mut perm = meta.permissions();
                 perm.set_mode(0o755);
-                let _ = std::fs::set_permissions(path, perm);
+                let _ = std::fs::set_permissions(&path, perm);
             }
+        }
+    };
+    for (skill, rel, body, exec) in managed {
+        write(skill, rel, body, *exec);
+    }
+    let mut fresh: Vec<&str> = Vec::new();
+    for (skill, _, _, _) in starter {
+        if !fresh.contains(skill) && !root.join(skill).join("SKILL.md").exists() {
+            fresh.push(skill);
+        }
+    }
+    for (skill, rel, body, exec) in starter {
+        if fresh.contains(skill) {
+            write(skill, rel, body, *exec);
         }
     }
 }
