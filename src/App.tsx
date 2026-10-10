@@ -3006,12 +3006,20 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     className="pointer-events-none absolute inset-0 px-4 pt-3 pb-1 text-[13px] leading-[1.5] whitespace-pre-wrap break-words"
                   >
                     <span className="invisible">{input}</span>
-                    <span className="text-[var(--txt-faint)]">{dictating ? `${input.trim() && !/\s$/.test(input) ? " " : ""}${dictating}` : ghost}</span>
+                    {dictating ? (
+                      <>
+                        <span className="italic text-[var(--txt-faint)]">{`${input.trim() && !/\s$/.test(input) ? " " : ""}${dictating}`}</span>
+                        <span className="ml-px inline-block h-[1.15em] w-px animate-pulse bg-[var(--txt)] align-text-bottom" />
+                      </>
+                    ) : (
+                      <span className="text-[var(--txt-faint)]">{ghost}</span>
+                    )}
                   </div>
                 )}
                 <textarea
                 ref={composerRef}
                 value={input}
+                style={dictating ? { caretColor: "transparent" } : undefined}
                 onChange={(e) => {
                   setInput(e.target.value);
                   setSlashIdx(0);
