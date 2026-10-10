@@ -575,7 +575,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                           {isLocalAgentUrl(c.baseUrl) ? "Runs on this Mac with your plan" : `${c.model || "no model"} · ${c.baseUrl.replace(/^https?:\/\//, "") || "no URL"}`}
                         </span>
                       </span>
-                      {on && <span className="shrink-0 text-[12px] text-[var(--txt-faint)]">Used for new chats</span>}
+                      {on && <span className="shrink-0 text-[12px] text-[var(--txt-faint)]">Default</span>}
                     </button>
                     {conns.length > 1 && (
                       <button
