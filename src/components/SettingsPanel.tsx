@@ -224,6 +224,8 @@ interface Props {
   projectsInitialId?: string | null;
 }
 
+const QUICK_ADD_HIDDEN = ["DeepSeek", "Gemini"];
+
 export default function SettingsPanel({ settings, memories, projects, onProjectsChange, onSave, onDeleteMemory, onAddMemory, onEditMemory, onImportMemories, skills, onSkillsChange, routines, onRoutinesChange, onRunRoutine, parseRoutine, onClose, initialTab, projectsInitialId }: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
   const [newMemory, setNewMemory] = useState("");
@@ -232,7 +234,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [editConnId, setEditConnId] = useState<string | null>(null);
+  const [form, setForm] = useState<{ id: string; name: string; baseUrl: string; apiKey: string; model: string; isNew: boolean } | null>(null);
   const [bridge, setBridge] = useState<{ port: number; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -306,8 +308,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     setTesting(true);
     setTestResult(null);
     try {
-      const c = syncedConnections().find((x) => x.id === editConnId);
-      const msg = await testConnection(c ? { ...draft, baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model } : draft);
+      const msg = await testConnection(form ? { ...draft, baseUrl: form.baseUrl, apiKey: form.apiKey, model: form.model } : draft);
       setTestResult({ ok: true, msg });
     } catch (e) {
       setTestResult({ ok: false, msg: e instanceof Error ? e.message : String(e) });
@@ -370,23 +371,29 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     setDraft({ ...draft, connections: synced, activeConnectionId: id, baseUrl: target.baseUrl, apiKey: target.apiKey, model: target.model });
     setTestResult(null);
   };
-  const addConnection = () => {
-    const conn = { id: newId(), name: "New connection", baseUrl: "", apiKey: "", model: "" };
-    setDraft({ ...draft, connections: [...syncedConnections(), conn] });
-    setEditConnId(conn.id);
+  const openForm = (f: { id: string; name: string; baseUrl: string; apiKey: string; model: string }, isNew: boolean) => {
+    setForm({ id: f.id, name: f.name, baseUrl: f.baseUrl, apiKey: f.apiKey, model: f.model, isNew });
     setTestResult(null);
   };
-  const updateConn = (id: string, patch: Partial<{ name: string; baseUrl: string; apiKey: string; model: string }>) => {
-    const next = syncedConnections().map((c) => (c.id === id ? { ...c, ...patch } : c));
-    const top = id === activeId ? next.find((c) => c.id === id)! : null;
-    setDraft({ ...draft, connections: next, ...(top ? { baseUrl: top.baseUrl, apiKey: top.apiKey, model: top.model } : {}) });
-    setTestResult(null);
+  const addConnection = () => openForm({ id: newId(), name: "", baseUrl: "", apiKey: "", model: "" }, true);
+  const saveForm = (makeDefault = false) => {
+    if (!form) return;
+    const conn = { id: form.id, name: form.name.trim() || form.model || "Connection", baseUrl: form.baseUrl.trim(), apiKey: form.apiKey.trim(), model: form.model.trim() };
+    const synced = syncedConnections();
+    const next = form.isNew ? [...synced, conn] : synced.map((c) => (c.id === conn.id ? { ...c, ...conn } : c));
+    const top = makeDefault || conn.id === activeId ? conn : null;
+    setDraft({
+      ...draft,
+      connections: next,
+      ...(top ? { activeConnectionId: top.id, baseUrl: top.baseUrl, apiKey: top.apiKey, model: top.model } : {}),
+    });
+    setForm(null);
   };
   const deleteConnection = async (id: string) => {
     const remaining = syncedConnections().filter((c) => c.id !== id);
     if (remaining.length === 0) return;
     if (!(await confirmDialog(`Delete the connection "${conns.find((c) => c.id === id)?.name ?? ""}"? Chats that used it keep their history.`))) return;
-    setEditConnId(null);
+    setForm(null);
     if (id !== activeId) {
       setDraft({ ...draft, connections: remaining });
       return;
@@ -401,10 +408,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     if (!preset) return;
     const [baseUrl, model] = [preset.baseUrl, preset.models[0]];
     name = name.replace(/ \(local\)$/, "");
-    const conn = { id: newId(), name, baseUrl, apiKey: "", model };
-    setDraft({ ...draft, connections: [...syncedConnections(), conn] });
-    setEditConnId(conn.id);
-    setTestResult(null);
+    openForm({ id: newId(), name, baseUrl, apiKey: "", model }, true);
   };
   // Every change lands as it is made: there is no Save to forget and nothing
   // is lost to Esc or a tab switch.
@@ -548,7 +552,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
             )}
 
             {tab === "connections" && (() => {
-              const editing = conns.find((c) => c.id === editConnId) ? syncedConnections().find((c) => c.id === editConnId)! : null;
+              const editing = form;
               if (!editing)
                 return (
                   <div>
@@ -559,7 +563,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                       const on = c.id === activeId;
                       return (
                         <div key={c.id} className="group flex items-center gap-3 border-b border-[var(--bd-soft)] last:border-b-0">
-                          <button onClick={() => { setEditConnId(c.id); setTestResult(null); }} className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left">
+                          <button onClick={() => openForm(syncedConnections().find((x) => x.id === c.id) ?? c, false)} className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left">
                             <span className="min-w-0 flex-1">
                               <span className="flex items-center gap-2">
                                 <span className="truncate text-[14px] text-[var(--txt)]">{c.name}</span>
@@ -584,7 +588,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     })}
                     <Row title="Add a connection" desc="Start from a provider, or add your own OpenAI compatible endpoint.">
                       <div className="flex flex-wrap gap-2">
-                        {Object.keys(PROVIDER_PRESETS).map((name) => (
+                        {Object.keys(PROVIDER_PRESETS).filter((name) => !QUICK_ADD_HIDDEN.includes(name)).map((name) => (
                           <button key={name} onClick={() => applyPreset(name)} className={action}>
                             {name.replace(/ \(local\)$/, "")}
                           </button>
@@ -597,17 +601,20 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   </div>
                 );
               const isDefault = editing.id === activeId;
+              const saved = syncedConnections().find((c) => c.id === editing.id);
+              const dirty =
+                editing.isNew || !saved || saved.name !== editing.name || saved.baseUrl !== editing.baseUrl || saved.apiKey !== editing.apiKey || saved.model !== editing.model;
               return (
                 <div>
                   <button
-                    onClick={() => setEditConnId(null)}
+                    onClick={() => setForm(null)}
                     className="mt-1 flex items-center gap-1.5 text-[13px] text-[var(--txt-dim)] hover:text-[var(--txt)] transition-colors"
                   >
                     ‹ All connections
                   </button>
                   <Row
                     title="Name"
-                    control={<input value={editing.name} onChange={(e) => updateConn(editing.id, { name: e.target.value })} className={`${field} w-72`} />}
+                    control={<input value={editing.name} placeholder={editing.model || "My connection"} onChange={(e) => setForm({ ...editing, name: e.target.value })} className={`${field} w-72`} />}
                   />
                   {isLocalAgentUrl(editing.baseUrl) ? (
                     <LocalAgentCard kind={isCodexUrl(editing.baseUrl) ? "codex" : "claude"} />
@@ -618,7 +625,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                         control={
                           <input
                             value={editing.baseUrl}
-                            onChange={(e) => updateConn(editing.id, { baseUrl: e.target.value })}
+                            onChange={(e) => setForm({ ...editing, baseUrl: e.target.value })}
                             placeholder="https://api.example.com/v1"
                             className={`${field} w-72 font-mono`}
                           />
@@ -630,7 +637,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                           <>
                             <input
                               value={editing.model}
-                              onChange={(e) => updateConn(editing.id, { model: e.target.value })}
+                              onChange={(e) => setForm({ ...editing, model: e.target.value })}
                               list="model-suggestions"
                               className={`${field} w-72 font-mono`}
                             />
@@ -651,7 +658,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                           <input
                             type="password"
                             value={editing.apiKey}
-                            onChange={(e) => updateConn(editing.id, { apiKey: e.target.value })}
+                            onChange={(e) => setForm({ ...editing, apiKey: e.target.value })}
                             placeholder="sk-..."
                             className={`${field} w-72 font-mono`}
                           />
@@ -683,13 +690,13 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                       isDefault ? (
                         <span className="text-[12px] text-[var(--txt-faint)]">Default</span>
                       ) : (
-                        <button onClick={() => selectConnection(editing.id)} className={action}>
-                          Make default
+                        <button onClick={() => (editing.isNew || dirty ? saveForm(true) : selectConnection(editing.id))} className={action}>
+                          {editing.isNew || dirty ? "Save and make default" : "Make default"}
                         </button>
                       )
                     }
                   />
-                  {conns.length > 1 && (
+                  {!editing.isNew && conns.length > 1 && (
                     <Row
                       title="Delete connection"
                       desc="Chats that used it keep their history."
@@ -700,6 +707,14 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                       }
                     />
                   )}
+                  <div className="flex items-center justify-end gap-2 pt-4">
+                    <button onClick={() => setForm(null)} className="rounded-lg px-3 py-1.5 text-[13px] text-[var(--txt-dim)] hover:text-[var(--txt)]">
+                      Cancel
+                    </button>
+                    <button onClick={() => saveForm()} disabled={!dirty} className={`${action} bg-[var(--panel-2)]`}>
+                      {editing.isNew ? "Add connection" : "Save"}
+                    </button>
+                  </div>
                 </div>
               );
             })()}
