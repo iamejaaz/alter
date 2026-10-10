@@ -56,7 +56,7 @@ export interface Conversation {
   lastAt?: number;
   handoffDone?: boolean;
   muted?: boolean;
-  peer?: { pid: number; name: string; auto?: boolean; left?: number }; // the local session this chat is paired with, picked with @
+  peer?: { pid: number; name: string; auto?: boolean; left?: number; sentAt?: number }; // the local session this chat is paired with, picked with @
 }
 
 export interface Scheduled {

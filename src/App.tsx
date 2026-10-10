@@ -555,7 +555,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       const { fromPid, fromName, msgId, content } = e.payload;
       const msg: Message = { role: "assistant", content, peer: { name: fromName, dir: "in", msgId } };
       setConversations((prev) => {
-        const hit = prev.find((c) => c.peer && (fromPid ? c.peer.pid === fromPid : c.peer.name === fromName));
+        const hit = prev
+          .filter((c) => c.peer && (fromPid ? c.peer.pid === fromPid : c.peer.name === fromName))
+          .sort((a, b) => (b.peer!.sentAt ?? 0) - (a.peer!.sentAt ?? 0))[0];
         if (hit) return prev.map((c) => (c.id === hit.id ? { ...c, unread: !(c.id === activeIdRef.current && document.hasFocus()), peer: { ...c.peer!, pid: fromPid ?? c.peer!.pid, name: fromName }, messages: [...c.messages, msg] } : c));
         return [{ id: newId(), title: fromName, unread: true, messages: [msg], createdAt: Date.now(), peer: { pid: fromPid ?? 0, name: fromName } }, ...prev];
       });
@@ -1967,7 +1969,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     setInput("");
     setPeerIdx(0);
     const peer = { pid: p.pid, name: p.name };
-    if (activeId && view === "chat") return updateConversation(activeId, (c) => ({ ...c, peer }));
+    const current = activeId && view === "chat" ? conversations.find((c) => c.id === activeId) : undefined;
+    if (current?.messages.length) return updateConversation(current.id, (c) => ({ ...c, peer }));
+    const existing = conversations.find((c) => c.peer?.pid === p.pid);
+    if (existing) return openChat(existing.id);
+    if (current) return updateConversation(current.id, (c) => ({ ...c, peer }));
     const id = newId();
     setConversations((prev) => [{ id, title: p.name, messages: [], createdAt: Date.now(), peer }, ...prev]);
     openChat(id);
@@ -1976,6 +1982,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const msgId = newId();
     updateConversation(convId, (c) => ({
       ...c,
+      peer: c.peer ? { ...c.peer, sentAt: Date.now() } : c.peer,
       messages: [...c.messages, { role: "user", content: text, attachments: atts.length ? atts : undefined, peer: { name: peer.name, dir: "out", status: "sending", msgId } }],
     }));
     const files = atts.map((a) => ({ name: a.name, dataUrl: a.kind === "image" ? a.dataUrl : undefined, text: a.kind === "text" ? a.text : undefined }));
