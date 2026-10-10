@@ -393,6 +393,19 @@ fn append_user_memory(fact: String) -> Result<(), String> {
 
 // Open an http(s) link in the user's default browser (never inside the app webview).
 #[tauri::command]
+fn open_privacy_settings(pane: String) -> Result<(), String> {
+    let anchor = match pane.as_str() {
+        "speech" => "Privacy_SpeechRecognition",
+        _ => "Privacy_Microphone",
+    };
+    std::process::Command::new("open")
+        .arg(format!("x-apple.systempreferences:com.apple.preference.security?{anchor}"))
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn open_external(url: String) -> Result<(), String> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err("Only http(s) links can be opened.".into());
@@ -1928,6 +1941,7 @@ pub fn run() {
             read_user_memory,
             append_user_memory,
             open_external,
+            open_privacy_settings,
             quick_complete,
             claude_title,
             complete_once,

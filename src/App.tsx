@@ -268,6 +268,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     // @ts-expect-error vendor-prefixed
     !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
+  const MIC_BLOCKED = "Alter can't use the microphone yet. Turn on Alter under Microphone and Speech Recognition.";
   const toggleMic = () => {
     // @ts-expect-error vendor-prefixed
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -296,7 +297,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       setListening(false);
       setError(
         e?.error === "not-allowed" || e?.error === "service-not-allowed"
-          ? "Microphone access is blocked. Allow it in System Settings › Privacy & Security › Microphone."
+          ? MIC_BLOCKED
           : "Voice dictation isn't supported in this app's webview yet."
       );
     };
@@ -2756,6 +2757,17 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     className="shrink-0 rounded-md border border-red-800 px-2.5 py-1 text-red-200 hover:bg-red-900/40"
                   >
                     Update Claude Code
+                  </button>
+                )}
+                {((activeId && convErrors[activeId]) || error) === MIC_BLOCKED && (
+                  <button
+                    onClick={() => {
+                      void invoke("open_privacy_settings", { pane: "microphone" });
+                      setError(null);
+                    }}
+                    className="shrink-0 rounded-md border border-red-800 px-2.5 py-1 text-red-200 hover:bg-red-900/40"
+                  >
+                    Open Settings
                   </button>
                 )}
                 {/Sign in to continue/.test((activeId && convErrors[activeId]) || error || "") && (

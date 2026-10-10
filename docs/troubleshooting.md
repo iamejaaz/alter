@@ -41,6 +41,7 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 | --- | --- | --- |
 | `Couldn't save your chats — local storage is full.` | Web storage quota | Delete old chats. Images already live on disk and do not count |
 | `Voice dictation isn't supported in this app's webview yet.` | WebKit has no speech API here | Use the Mac's own dictation shortcut in the text box |
+| `Alter can't use the microphone yet.` | macOS was asked once and the answer was no, or it was asked on behalf of the app that started Alter (Terminal in dev) | Click **Open Settings**, turn Alter (or that terminal) on under Microphone and under Speech Recognition, then click the mic again. Alter declares both in `src-tauri/Info.plist`, so a fresh install gets the normal Allow prompt |
 | `Folder picker is only available in the desktop app` | You are on the Vite dev page in a browser | Use the Tauri window |
 | `The app was quit while you were working. Please continue from where you left off.` appears in a chat | Alter quit or restarted while that chat was running, so it resumes the turn once on the next start. The dead turn's empty reply is removed first, so only one resume shows | Nothing to do. In development every Rust change restarts the app, so avoid long jobs while editing `src-tauri` |
 | A permission or question card appeared and I cannot type | The turn is waiting for the card | Answer, Skip or Deny. Esc interrupts the turn |
