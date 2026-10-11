@@ -17,7 +17,7 @@ Slash commands `/auto`, `/ask`, `/plan`, `/chat` switch the mode.
 
 In Ask first mode a Claude Code or Codex turn pauses and shows a card above the composer:
 
-- **Permission card:** the tool and its input, with Allow once, rule buttons the CLI suggested (for the rest of the session), and Deny. Deny ends that action with a message to the model.
+- **Permission card:** the tool and its input (a file edit shows a red and green diff), with Allow once, rule buttons the CLI suggested (for the rest of the session), and Deny. Deny ends that action with a message to the model.
 - **Question card:** one question at a time, with the options the model offered and a free text box. Skip skips only that question. Skipping all answers nothing and the model continues.
 
 HTTP models (OpenRouter, DeepSeek and the rest) use the same inline cards above the composer for file writes, and in Ask first for every tool. **Always allow in this chat** stops asking for that tool until Alter restarts. A chat waiting on a card shows as unread and sends a notification when you are looking elsewhere.
@@ -51,6 +51,12 @@ The clock beside Send schedules the typed message:
 - When a chat shows a session limit with a reset time ("resets 3pm"), a **Continue today at 3:01 PM** button schedules "Continue from where you stopped." one minute after the reset.
 - Text only. Attachments cannot be scheduled.
 - Stored under `alter.scheduled`.
+
+## Compact
+
+`/compact` asks a model to summarize the chat (goal, decisions, facts with paths, what changed, what is open), adds the summary to the chat, and starts a fresh Claude Code or Codex session. The next turn starts from that summary. The summary is written by the chat's own connection, or by Claude Code (Sonnet) when the chat runs on Codex.
+
+HTTP chats compact on their own: when the history passes 70% of the model's context window, Alter summarizes the earlier part before sending, and only the summary and the newer messages go to the model.
 
 ## Memory
 
@@ -159,6 +165,7 @@ A PR a chat opened shows as a chip above the composer with its checks and open r
 DeepSeek, OpenRouter and other HTTP connections get the same kind of reach as Claude Code, through Alter:
 
 - `run_command` runs a shell command in the chat's working folder (zsh, up to 5 minutes, output trimmed to the last 12,000 characters). Every command shows an inline card first: Allow once, Always allow in this chat, Deny.
+- `edit_file` changes part of a file by exact replacement. The card shows the diff before anything is written, and a text that is missing or matches more than once is refused so the model reads the file again. `write_file` is for new files and full rewrites.
 - `ask_user` shows a question card with up to four options and a free text answer, and the model waits for it. Plan steps that need you become questions instead of "blocked".
 - `use_skill` loads skills added in Alter and every skill in `~/.claude/skills` (frappe-debugging, frappe-pr-review and the rest), with the skill's folder so its scripts resolve.
 - The system prompt says the work is Frappe, to load frappe-debugging for anything on a local bench, and to log in with `bench browse --sid` rather than asking for a password.

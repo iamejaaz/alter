@@ -53,7 +53,7 @@ GitHub pull requests get **Review with Alter**. Helpdesk tickets get **Summarize
 - streams the agent's steps, folded away once the run finishes, with a toggle to open them
 - can be dragged by its header and resized from any edge or corner, the size and position are remembered per site, double click the header to reset
 - takes follow up questions while a run is going: the message queues, **Send now** interrupts the run and continues it after answering
-- shows **Copy**, minimise and close in the header
+- shows **Copy**, **Report a mistake** (thumbs down), minimise and close in the header. A mistake you report is saved in `feedback/pr.json` or `feedback/support.json` in the app data folder, and the last 20 go into every later PR review or ticket diagnosis as corrections to learn the general lesson from. **Undo** right after saving removes it, and you can edit the file by hand
 
 PR panel extras: **Copy**, **Preview comments** and **Post review** (the preview is the confirmation: one click on Comment, Request changes or Post as the bot posts what the cards show, and the note under the buttons names the PR), **Fix this PR** (hidden when the verdict is READY) and **Push to PR**, **Verify on bench** (always shown; with no repro bench set it says where to set one), **Continue in Alter** (opens an Alter chat carrying the review and the follow-ups). A follow-up that asks to verify, reproduce, or run something on the bench or console runs on the repro bench with the Verify on bench permissions.
 
