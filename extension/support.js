@@ -629,6 +629,7 @@ function openPanel(verb) {
         <div>
           <button id="sup-stop" title="Stop the agent" style="display:none">Stop</button>
           <button id="sup-copy" title="Copy" aria-label="Copy">${window.ALTER.ICON_COPY}</button>
+          <button id="sup-wrong" title="Something wrong in this answer? Tell Alter" aria-label="Report a mistake">${window.ALTER.ICON_WRONG}</button>
           <button id="sup-min" title="Minimize">–</button>
           <button id="sup-close" title="Close">×</button>
         </div>
@@ -651,6 +652,9 @@ function openPanel(verb) {
       if (activeRun) activeRun.stop();
       el.remove();
       supSession = null;
+    });
+    el.querySelector("#sup-wrong").addEventListener("click", () => {
+      window.ALTER.feedbackBox(el, el.querySelector("#sup-foot"), "support", () => `ticket ${ticketId()}`);
     });
     el.querySelector("#sup-copy").addEventListener("click", () => {
       const copy = el.querySelector("#sup-copy");

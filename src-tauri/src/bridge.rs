@@ -1387,6 +1387,36 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let v = self_update();
             (if v["ok"].as_bool() == Some(true) { 200 } else { 409 }, v.to_string())
         }
+        (tiny_http::Method::Post, "/feedback") => {
+            let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+            let area = v["area"].as_str().unwrap_or("");
+            let text = v["text"].as_str().unwrap_or("").trim().chars().take(1000).collect::<String>();
+            if feedback_path(area).is_none() || text.is_empty() {
+                return (400, "{\"error\":\"area and text are required\"}".into());
+            }
+            let id = gen_token();
+            let mut items = read_feedback(area);
+            items.push(serde_json::json!({
+                "id": id,
+                "at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
+                "ref": v["ref"].as_str().unwrap_or("").chars().take(200).collect::<String>(),
+                "text": text,
+            }));
+            match write_feedback(area, &items) {
+                Ok(()) => (200, serde_json::json!({ "ok": true, "id": id }).to_string()),
+                Err(e) => (500, serde_json::json!({ "error": e }).to_string()),
+            }
+        }
+        (tiny_http::Method::Post, "/feedback-remove") => {
+            let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+            let area = v["area"].as_str().unwrap_or("");
+            let id = v["id"].as_str().unwrap_or("");
+            let items: Vec<serde_json::Value> = read_feedback(area).into_iter().filter(|x| x["id"].as_str() != Some(id)).collect();
+            match write_feedback(area, &items) {
+                Ok(()) => (200, "{\"ok\":true}".into()),
+                Err(e) => (500, serde_json::json!({ "error": e }).to_string()),
+            }
+        }
         (tiny_http::Method::Post, "/dismiss") => {
             let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
             dismiss_runs(&state, v["runId"].as_str());
@@ -1552,7 +1582,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             if let Some(m) = req.model.as_deref().filter(|m| !m.is_empty() && conn.is_claude_code()) {
                 conn.model = m.to_string();
             }
-            let system = if resuming { String::new() } else { build_system(req.include_memory, Some(&system)) };
+            let system = if resuming { String::new() } else { with_lessons(build_system(req.include_memory, Some(&system)), &prompt) };
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             prune_progress(&mut state.progress.lock().unwrap_or_else(|e| e.into_inner()));
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -1595,6 +1625,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let benches = repro_benches_block();
             let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill).replace("{benches}", &benches);
             let prompt = req.prompt.replace("{skill}", &skill).replace("{benches}", &benches);
+            let system = if req.resume.is_some() { system } else { with_lessons(system, &prompt) };
             let reg = req.run_id.as_deref().map(|id| (&*state.running, id));
             let result = tauri::async_runtime::block_on(run_completion(&conn, Some(&system), &prompt, req.agent, reg));
             match result {
@@ -1992,6 +2023,7 @@ fn handle(app: &AppHandle, method: &tiny_http::Method, path: &str, body: &str) -
             let benches = repro_benches_block();
             let system = build_system(req.include_memory, req.system.as_deref()).replace("{skill}", &skill).replace("{benches}", &benches);
             let prompt = req.prompt.replace("{skill}", &skill).replace("{benches}", &benches);
+            let system = if req.resume.is_some() { system } else { with_lessons(system, &prompt) };
             let run_id = req.run_id.clone().unwrap_or_else(gen_token);
             prune_progress(&mut state.progress.lock().unwrap_or_else(|e| e.into_inner()));
             let repro_root = state.repro_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -2217,6 +2249,49 @@ fn kill_group(pid: u32) {
 fn alter_support_dir() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
     std::path::Path::new(&home).join("Library/Application Support/com.ejaaz.alter")
+}
+
+fn feedback_path(area: &str) -> Option<std::path::PathBuf> {
+    matches!(area, "pr" | "support").then(|| alter_support_dir().join("feedback").join(format!("{area}.json")))
+}
+
+fn read_feedback(area: &str) -> Vec<serde_json::Value> {
+    feedback_path(area)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn write_feedback(area: &str, items: &[serde_json::Value]) -> Result<(), String> {
+    let p = feedback_path(area).ok_or("unknown area")?;
+    if let Some(d) = p.parent() {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&p, serde_json::to_string_pretty(items).unwrap_or_default()).map_err(|e| e.to_string())
+}
+
+fn with_lessons(system: String, prompt: &str) -> String {
+    let area = if system.contains("frappe-pr-review") || prompt.contains("frappe-pr-review") {
+        "pr"
+    } else if system.contains("frappe-support-diagnosis") || prompt.contains("frappe-support-diagnosis") {
+        "support"
+    } else {
+        return system;
+    };
+    let items = read_feedback(area);
+    if items.is_empty() {
+        return system;
+    }
+    let lines: Vec<String> = items
+        .iter()
+        .rev()
+        .take(20)
+        .filter_map(|v| Some(format!("- ({}) {}", v["ref"].as_str().unwrap_or(""), v["text"].as_str()?)))
+        .collect();
+    format!(
+        "{system}\n\nCorrections the maintainer gave on earlier runs. Each one is about a specific case: take the general lesson behind it and apply it wherever it fits. Do not mention these notes in your answer.\n{}",
+        lines.join("\n")
+    )
 }
 
 pub fn alter_skills_dir() -> std::path::PathBuf {

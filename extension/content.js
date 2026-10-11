@@ -905,6 +905,7 @@ function openPanel() {
       <span id="alter-panel-title">Alter — PR review</span>
       <div>
         <button id="alter-copy" title="Copy the review, or the comments while you preview them" aria-label="Copy">${window.ALTER.ICON_COPY}</button>
+        <button id="alter-wrong" title="Something wrong in this review? Tell Alter" aria-label="Report a mistake">${window.ALTER.ICON_WRONG}</button>
         <button id="alter-stop" title="Stop the review" style="display:none">Stop</button>
         <button id="alter-min" title="Minimize">–</button>
         <button id="alter-close" title="Close">×</button>
@@ -922,6 +923,10 @@ function openPanel() {
     if (!text) return;
     navigator.clipboard.writeText(text);
     window.ALTER.copiedFlash(b);
+  });
+  el.querySelector("#alter-wrong").addEventListener("click", () => {
+    const parts = pageParts();
+    window.ALTER.feedbackBox(el, el.querySelector("#alter-panel-foot"), "pr", () => (parts ? `${parts.owner}/${parts.repo}#${parts.num}` : location.href));
   });
   el.querySelector("#alter-min").addEventListener("click", () => {
     const min = el.classList.toggle("alter-collapsed");

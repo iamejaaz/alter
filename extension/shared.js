@@ -381,10 +381,40 @@ globalThis.ALTER = globalThis.ALTER || (() => {
 
   const ICON_COPY = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const ICON_CHECK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+  const ICON_WRONG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg>';
+
+  function feedbackBox(panel, before, area, ref) {
+    const old = panel.querySelector(".alter-fb");
+    if (old) return old.remove();
+    const box = document.createElement("div");
+    box.className = "alter-fb";
+    box.innerHTML = `
+      <textarea rows="3" placeholder="What was wrong? Future ${area === "pr" ? "reviews" : "diagnoses"} learn the general lesson from it."></textarea>
+      <div class="alter-fb-row"><span class="alter-fb-note"></span><button class="alter-fb-cancel">Cancel</button><button class="alter-fb-save">Save</button></div>`;
+    panel.insertBefore(box, before);
+    const ta = box.querySelector("textarea");
+    const note = box.querySelector(".alter-fb-note");
+    ta.focus();
+    box.querySelector(".alter-fb-cancel").addEventListener("click", () => box.remove());
+    box.querySelector(".alter-fb-save").addEventListener("click", async () => {
+      const text = ta.value.trim();
+      if (!text) return ta.focus();
+      const r = await send({ type: "feedback", area, ref: ref(), text });
+      if (!r || !r.ok) return (note.textContent = humanizeErr((r && r.error) || "Could not save."));
+      const id = r.data && r.data.id;
+      box.innerHTML = `<div class="alter-fb-row"><span class="alter-fb-note">Saved. Future runs will use this.</span><button class="alter-fb-undo">Undo</button><button class="alter-fb-cancel">Close</button></div>`;
+      box.querySelector(".alter-fb-cancel").addEventListener("click", () => box.remove());
+      box.querySelector(".alter-fb-undo").addEventListener("click", async () => {
+        await send({ type: "feedback-remove", area, id });
+        box.remove();
+      });
+    });
+  }
+
   function copiedFlash(btn) {
     btn.innerHTML = ICON_CHECK;
     setTimeout(() => (btn.innerHTML = ICON_COPY), 1500);
   }
 
-  return { ICON_COPY, copiedFlash, escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom, send, askQueue, floating, foldSteps };
+  return { ICON_COPY, ICON_WRONG, feedbackBox, copiedFlash, escapeHtml, humanizeErr, mini, REVIEW_SYSTEM, COMMENT_VOICE, NO_DASH, reviewJson, resolveIds, REPLY_VOICE, FOLLOWUP_SYSTEM, REPLY_INTENT, followupParams, nearBottom, stickBottom, pinToBottom, send, askQueue, floating, foldSteps };
 })();

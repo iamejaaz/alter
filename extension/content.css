@@ -445,7 +445,8 @@
   padding: 3px 6px;
   font: inherit;
 }
-#alter-copy {
+#alter-copy,
+#alter-wrong {
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
