@@ -2104,21 +2104,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     }
   }, [conversations, streamingIds]);
 
-  const [resume, setResume] = useState<{ id: string; ago: string; was: string } | null>(null);
-  useEffect(() => {
-    setResume(null);
-    const c = convsRef.current.find((x) => x.id === activeId);
-    if (!c || c.peer || !c.messages.length || streamingIds.includes(c.id)) return;
-    const last = c.lastAt ?? c.createdAt;
-    const idle = Date.now() - last;
-    if (idle < 6 * 3600_000) return;
-    const hours = Math.round(idle / 3600_000);
-    const ago = hours < 48 ? `${hours} hours ago` : `${Math.round(hours / 24)} days ago`;
-    const now = c.plan?.find((p) => p.status === "in_progress") ?? c.plan?.find((p) => p.status === "pending");
-    const lastAsk = [...c.messages].reverse().find((m) => m.role === "user" && m.content)?.content ?? "";
-    const was = (now?.text ?? lastAsk).replace(/\s+/g, " ").slice(0, 120);
-    setResume({ id: c.id, ago, was });
-  }, [activeId]);
   useEffect(() => {
     if (view !== "chat") {
       composerRef.current?.blur();
@@ -2887,29 +2872,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </div>
               );
             })()}
-            {resume && resume.id === active?.id && (
-              <div className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1.5 text-[12px]">
-                <span className="min-w-0 flex-1 truncate text-[var(--txt-dim)]">
-                  <span className="text-[var(--txt)]">Last active {resume.ago}</span>
-                  {resume.was && <> · was on: {resume.was}</>}
-                </span>
-                <button
-                  onClick={() => {
-                    setResume(null);
-                    void send({
-                      text: `We're picking this chat back up after a break. In a few lines: what we were doing, where it stands, and the next step.`,
-                      display: "Pick up where we left off",
-                    });
-                  }}
-                  className="shrink-0 rounded-md border border-[var(--bd)] px-2 py-0.5 text-[var(--txt)] hover:bg-[var(--panel-2)]"
-                >
-                  Recap
-                </button>
-                <button onClick={() => setResume(null)} className="text-[var(--txt-faint)] hover:text-[var(--txt)]" title="Dismiss">
-                  ×
-                </button>
-              </div>
-            )}
             {!!active?.plan?.length && (() => {
               const plan = active.plan;
               const done = plan.filter((p) => p.status === "done").length;
