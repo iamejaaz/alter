@@ -209,6 +209,24 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "edit_file",
+      description:
+        "Change part of an existing text file by exact replacement. old_string must match the file exactly, including indentation, and be unique unless replace_all is true. Prefer this over write_file for changes to existing files. The user approves a diff first.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Absolute file path" },
+          old_string: { type: "string", description: "Exact text to replace" },
+          new_string: { type: "string", description: "Replacement text" },
+          replace_all: { type: "boolean", description: "Replace every occurrence" },
+        },
+        required: ["path", "old_string", "new_string"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "write_file",
       description:
         "Write a text file on the user's computer. Creates parent directories and overwrites existing content. The user is asked to approve before anything is written.",
@@ -244,7 +262,7 @@ export async function executeTool(
   if (name === "run_command") {
     const ok = await ask("Bash", { command: String(args.command ?? "") }, args.cwd ? `in ${String(args.cwd)}` : "");
     if (!ok) return "User denied this command.";
-  } else if (mode === "ask" && name !== "write_file") {
+  } else if (mode === "ask" && name !== "write_file" && name !== "edit_file") {
     const ok = await ask(name, args, "");
     if (!ok) return "User denied this action.";
   }
@@ -263,6 +281,30 @@ export async function executeTool(
         : `Overwrite existing file: ${existing.split("\n").length} → ${next.split("\n").length} lines.`;
     const ok = await ask("Write", { file_path: path, content: next }, summary);
     if (!ok) return "User denied the write.";
+  }
+  if (name === "edit_file") {
+    const path = String(args.path ?? "");
+    const oldS = String(args.old_string ?? "");
+    const newS = String(args.new_string ?? "");
+    let text: string;
+    try {
+      text = await invoke<string>("read_file", { path });
+    } catch (e) {
+      return `Error: ${String(e)}`;
+    }
+    if (!oldS) return "Error: old_string is empty. Use write_file to create a file.";
+    const count = text.split(oldS).length - 1;
+    if (!count) return "Error: old_string was not found. Read the file again and copy the text exactly.";
+    if (count > 1 && !args.replace_all) return `Error: old_string matches ${count} places. Add more surrounding lines to make it unique, or set replace_all.`;
+    const ok = await ask("Edit", { file_path: path, old_string: oldS, new_string: newS }, count > 1 ? `${count} replacements` : "");
+    if (!ok) return "User denied the edit.";
+    const next = args.replace_all ? text.split(oldS).join(newS) : text.replace(oldS, () => newS);
+    try {
+      await invoke("write_file", { path, content: next });
+    } catch (e) {
+      return `Error: ${String(e)}`;
+    }
+    return `Edited ${path} (${count} replacement${count > 1 ? "s" : ""}).`;
   }
   try {
     if (name === "browser_open") args.shared = sharedBrowser;

@@ -27,6 +27,53 @@ function describe(ask: ToolAsk): { title: string; detail: string; mono: boolean 
   }
 }
 
+type Line = { sign: " " | "-" | "+"; text: string };
+
+function diffLines(before: string, after: string): Line[] {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  return [
+    ...a.slice(Math.max(0, head - 2), head).map((text) => ({ sign: " " as const, text })),
+    ...a.slice(head, a.length - tail).map((text) => ({ sign: "-" as const, text })),
+    ...b.slice(head, b.length - tail).map((text) => ({ sign: "+" as const, text })),
+    ...a.slice(a.length - tail, a.length - tail + 2).map((text) => ({ sign: " " as const, text })),
+  ];
+}
+
+function editDiff(ask: ToolAsk): Line[] | null {
+  const i = ask.input;
+  if (ask.tool === "Edit") return diffLines(str(i.old_string), str(i.new_string));
+  if (ask.tool === "MultiEdit" && Array.isArray(i.edits))
+    return (i.edits as Record<string, unknown>[]).flatMap((e, k) => [
+      ...(k ? [{ sign: " " as const, text: "⋯" }] : []),
+      ...diffLines(str(e.old_string), str(e.new_string)),
+    ]);
+  if (ask.tool === "Write" && str(i.content)) return str(i.content).split("\n").slice(0, 400).map((text) => ({ sign: "+" as const, text }));
+  return null;
+}
+
+function Diff({ lines }: { lines: Line[] }) {
+  return (
+    <pre className="mt-1.5 max-h-72 overflow-auto rounded-md bg-[var(--bg)] py-1.5 font-mono text-[12px] leading-[1.45]">
+      {lines.map((l, k) => (
+        <div
+          key={k}
+          className={`whitespace-pre-wrap break-words px-2 ${
+            l.sign === "-" ? "bg-red-500/10 text-red-400" : l.sign === "+" ? "bg-green-500/10 text-green-500" : "text-[var(--txt-faint)]"
+          }`}
+        >
+          <span className="mr-2 select-none opacity-60">{l.sign}</span>
+          {l.text || " "}
+        </div>
+      ))}
+    </pre>
+  );
+}
+
 const RULE_LABEL: Record<string, string> = {
   addRules: "Always allow in this chat",
   setMode: "Allow all edits",
@@ -39,6 +86,7 @@ const plain = "rounded-md border border-[var(--bd)] px-2.5 py-1 text-[12px] text
 function Permission({ ask, onAnswer }: { ask: ToolAsk; onAnswer: (a: Answer) => void }) {
   const d = describe(ask);
   const edits = ["Edit", "MultiEdit", "Write", "NotebookEdit"].includes(ask.tool);
+  const diff = editDiff(ask);
   const rules = ask.suggestions.filter((s) => RULE_LABEL[str(s.type)] && (edits || s.type !== "setMode")).slice(0, 2);
   return (
     <>
@@ -52,6 +100,7 @@ function Permission({ ask, onAnswer }: { ask: ToolAsk; onAnswer: (a: Answer) => 
           {d.detail}
         </pre>
       )}
+      {diff && diff.length > 0 && <Diff lines={diff} />}
       {(ask.tool === "Bash" || ask.engine === "local") && ask.description && <p className="mt-1 text-[11px] text-[var(--txt-faint)]">{ask.description}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <button className={primary} onClick={() => onAnswer({ behavior: "allow", updatedInput: ask.input })}>
