@@ -83,8 +83,30 @@ export function extractMemories(text: string): { clean: string; found: string[] 
 // Turn stored chat messages into API history. Step messages that carry real tool
 // calls and outputs are expanded into the assistant(tool_calls) → tool(result)
 // pairs providers expect, so later turns know what the tools actually returned.
-export function buildHistory(messages: Message[], withTools: boolean): Message[] {
-  const out: Message[] = [];
+export const SUMMARY_PROMPT =
+  "Summarize this conversation so it can continue in a fresh context. Keep: the user's goal and latest request, decisions made, facts found with file paths, commands and URLs, what was changed, and what is still open. Plain short bullets, no preamble.";
+
+export function sinceSummary(messages: Message[]): { summary?: string; rest: Message[] } {
+  let at = messages.length - 1;
+  while (at >= 0 && !messages[at].summary) at--;
+  return at < 0 ? { rest: messages } : { summary: messages[at].summary, rest: messages.slice(at + 1) };
+}
+
+export function transcriptOf(messages: Message[], limit = 60000): string {
+  const { summary, rest } = sinceSummary(messages);
+  const lines = rest
+    .filter((m) => (m.role === "user" || m.role === "assistant") && m.content && !m.hidden)
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 4000)}`);
+  if (summary) lines.unshift(`Earlier summary:\n${summary}`);
+  return lines.join("\n\n").slice(-limit);
+}
+
+export const estimateTokens = (messages: Message[]) =>
+  Math.round(sinceSummary(messages).rest.reduce((n, m) => n + (m.content?.length ?? 0) + (m.toolResults ?? []).reduce((k, r) => k + r.output.length, 0), 0) / 4);
+
+export function buildHistory(all: Message[], withTools: boolean): Message[] {
+  const { summary, rest: messages } = sinceSummary(all);
+  const out: Message[] = summary ? [{ role: "system", content: `Summary of the conversation before this point:\n${summary}` }] : [];
   for (const m of messages) {
     if (m.role === "user") {
       const images = (m.attachments ?? []).filter((a) => a.kind === "image" && a.dataUrl);

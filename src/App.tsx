@@ -94,6 +94,10 @@ import {
   codexChat,
   extractMemories,
   streamChat,
+  SUMMARY_PROMPT,
+  sinceSummary,
+  transcriptOf,
+  estimateTokens,
 } from "./lib/api";
 
 const slugify = (s: string) =>
@@ -914,7 +918,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     }
 
     const userMsg: Message = { role: "user", content: shown, attachments: atts.length ? atts : undefined, quote: q ?? undefined, hidden: opts?.hidden };
-    const priorMessages = opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? [];
+    let priorMessages = opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? [];
     updateConversation(convId, (c) => ({
       ...c,
       title: c.messages.length === 0 ? opts?.title ?? shown.slice(0, 40) : c.title,
@@ -964,6 +968,18 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         }
       : { role: "user", content: apiText };
 
+    const priorConv = conversations.find((c) => c.id === convId);
+    if (!opts?.historyOverride && priorConv && !isLocalAgentUrl(settings.baseUrl) && estimateTokens(priorMessages) > 0.7 * (contextWindowFor(settings.model, false) ?? 128_000)) {
+      setConvInfo(convId, "This chat is long, so Alter is summarizing the earlier part…");
+      try {
+        const sm = summaryMessage(await summarizeChat({ ...priorConv, messages: priorMessages }));
+        priorMessages = [...priorMessages, sm];
+        updateConversation(convId, (c) => ({ ...c, messages: [...c.messages.slice(0, -2), sm, ...c.messages.slice(-2)] }));
+        setConvInfo(convId, "");
+      } catch {
+        setConvInfo(convId, "");
+      }
+    }
     const hydrated = await Promise.all(
       priorMessages.map(async (m) => {
         if (m.role !== "user" || !m.attachments?.some((a) => a.kind === "image" && a.stored && !a.dataUrl)) return m;
@@ -1018,6 +1034,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         let ccPrompt = apiText;
         if (!prior) {
           const blocks: string[] = [];
+          const earlier = sinceSummary(priorMessages).summary;
+          if (earlier) blocks.push(`Summary of this chat so far:\n${earlier}`);
           if (memories.length > 0) blocks.push(memories.map((m) => `- ${m.text}`).join("\n"));
           if (projectInstructions) blocks.push(`Project "${proj!.name}":\n${projectInstructions}`);
           if (blocks.length)
@@ -1869,23 +1887,39 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     }
   };
 
-  // Token-free "compact": reset the Claude Code session so its context window
-  // starts fresh (a real summarizing compact would need a model call). Messages
-  // stay visible; Alter re-shares its memory on the next turn.
-  const compactChat = () => {
+  const summarizeChat = async (conv: Conversation): Promise<string> => {
+    const conns = settings.connections ?? [];
+    const own = conns.find((k) => k.id === (conv.connectionId ?? settings.activeConnectionId));
+    const conn = own && !isCodexUrl(own.baseUrl) ? own : conns.find((k) => isClaudeCodeUrl(k.baseUrl)) ?? conns.find((k) => !isLocalAgentUrl(k.baseUrl));
+    if (!conn) throw new Error("No connection can write the summary.");
+    const transcript = transcriptOf(conv.messages);
+    if (!transcript.trim()) throw new Error("Nothing to compact yet.");
+    const out = await invoke<string>("complete_once", {
+      baseUrl: conn.baseUrl,
+      apiKey: conn.apiKey,
+      model: isClaudeCodeUrl(conn.baseUrl) ? "sonnet" : conv.model ?? conn.model,
+      system: SUMMARY_PROMPT,
+      prompt: transcript,
+    });
+    if (!out.trim()) throw new Error("The summary came back empty.");
+    return out.trim();
+  };
+  const summaryMessage = (summary: string): Message => ({
+    role: "assistant",
+    content: `**Context compacted.** The next turn starts from this summary.\n\n${summary}`,
+    summary,
+  });
+  const compactChat = async () => {
     if (!active) return;
-    updateConversation(active.id, (c) => ({
-      ...c,
-      claudeSessionId: undefined,
-      messages: [
-        ...c.messages,
-        {
-          role: "assistant",
-          content:
-            "**Context compacted** — started a fresh Claude Code session for this chat (no tokens used). Your messages stay visible; Claude Code's context is reset and Alter re-shares its memory on your next message.",
-        },
-      ],
-    }));
+    const id = active.id;
+    setConvInfo(id, "Compacting this chat…");
+    try {
+      const summary = await summarizeChat(active);
+      updateConversation(id, (c) => ({ ...c, claudeSessionId: undefined, codexThreadId: undefined, lastTokens: undefined, messages: [...c.messages, summaryMessage(summary)] }));
+      setConvInfo(id, "");
+    } catch (e) {
+      setConvInfo(id, `Compact failed: ${String(e).slice(0, 160)}`);
+    }
   };
 
   const slashCommands = [
@@ -1900,7 +1934,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     { cmd: "/handoff", desc: "Hand a task to a background chat (task only)", run: () => setInput("/handoff ") },
     { cmd: "/handoff-full", desc: "Hand a task to a background chat with this conversation", run: () => setInput("/handoff-full ") },
     { cmd: "/usage", desc: "Show cost tally (instant, no tokens)", run: showUsage },
-    { cmd: "/compact", desc: "Reset Claude Code context for this chat (no tokens used)", run: compactChat },
+    { cmd: "/compact", desc: "Summarize this chat and continue from the summary", run: () => void compactChat() },
     { cmd: "/auto", desc: "Auto — act freely, writes confirm", run: () => applyMode("auto") },
     { cmd: "/ask", desc: "Ask before every action", run: () => applyMode("ask") },
     { cmd: "/plan", desc: "Plan only, no actions", run: () => applyMode("plan") },
