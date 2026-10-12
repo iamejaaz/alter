@@ -109,7 +109,7 @@ Settings, General, Agent browser (on by default). A real browser window that cha
 
 - **Which browser:** your default browser when it is Chromium based (Brave, Chrome, Edge, Chromium, Vivaldi, Opera, Arc), otherwise the first of those installed. Safari and Firefox cannot be driven.
 - **Its own profile:** it runs as a separate instance with the profile in `browser-profile` in the app data folder, so it never touches your normal browser or its logins. Sign in to a site there once and it stays signed in.
-- **Control port:** `127.0.0.1:9333`. Alter starts the browser in the background the first time a Claude Code or Codex chat starts, and leaves it running. **Open browser** in Settings brings it to the front.
+- **Control port:** `127.0.0.1:9333`. Alter starts the browser hidden (headless) the first time a Claude Code or Codex chat starts, and leaves it running. You watch and use it in the Browser pane. **Open browser** in Settings or **Window** in the pane restarts it as a normal window, which then stays visible until you close it. Each new run closes leftover blank tabs.
 - **How chats use it:** Claude Code and Codex get the Playwright connector (`@playwright/mcp@0.0.83`, run through `npx`) pointed at that port. API connections' own browser tools attach to the same window when it is running.
 - **Sign in is yours.** The agent is told to stop and ask when a page wants a login, and never to type passwords, codes or payment details.
 - Files it saves (screenshots, downloads) go to `media` in the app data folder.
