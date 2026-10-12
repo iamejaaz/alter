@@ -476,7 +476,7 @@ async function autoPollOnce() {
       const discussion = (j && Array.isArray(j.discussion) ? j.discussion : []).filter((x) => typeof x === "string" && x.trim());
       if (j && (j.comments.length || (j.body || "").trim() || replies.length || discussion.length || ALTER.resolveIds(j).length)) {
         const [repo, prNum] = key.split("#");
-        const review = { event: "COMMENT", body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, discussion, resolve: ALTER.resolveIds(j) };
+        const review = { event: ALTER.botEvent(j), body: j.body || "", comments: j.comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, discussion, resolve: ALTER.resolveIds(j) };
         const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(review))));
         const post = await bridge("/gh-bot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo, num: prNum, review_b64: b64, head: rec.head || "" }) });
         if (!post.ok && post.body && post.body.stale) {

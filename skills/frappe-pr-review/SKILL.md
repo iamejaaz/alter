@@ -176,11 +176,11 @@ A real one that was too long, and what it should have been:
 
 Same finding, same anchor, same ask. The bench counts, the six doctype names and the second option went to the result block.
 
-Emit the comments as JSON the poster can use directly. `event` is always `COMMENT`. Never `REQUEST_CHANGES` and never `APPROVE`: a bot blocking someone's PR is the loudest form of telling them what to do, and the verdict is the maintainer's call. Your NEEDS CHANGES verdict still goes in the section 6 result block, which only the maintainer reads.
+Emit the comments as JSON the poster can use directly. `event` is `REQUEST_CHANGES` when the verdict is NEEDS CHANGES, and `COMMENT` for anything else (READY, NEEDS HUMAN JUDGMENT, a re-review with nothing new, replies). Never `APPROVE`: approving is the maintainer's call. A request-changes review blocks the PR until it is dismissed, so on a re-review where every earlier ask is closed, say so in the section 6 result block (`Prior maintainer review: addressed`) so the caller can dismiss the old one.
 
 ```json
 {
-  "event": "COMMENT",
+  "event": "REQUEST_CHANGES",
   "body": "review body or empty string",
   "comments": [
     {"path": "frappe/model/delete_doc.py", "line": 205, "side": "RIGHT", "start_line": null, "body": "Should we …?\n```suggestion\n…\n```"}

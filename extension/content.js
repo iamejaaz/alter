@@ -1198,7 +1198,7 @@ async function postAsBot(text, btn) {
     type: "gh-bot",
     repo: `${session.parts.owner}/${session.parts.repo}`,
     num: session.parts.num,
-    review: { event: "COMMENT", body, comments: comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, resolve },
+    review: { event: window.ALTER.botEvent(window.ALTER.reviewJson(session.review || "")), body, comments: comments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT", body: c.body })), replies, resolve },
     head: session.head,
   });
   btn.disabled = false;
