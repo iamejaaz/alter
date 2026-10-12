@@ -104,9 +104,40 @@ pub fn is_up() -> bool {
     ws_url().is_some()
 }
 
+fn headless() -> bool {
+    cdp_get("/json/version")
+        .and_then(|b| serde_json::from_str::<serde_json::Value>(&b).ok())
+        .and_then(|v| v["User-Agent"].as_str().map(|u| u.contains("Headless")))
+        .unwrap_or(false)
+}
+
+fn stop_running() {
+    let _ = std::process::Command::new("pkill").args(["-f", &format!("--remote-debugging-port={CDP_PORT}")]).status();
+    for _ in 0..40 {
+        if !is_up() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(150));
+    }
+}
+
+fn close_spare_blanks() {
+    let Some(list) = cdp_get("/json/list").and_then(|b| serde_json::from_str::<serde_json::Value>(&b).ok()) else { return };
+    let pages: Vec<&serde_json::Value> = list.as_array().map(|a| a.iter().filter(|t| t["type"] == "page").collect()).unwrap_or_default();
+    let blanks: Vec<&str> = pages.iter().filter(|t| t["url"] == "about:blank").filter_map(|t| t["id"].as_str()).collect();
+    let keep = if blanks.len() == pages.len() { 1 } else { 0 };
+    for id in blanks.iter().skip(keep) {
+        let _ = cdp_get(&format!("/json/close/{id}"));
+    }
+}
+
 pub fn ensure(app: &tauri::AppHandle, front: bool) -> Result<(), String> {
     if is_up() {
-        if front {
+        if !front {
+            close_spare_blanks();
+            return Ok(());
+        }
+        if !headless() {
             if let Some(list) = cdp_get("/json/list").and_then(|b| serde_json::from_str::<serde_json::Value>(&b).ok()) {
                 if let Some(id) = list.as_array().and_then(|a| a.iter().find(|t| t["type"] == "page")).and_then(|t| t["id"].as_str()) {
                     let _ = cdp_get(&format!("/json/activate/{id}"));
@@ -115,25 +146,41 @@ pub fn ensure(app: &tauri::AppHandle, front: bool) -> Result<(), String> {
             if let Some(a) = chrome_app() {
                 let _ = std::process::Command::new("open").arg(&a).spawn();
             }
+            return Ok(());
         }
-        return Ok(());
+        stop_running();
     }
     let chrome = chrome_app().ok_or("No Chromium based browser found (Brave, Chrome, Edge, Chromium, Vivaldi, Opera or Arc). Safari and Firefox can't be driven. Install one of those to use the agent browser.")?;
     let profile = profile_dir(app)?;
-    let mut cmd = std::process::Command::new("open");
-    if !front {
-        cmd.arg("-g");
+    let args = [
+        format!("--user-data-dir={}", profile.display()),
+        format!("--remote-debugging-port={CDP_PORT}"),
+        "--no-first-run".into(),
+        "--no-default-browser-check".into(),
+    ];
+    if front {
+        std::process::Command::new("open")
+            .arg("-n")
+            .arg("-a")
+            .arg(&chrome)
+            .arg("--args")
+            .args(&args)
+            .arg("about:blank")
+            .spawn()
+            .map_err(|e| format!("Couldn't start the agent browser ({e})"))?;
+    } else {
+        let name = chrome.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        std::process::Command::new(chrome.join("Contents/MacOS").join(name))
+            .args(&args)
+            .arg("--headless=new")
+            .arg("--window-size=1280,900")
+            .arg("about:blank")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("Couldn't start the agent browser ({e})"))?;
     }
-    cmd.arg("-n")
-        .arg("-a")
-        .arg(&chrome)
-        .arg("--args")
-        .arg(format!("--user-data-dir={}", profile.display()))
-        .arg(format!("--remote-debugging-port={CDP_PORT}"))
-        .arg("--no-first-run")
-        .arg("--no-default-browser-check")
-        .arg("about:blank");
-    cmd.spawn().map_err(|e| format!("Couldn't start the agent browser ({e})"))?;
     for _ in 0..40 {
         if is_up() {
             return Ok(());
