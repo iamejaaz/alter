@@ -2,18 +2,32 @@
 # Resolve the local bench and app checkout for the repo being reviewed, so the
 # review never assumes one machine or one app.
 # Usage: where.sh <owner/repo> [base-branch]
-#   where.sh frappe/erpnext          -> BENCH, APP, APP_PATH, SITE for erpnext
-# Overrides: ALTER_BENCH (bench root), ALTER_REVIEW_SITE (site to reproduce on).
+#   where.sh frappe/erpnext          -> BENCH, APP, APP_PATH, SITE, PORT for erpnext
+# Overrides, from the environment or ${REVIEW_CONFIG:-~/.config/frappe-review/env}
+# (KEY=value lines): REVIEW_BENCH, REVIEW_SITE, REVIEW_PORT, REVIEW_SHARED.
+# ALTER_BENCH and ALTER_REVIEW_SITE are read too.
 set -eu
 full="${1:?usage: where.sh <owner/repo> [base-branch]}"
 base="${2:-develop}"
 app="${full##*/}"
 
+config="${REVIEW_CONFIG:-$HOME/.config/frappe-review/env}"
+if [ -f "$config" ]; then
+  while IFS='=' read -r key value; do
+    case "$key" in
+      REVIEW_BENCH) REVIEW_BENCH="${REVIEW_BENCH:-$value}" ;;
+      REVIEW_SITE) REVIEW_SITE="${REVIEW_SITE:-$value}" ;;
+      REVIEW_PORT) REVIEW_PORT="${REVIEW_PORT:-$value}" ;;
+      REVIEW_SHARED) REVIEW_SHARED="${REVIEW_SHARED:-$value}" ;;
+    esac
+  done < "$config"
+fi
+
 looks_like_bench() { [ -d "$1/apps" ] && [ -d "$1/sites" ]; }
 with_app=""
 
 bench=""
-for cand in "${ALTER_BENCH:-}" "${ALTER_AGENT_WORKDIR:-}" "${ALTER_REPRO_DEVELOP:-}" "$PWD"; do
+for cand in "${REVIEW_BENCH:-}" "${ALTER_BENCH:-}" "${ALTER_AGENT_WORKDIR:-}" "${ALTER_REPRO_DEVELOP:-}" "$PWD"; do
   [ -n "$cand" ] && looks_like_bench "$cand" && bench="$cand" && break
 done
 # Walk up from here: the agent often starts inside an app checkout.
@@ -48,14 +62,14 @@ if [ -z "$bench" ]; then
   [ -n "$bench" ] || bench="${with_app:-$fallback}"
 fi
 
-[ -n "$bench" ] || { echo "BENCH="; echo "note=no bench found — set ALTER_BENCH, or review from the diff only"; exit 0; }
+[ -n "$bench" ] || { echo "BENCH="; echo "note=no bench found — set REVIEW_BENCH, or review from the diff only"; exit 0; }
 
 app_path="$bench/apps/$app"
 [ -d "$app_path/.git" ] || app_path=""
 
 # A site to reproduce on: the explicit pick, then the bench default, then any
 # site with a config. Whether this app is installed on it is the agent's check.
-site="${ALTER_REVIEW_SITE:-}"
+site="${REVIEW_SITE:-${ALTER_REVIEW_SITE:-}}"
 if [ -z "$site" ] && [ -f "$bench/sites/currentsite.txt" ]; then
   site="$(tr -d ' \n' < "$bench/sites/currentsite.txt")"
 fi
@@ -71,6 +85,9 @@ echo "BENCH=$bench"
 echo "APP=$app"
 echo "APP_PATH=${app_path:-"(not cloned on this bench — read the code from the diff and gh)"}"
 echo "SITE=${site:-"(no site — skip reproduction)"}"
+echo "PORT=${REVIEW_PORT:-8899}"
+shared="${REVIEW_SHARED:-$HOME/.claude/shared}"
+[ -d "$shared" ] && echo "SHARED=$shared"
 [ -n "$app_path" ] || exit 0
 
 remote=upstream

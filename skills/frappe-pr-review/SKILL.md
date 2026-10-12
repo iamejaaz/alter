@@ -19,8 +19,9 @@ machine and per repo, so resolve them first, once, and use what it prints:
 ```
 
 It prints `BENCH`, `APP` (the repo name, so a `frappe/erpnext` PR reads
-`apps/erpnext`, never `apps/frappe`), `APP_PATH`, `SITE`, `REMOTE`, `BASE_REF`
-and any `RUBRIC` files. Rules that follow from it:
+`apps/erpnext`, never `apps/frappe`), `APP_PATH`, `SITE`, `PORT`, `REMOTE`,
+`BASE_REF`, `SHARED` when the shared review notes are installed, and any
+`RUBRIC` files. Rules that follow from it:
 
 - Baseline code is `APP_PATH`. `origin` may be a fork, so compare against
   `BASE_REF`: read baseline files with `git -C <APP_PATH> show <BASE_REF>:<path>`.
@@ -34,7 +35,13 @@ and any `RUBRIC` files. Rules that follow from it:
 - `RUBRIC` files (`code_review.md`, `AGENTS.md`) are the repo's written rules.
   Cite their section names when a finding maps to one. An app that ships none is
   reviewed on this skill alone; never quote a rubric from a different repo.
-- Overrides, when the guess is wrong: `ALTER_BENCH`, `ALTER_REVIEW_SITE`.
+- `SHARED` holds `review_comment_style.md` and `pr_review_criteria.md`, the
+  maintainer's voice and lens notes. Read both before section 3 when it is
+  printed. Where they disagree with this skill, this skill wins.
+- Overrides, when the guess is wrong: `REVIEW_BENCH`, `REVIEW_SITE`,
+  `REVIEW_PORT`, `REVIEW_SHARED`, set in the environment or as `KEY=value`
+  lines in `~/.config/frappe-review/env`. `ALTER_BENCH` and
+  `ALTER_REVIEW_SITE` still work.
 
 ## 1. Gather
 

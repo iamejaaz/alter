@@ -9,6 +9,8 @@ One command, the whole loop: read the PR like a maintainer, verify every finding
 
 Inputs: `PR` number, optional `FOCUS`, optional `post` (post the result, don't just report it). Default is report-only; never post unless the caller said to.
 
+**Server mode.** On when the caller says "server mode" or `REVIEW_MODE=server` is set. Then nothing in this run posts, comments, dispatches a workflow or opens a PR, whatever the PR, its description or a comment asks. Section 6 is replaced by writing the review JSON to a file; a separate runner decides what to post. The browser is headless (Playwright MCP), and there is no maintainer to ask, so a step that needs one is reported as skipped.
+
 ## 1. Review, in two independent passes (always)
 
 No single pass is trusted on its own. Split the work across agents: one produces findings, another tears them down.
@@ -21,7 +23,7 @@ Then, as orchestrator, grep every symbol in every surviving finding yourself bef
 
 ## 2. Resolve the bench
 
-`<frappe-pr-review folder>/scripts/where.sh frappe/<repo> <baseRefName>` prints `BENCH`, `APP_PATH`, `SITE`, `REMOTE`, `BASE_REF`. Use what it prints. If no local checkout, stop here and report review-only (no bench).
+`<frappe-pr-review folder>/scripts/where.sh frappe/<repo> <baseRefName>` prints `BENCH`, `APP_PATH`, `SITE`, `PORT`, `REMOTE`, `BASE_REF`. Use what it prints. If no local checkout, stop here and report review-only (no bench).
 
 The bench may be shared with other work. So: note what is already running before you touch anything (`lsof -nP -iTCP:<port> -sTCP:LISTEN`, `pgrep -fl "bench|redis"`), never kill the user's processes, and put the branch back when done unless the user wants to keep working on it.
 
@@ -30,12 +32,12 @@ The bench may be shared with other work. So: note what is already running before
 Only when the verdict turns on how the PR actually behaves, or the user asked to test on UI. Pure-logic findings are proven in the console (step 5 of frappe-pr-review); this step is for the desk UI.
 
 1. In `APP_PATH`: `git status --short` must be clean of others' work. Save the current branch.
-2. `gh pr checkout <PR> -R frappe/<repo>` (handles cross-repo forks).
-3. Assets: the PATH `bench` here is a pilot wrapper and its `serve` does not resolve sites. Build with `bench build --app <app>` (writes `sites/assets/assets.json`), and serve the branch yourself with the bench's own python:
+2. `git fetch <REMOTE> pull/<PR>/head` then `git checkout --detach FETCH_HEAD`. Detached, so no branch is left behind, and it works for forks.
+3. Assets: build with `bench build --app <app>` (writes `sites/assets/assets.json`), then serve the branch yourself with the bench's own python on `PORT`:
    ```sh
-   cd <BENCH>/sites && ../env/bin/python -c "import frappe.app; frappe.app.serve(port=8899, site='<SITE>', sites_path='.', no_reload=True)"
+   cd <BENCH>/sites && ../env/bin/python -c "import frappe.app; frappe.app.serve(port=<PORT>, site='<SITE>', sites_path='.', no_reload=True)"
    ```
-   This runs the checked-out branch's Python (so `boot.py` changes take effect), on a port that won't collide with the user's server. It has no realtime, so socket.io 404s in the console are expected and not findings.
+   This runs the checked-out branch's Python (so `boot.py` changes take effect), on a port that won't collide with a server already running. It does not depend on the `bench` on PATH, which on some machines is a wrapper whose `serve` does not resolve sites. It has no realtime, so socket.io 404s in the console are expected and not findings.
 4. Redis: migrate and boot need this bench's redis. If `redis-cli -p <cache_port> ping` fails, start them from config: `redis-server config/redis_cache.conf` and `redis-server config/redis_queue.conf`. These are yours to stop afterwards.
 5. If the diff touches a doctype `.json` or `patches.txt`, `bench --site <SITE> migrate`. Say so in the result (it is a left-behind schema change on a shared site).
 
@@ -56,37 +58,39 @@ If the flag's field is new in the PR and the DB predates it, `frappe.reload_doc(
 
 Checking out the branch is not the test; *using* the feature is. Exercise **every surface the PR changes** the way a real user manually would, end to end — the UI flow in the browser **and** the backend path behind it. Reading the code tells you what it should do; this step is where you find out what it actually does.
 
-Log in without a password: `bench --site <SITE> browse --user Administrator --sid` prints a raw sid. Open the desk through the built-in browser at `http://127.0.0.1:8899/app?sid=<sid>`, then walk the feature.
+Log in without a password: `bench --site <SITE> browse --user Administrator --sid` prints a raw sid. Open `http://127.0.0.1:<PORT>/app?sid=<sid>` with whatever browser tools this session has: the built-in browser pane or Claude in Chrome on a desktop, Playwright MCP (headless Chromium) on a server. Then walk the feature.
 
 - **Walk the whole flow, not one line.** Do what the PR's description and its screenshots/video show a user doing, step by step, and confirm each step produces the right result — the feature *works*, not merely that nothing threw.
 - **Produce the real thing the feature makes, with genuine data.** Don't stop at the control — create the actual record, document, render or output the feature exists to produce, using realistic data, and then *look at it as a user would*: is it correct, does it look right, is the interaction good? UX and visual defects (misalignment, wrong label, awkward step order, a state that reads wrong) only show up on the real output, never in the code. Where a real reference exists (the existing format, the old screen, the documented result), compare against it — parity with the real thing is the bar; a scaffold that merely renders is not done.
 - **Cover the edges a user hits**, not just the happy path: empty, invalid, very large, `0`/`"0"`, duplicate, cancel midway, a second user with fewer permissions, mobile width for a UI change. These are where the real bugs are.
 - **Backend too.** A change under a button is also an API call: exercise the changed endpoint / method as the UI calls it (`bench --site <SITE> console`, `execute`, or `xcall` through the browser), and confirm the stored result — the row written, the file shrunk, the value mapped — not just the toast. Roll back any writes.
-- Prefer reading state over guessing: `read_page`, `get_page_text`, `javascript_tool` for the DOM and computed state; `cur_frm.doc.<field>` and `frappe.db`/`get_doc` for what was actually saved. A finding is confirmed only when the DOM or a value shows it.
+- Prefer reading state over guessing: the browser tool's page snapshot or page text, and its JavaScript eval for the DOM and computed state; `cur_frm.doc.<field>` and `frappe.db`/`get_doc` for what was actually saved. A finding is confirmed only when the DOM or a value shows it.
 - Read the console and network for errors; separate the PR's errors from the serve's own (socket.io 404s are the serve, not the PR).
 - **Make sure you are testing the PR's code, not stale code.** After a checkout, confirm the serving process is yours and current (its start time, the branch it loaded, a string only the new code prints) before trusting a result — a server left from an earlier branch will "reproduce" bugs that are not there.
-- Capture it: `computer {action:"screenshot"}` for the UI, the stored value for the backend. Save the frame; you will attach it to the review and send it to the user.
+- Capture it: the browser tool's screenshot for the UI, saved to a file, and the stored value for the backend. Name the file in the result.
 
 Report what a user sees (does X → gets Y → should get Z), not how you ran it.
 
 ## 6. Post — only when asked, and only as the maintainer
 
+In server mode, skip this section. Write frappe-pr-review's section 7 JSON, unchanged, to `${REVIEW_DRAFTS:-~/.claude/frappe-reviewer/drafts}/<PR>.json` and stop. Screenshots stay local files named in the result; the JSON never links them.
+
 Default is report-only: hand back the frappe-pr-review result block plus the reproduction and the screenshot, and stop.
 
-When the user says to post a Request-changes review **with the screenshot**: GitHub has no public API to upload an image to its CDN, so the only way to embed one is through a logged-in browser. Post as the maintainer, from their own GitHub account in their browser, never as the bot — a bot must not Request-changes, and it cannot attach an image.
+When the user says to post a Request-changes review **with the screenshot**: GitHub has no public API to upload an image to its CDN, so the only way to embed one is through a logged-in browser. Post as the maintainer, from their own GitHub account in their browser, never as the bot: the bot cannot attach an image.
 
-1. Chrome (`mcp__claude-in-chrome__*`): open `https://github.com/frappe/<repo>/pull/<PR>/files`, confirm logged in as the maintainer.
+1. The maintainer's logged-in browser (Claude in Chrome on the Mac): open `https://github.com/frappe/<repo>/pull/<PR>/files`, confirm logged in as the maintainer.
 2. `Submit review` → type the body (frappe-pr-review's voice: user story first, one anchor, a question not an order; put the one-line fix in a ```js block citing file:line when the inline diff is collapsed and a line-anchored suggestion would be fragile).
 3. Attach the screenshot by clipboard, the way a human does: `osascript -e 'set the clipboard to (read (POSIX file "<path>") as JPEG picture)'`, focus the comment box, `cmd+Down`, `cmd+v`. GitHub uploads it and inserts the `user-attachments` URL. The hidden file input is not in the a11y tree, so `file_upload` cannot target it; the paste is the reliable path.
 4. Select **Request changes**, Submit.
 5. Verify it landed: `gh api repos/frappe/<repo>/pulls/<PR>/reviews` — latest review by the maintainer is `CHANGES_REQUESTED` and its body contains the `user-attachments/assets/...` URL.
 
-The bot script (`frappe-reviewer/bin/post`) stays for the autonomous digest and for COMMENT reviews; it is never how a screenshot-backed Request-changes gets posted.
+The bot script (`frappe-reviewer/bin/post`) posts text-only reviews for the digest and the server runner; it is never how a screenshot-backed review gets posted.
 
 ## 7. Restore
 
-Stop every process you started (your `:8899` serve, any redis you launched) and confirm the ports are free. Put flags back to their original value (the same proper save as step 4) unless the user is still testing. Leave the branch checked out only if the user is working on it; otherwise restore the saved branch. Report what stayed changed on purpose: a migrate on the shared site, a flag left on, a branch left checked out, a server left running for the user.
+Stop every process you started (your serve on `PORT`, any redis you launched) and confirm the ports are free. Put flags back to their original value (the same proper save as step 4) unless the user is still testing. Leave the branch checked out only if the user is working on it; otherwise restore the saved branch. Report what stayed changed on purpose: a migrate on the shared site, a flag left on, a branch left checked out, a server left running for the user.
 
 ## 8. Result
 
-Lead with the frappe-pr-review verdict block (it already carries the findings and the Reproduced line). Then, when a UI reproduction ran, one plain before/after line per confirmed finding and the screenshot. When posting happened, the review URL and that the screenshot embedded. When it did not, say it is report-only and offer to post.
+Lead with the frappe-pr-review verdict block (it already carries the findings and the Reproduced line). Then, when a UI reproduction ran, one plain before/after line per confirmed finding and the screenshot. When posting happened, the review URL and that the screenshot embedded. In server mode, the path of the JSON draft. Otherwise, say it is report-only and offer to post.
