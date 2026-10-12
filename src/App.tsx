@@ -100,6 +100,17 @@ import {
   estimateTokens,
 } from "./lib/api";
 
+const topUpUrl = (baseUrl: string) =>
+  /openrouter\.ai/.test(baseUrl)
+    ? "https://openrouter.ai/settings/credits"
+    : /deepseek\.com/.test(baseUrl)
+      ? "https://platform.deepseek.com/top_up"
+      : /moonshot|kimi/.test(baseUrl)
+        ? "https://platform.moonshot.ai/console/pay"
+        : /openai\.com/.test(baseUrl)
+          ? "https://platform.openai.com/settings/organization/billing"
+          : "";
+
 const slugify = (s: string) =>
   s
     .toLowerCase()
@@ -655,7 +666,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
 
   // Errors that mean "this provider is busy/down — try another connection"
   const isRetryable = (msg: string) =>
-    /\b(429|500|502|503|529)\b/.test(msg) ||
+    /\b(402|429|500|502|503|529)\b/.test(msg) ||
+    /payment|insufficient.?(balance|credit|fund)|out of credits|quota/i.test(msg) ||
     /rate.?limit|temporarily|unavailable|overloaded|provider returned error|upstream|capacity|try again|no instances|timed out|timeout|no response/i.test(
       msg
     );
@@ -679,6 +691,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       return `Claude Code session limit reached${
         limit && limit[1] ? " — " + limit[1].trim() : " — it resets on a rolling 5-hour window"
       }. All Claude models share this subscription cap, so switch to an HTTP connection (e.g. laguna) until it resets, or run lighter with the Sonnet model.`;
+    if (!isLocalAgentUrl(settings.baseUrl) && (/\b402\b/.test(raw) || /payment|insufficient.?(balance|credit|fund)|out of credits/i.test(raw)))
+      return `${connLabel(settings)} is out of credits (HTTP 402). Top it up, or pick another model or connection below.`;
     if (/thought_signature/i.test(raw))
       return "This Gemini model needs a special tool-call format Alter can't send. Reload the app — Gemini now runs tool-free (still reads images and writes code), or use a non-Gemini connection for file/web tools.";
     if (/image input|support image|no endpoints.*image/i.test(raw))
@@ -2785,6 +2799,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     className="shrink-0 rounded-md border border-red-800 px-2.5 py-1 text-red-200 hover:bg-red-900/40"
                   >
                     Update Claude Code
+                  </button>
+                )}
+                {/out of credits \(HTTP 402\)/.test((activeId && convErrors[activeId]) || error || "") && topUpUrl(settings.baseUrl) && (
+                  <button
+                    onClick={() => void invoke("open_external", { url: topUpUrl(settings.baseUrl) })}
+                    className="shrink-0 rounded-md border border-red-800 px-2.5 py-1 text-red-200 hover:bg-red-900/40"
+                  >
+                    Top up
                   </button>
                 )}
                 {/Sign in to continue/.test((activeId && convErrors[activeId]) || error || "") && (
