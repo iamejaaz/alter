@@ -819,7 +819,16 @@ async fn review_runs(url: String, key: String, secret: String, name: Option<Stri
             404 => "The review server has no PR Review Run doctype yet.",
             _ => "The review server returned an error.",
         };
-        return Err(format!("{hint} (HTTP {})", status.as_u16()));
+        let said = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| v["_server_messages"].as_str().and_then(|m| serde_json::from_str::<Vec<String>>(m).ok()))
+            .and_then(|m| m.first().and_then(|x| serde_json::from_str::<serde_json::Value>(x).ok()))
+            .and_then(|m| m["message"].as_str().map(|t| t.split("<br>").next().unwrap_or(t).trim().to_string()))
+            .filter(|t| !t.is_empty());
+        return Err(match said {
+            Some(t) => format!("{hint} The server says: {t} (HTTP {})", status.as_u16()),
+            None => format!("{hint} (HTTP {})", status.as_u16()),
+        });
     }
     let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     Ok(v["data"].clone())
