@@ -58,6 +58,15 @@ The clock beside Send schedules the typed message:
 
 HTTP chats compact on their own: when the history passes 70% of the model's context window, Alter summarizes the earlier part before sending, and only the summary and the newer messages go to the model.
 
+## PR reviews from the server
+
+Settings, Browser extension, **PR review server**: the URL of the site that keeps the `PR Review Run` list, with a read only API key and secret. Alter then shows a **PR reviews** section in the sidebar with the last five runs. Click a run or the heading to open the side panel.
+
+- **List:** running runs show their current step and a live timer. Finished ones show the verdict, whether it was posted, and how long it took. Alter checks every 30 seconds, and every 5 seconds while a run is going.
+- **A run:** PR link, verdict, status, duration, cost, whether and how it was posted (request changes or a comment) with a link, the result block, the review comments as cards, and the steps.
+- **Discuss in a chat** opens a new chat with the run's result, its review JSON and the PR link, told to check findings on the local bench when you question them and never to post.
+- Alter only reads. Posting happens on the server.
+
 ## Memory
 
 - The system prompt asks the model to wrap a lasting fact in `<memory>…</memory>` at the end of a reply. Alter strips it, saves it, and appends it to `~/.claude/CLAUDE.md`.

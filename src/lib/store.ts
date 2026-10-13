@@ -35,6 +35,29 @@ export interface PlanItem {
 }
 
 
+export interface ReviewRun {
+  name: string;
+  repo: string;
+  pr: number;
+  title?: string;
+  url?: string;
+  head_sha?: string;
+  status: "queued" | "running" | "done" | "unfinished" | "failed";
+  verdict?: string;
+  current_step?: string;
+  started?: string;
+  finished?: string;
+  result?: string;
+  draft?: string;
+  posted?: number;
+  post_event?: string;
+  posted_url?: string;
+  post_error?: string;
+  cost_usd?: number;
+  log_tail?: string;
+  modified?: string;
+}
+
 export interface Conversation {
   id: string;
   title: string;
@@ -137,6 +160,9 @@ export interface Settings {
   agentBrowser?: boolean;
   connectors?: Connector[];
   prBot?: string; // GitHub account the reviews are posted as
+  reviewServerUrl?: string;
+  reviewServerKey?: string;
+  reviewServerSecret?: string;
   prRepos?: string; // comma-separated owner/repo to watch for replies; empty = every repo the bot reviewed
 }
 

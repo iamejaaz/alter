@@ -792,6 +792,39 @@ async fn quick_complete(url: String, api_key: String, model: String, prompt: Str
         .to_string())
 }
 
+#[tauri::command]
+async fn review_runs(url: String, key: String, secret: String, name: Option<String>) -> Result<serde_json::Value, String> {
+    let base = url.trim().trim_end_matches('/');
+    if !base.starts_with("https://") && !base.starts_with("http://") {
+        return Err("The review server URL must start with https://".into());
+    }
+    let path = match &name {
+        Some(n) => format!("{base}/api/resource/PR%20Review%20Run/{}", n.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect::<String>()),
+        None => format!("{base}/api/resource/PR%20Review%20Run"),
+    };
+    let mut req = http_client()?.get(&path).header("Authorization", format!("token {}:{}", key.trim(), secret.trim())).timeout(std::time::Duration::from_secs(20));
+    if name.is_none() {
+        req = req.query(&[
+            ("fields", r#"["name","repo","pr","title","url","head_sha","status","verdict","current_step","started","finished","posted","post_event","posted_url","post_error","cost_usd","modified"]"#),
+            ("order_by", "modified desc"),
+            ("limit_page_length", "30"),
+        ]);
+    }
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        let hint = match status.as_u16() {
+            401 | 403 => "The review server rejected the API key.",
+            404 => "The review server has no PR Review Run doctype yet.",
+            _ => "The review server returned an error.",
+        };
+        return Err(format!("{hint} (HTTP {})", status.as_u16()));
+    }
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    Ok(v["data"].clone())
+}
+
 // Generate a short chat title via a cheap Claude Code (haiku) call.
 #[tauri::command]
 async fn claude_title(text: String) -> Result<String, String> {
@@ -2206,6 +2239,7 @@ pub fn run() {
             open_privacy_settings,
             quick_complete,
             claude_title,
+            review_runs,
             complete_once,
             git_pr,
             pr_meta,

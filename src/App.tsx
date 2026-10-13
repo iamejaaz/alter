@@ -14,6 +14,7 @@ import { contextWindowFor, fmtTokens } from "./lib/models";
 import Logo from "./components/Logo";
 import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPanel";
 import RunsPanel from "./components/RunsPanel";
+import ReviewPanel, { live as reviewLive } from "./components/ReviewPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
 import { IconArrowUp, IconChevronRight, IconFolder, IconPaperclip, IconGlobe } from "./components/Icons";
 
@@ -130,6 +131,7 @@ import {
   Message,
   Project,
   Routine,
+  ReviewRun,
   Schedule,
   Scheduled,
   Settings,
@@ -218,7 +220,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [asks, setAsks] = useState<Record<string, ToolAsk[]>>({});
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
-  const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null); // routine whose Runs panel is open
+  const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null);
+  const [reviewRuns, setReviewRuns] = useState<ReviewRun[]>([]);
+  const [reviewErr, setReviewErr] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewSel, setReviewSel] = useState<string | null>(null);
+  const [reviewDetail, setReviewDetail] = useState<ReviewRun | null>(null); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
   const [scheduled, setScheduled] = useState<Scheduled[]>(() => storage.loadScheduled());
   const [quote, setQuote] = useState<string | null>(null); // selected passage the next message replies to
@@ -2070,6 +2077,50 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       tag({ name: peer.name, status: `failed · ${String(e)}` });
     }
   };
+  const reviewCfg =
+    settings.reviewServerUrl && settings.reviewServerKey && settings.reviewServerSecret
+      ? { url: settings.reviewServerUrl, key: settings.reviewServerKey, secret: settings.reviewServerSecret }
+      : null;
+  const reviewFast = reviewRuns.some(reviewLive);
+  useEffect(() => {
+    if (!reviewCfg) {
+      setReviewRuns([]);
+      return;
+    }
+    let gone = false;
+    const tick = async () => {
+      try {
+        const list = await invoke<ReviewRun[]>("review_runs", { ...reviewCfg, name: null });
+        if (gone) return;
+        setReviewRuns(list ?? []);
+        if (reviewOpen && reviewSel) {
+          const one = await invoke<ReviewRun>("review_runs", { ...reviewCfg, name: reviewSel });
+          if (!gone) setReviewDetail(one);
+        }
+        setReviewErr(null);
+      } catch (e) {
+        if (!gone) setReviewErr(String(e));
+      }
+    };
+    void tick();
+    const t = window.setInterval(tick, reviewFast ? 5000 : 30000);
+    return () => {
+      gone = true;
+      clearInterval(t);
+    };
+  }, [reviewCfg?.url, reviewCfg?.key, reviewCfg?.secret, reviewOpen, reviewSel, reviewFast]);
+  const discussReview = (r: ReviewRun) => {
+    const posted = r.posted ? `It was posted as ${r.post_event === "REQUEST_CHANGES" ? "a request changes review" : "a comment"}${r.posted_url ? ` (${r.posted_url})` : ""}.` : "It was not posted.";
+    const text = [
+      `The PR review server reviewed ${r.repo}#${r.pr}${r.url ? ` (${r.url})` : ""}${r.head_sha ? ` at head ${r.head_sha}` : ""}. Verdict: ${r.verdict || "none"}. Status: ${r.status}. ${posted}`,
+      r.result ? `Its result:\n\n${r.result}` : "",
+      r.draft ? `The review JSON:\n\n\`\`\`json\n${r.draft}\n\`\`\`` : "",
+      "I want to discuss this review with you. When I question a finding, check it against the code on the local bench. Do not post anything to GitHub.",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    void send({ text, display: `Discuss the server review of ${r.repo}#${r.pr}`, forceNew: true, title: `Review ${r.repo}#${r.pr}` });
+  };
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
   const convsRef = useRef(conversations);
@@ -2356,6 +2407,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           if (runs.length && !runs.some((c) => c.id === activeId)) openChat(runs[0].id);
         }}
         onOpenPalette={() => setShowPalette(true)}
+        reviewRuns={reviewRuns}
+        reviewSelected={reviewOpen ? reviewSel : null}
+        onOpenReviews={(name) => {
+          setReviewOpen(true);
+          setReviewSel(name);
+        }}
       />
 
       <main
@@ -3332,6 +3389,18 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           />
         );
       })()}
+
+      {reviewOpen && (
+        <ReviewPanel
+          runs={reviewRuns}
+          selected={reviewSel}
+          detail={reviewDetail}
+          error={reviewErr}
+          onSelect={setReviewSel}
+          onDiscuss={discussReview}
+          onClose={() => setReviewOpen(false)}
+        />
+      )}
 
       {preview && (
         <div

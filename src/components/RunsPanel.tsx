@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useSideWidth } from "../lib/useSideWidth";
 import { Conversation, Routine, scheduleLabel } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 
@@ -47,31 +47,7 @@ export default function RunsPanel({
   onOpenRoutines,
   onClose,
 }: Props) {
-  const [width, setWidth] = useState(() => {
-    const saved = Number(localStorage.getItem("alter.runsWidth"));
-    return saved >= MIN_W && saved <= MAX_W ? saved : 250;
-  });
-  const dragging = useRef(false);
-
-  useEffect(() => {
-    const move = (e: PointerEvent) => {
-      if (!dragging.current) return;
-      setWidth(Math.min(MAX_W, Math.max(MIN_W, window.innerWidth - e.clientX)));
-    };
-    const up = () => {
-      if (!dragging.current) return;
-      dragging.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      localStorage.setItem("alter.runsWidth", String(width));
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-  }, [width]);
+  const { width, startDrag } = useSideWidth("alter.runsWidth", 250, MIN_W, MAX_W);
 
   const rows = runs.map((c) => ({ run: c, status: statusOf(c, streamingIds.includes(c.id)) }));
   const groups = [
@@ -85,11 +61,7 @@ export default function RunsPanel({
       style={{ width }}
     >
       <div
-        onPointerDown={() => {
-          dragging.current = true;
-          document.body.style.cursor = "col-resize";
-          document.body.style.userSelect = "none";
-        }}
+        onPointerDown={startDrag}
         className="absolute left-0 top-0 z-10 h-full w-1.5 -translate-x-1/2 cursor-col-resize"
         title="Drag to resize"
       />

@@ -847,6 +847,31 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     className={`${field} mt-1 font-mono`}
                   />
                 </Row>
+                <Row
+                  title="PR review server"
+                  desc="Shows the server's automatic PR reviews under PR reviews in the sidebar. Use a read only API key for the site that keeps the PR Review Run list."
+                >
+                  <label className="block text-[12px] text-[var(--txt-dim)]">Site URL</label>
+                  <input
+                    value={draft.reviewServerUrl ?? ""}
+                    onChange={(e) => setDraft({ ...draft, reviewServerUrl: e.target.value })}
+                    placeholder="https://reviews.example.com"
+                    className={`${field} mt-1 font-mono`}
+                  />
+                  <label className="mt-2 block text-[12px] text-[var(--txt-dim)]">API key</label>
+                  <input
+                    value={draft.reviewServerKey ?? ""}
+                    onChange={(e) => setDraft({ ...draft, reviewServerKey: e.target.value })}
+                    className={`${field} mt-1 font-mono`}
+                  />
+                  <label className="mt-2 block text-[12px] text-[var(--txt-dim)]">API secret</label>
+                  <input
+                    type="password"
+                    value={draft.reviewServerSecret ?? ""}
+                    onChange={(e) => setDraft({ ...draft, reviewServerSecret: e.target.value })}
+                    className={`${field} mt-1 font-mono`}
+                  />
+                </Row>
               </div>
             )}
 

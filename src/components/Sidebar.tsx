@@ -1,5 +1,6 @@
+import { live as reviewLive, verdictLabel } from "./ReviewPanel";
 import { useEffect, useState } from "react";
-import { Conversation, Project, Routine } from "../lib/store";
+import { Conversation, Project, ReviewRun, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
 import { IconClock, IconPlus, IconSearch, IconSettings } from "./Icons";
@@ -42,6 +43,9 @@ interface Props {
   onOpenRoutines: () => void;
   onOpenRuns: (routineId: string) => void;
   onOpenPalette?: () => void;
+  reviewRuns?: ReviewRun[];
+  reviewSelected?: string | null;
+  onOpenReviews?: (name: string | null) => void;
 }
 
 const since = (ms: number) => {
@@ -76,6 +80,9 @@ export default function Sidebar({
   onOpenRoutines,
   onOpenRuns,
   onOpenPalette,
+  reviewRuns = [],
+  reviewSelected = null,
+  onOpenReviews,
 }: Props) {
   const [query, setQuery] = useState("");
   const [, setTick] = useState(0);
@@ -433,6 +440,37 @@ export default function Sidebar({
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+        {!q && reviewRuns.length > 0 && (
+          <div>
+            <button
+              onClick={() => onOpenReviews?.(null)}
+              className="block w-full px-2 pt-3 pb-1 text-left text-xs leading-[1.15] text-[var(--txt-faint)] hover:text-[var(--txt)]"
+              title="All server reviews"
+            >
+              PR reviews
+            </button>
+            <div className="space-y-0.5">
+              {reviewRuns.slice(0, 5).map((r) => (
+                <div
+                  key={r.name}
+                  onClick={() => onOpenReviews?.(r.name)}
+                  title={r.title}
+                  className={`group flex h-7 items-center rounded-lg px-2 text-[13px] cursor-pointer transition-colors ${
+                    reviewSelected === r.name
+                      ? "bg-[var(--panel-2)] text-[var(--txt)]"
+                      : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
+                  }`}
+                >
+                  {reviewLive(r) && <span className="mr-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" />}
+                  <span className="flex-1 truncate">
+                    #{r.pr} {r.title}
+                  </span>
+                  <span className="ml-1.5 shrink-0 text-[10px] text-[var(--txt-faint)]">{reviewLive(r) ? "running" : verdictLabel(r.verdict) || r.status}</span>
+                </div>
+              ))}
             </div>
           </div>
         )}
