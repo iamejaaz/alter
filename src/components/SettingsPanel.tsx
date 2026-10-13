@@ -175,7 +175,7 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
 
 export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills" | "routines" | "connectors" | "reviews";
 
-const FR_LOGIN = "fr auth login https://pr-reviews.m.frappe.cloud --oauth --read-only --name pr-reviews";
+const FR_LOGIN = "fr auth login https://pr-reviews.m.frappe.cloud --oauth --read-only --name prreview";
 
 const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: React.ReactNode }[] }[] = [
   {
@@ -879,7 +879,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   <input
                     value={draft.reviewServerProfile ?? ""}
                     onChange={(e) => setDraft({ ...draft, reviewServerProfile: e.target.value })}
-                    placeholder="pr-reviews"
+                    placeholder="prreview"
                     className={`${field} mt-1 font-mono`}
                   />
                 </Row>
