@@ -849,6 +849,39 @@ async fn review_runs(profile: String, name: Option<String>) -> Result<serde_json
 }
 
 #[tauri::command]
+async fn review_shots(app: tauri::AppHandle, profile: String, name: String) -> Result<serde_json::Value, String> {
+    let run: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    let dt = "attached_to_doctype=PR Review Run".to_string();
+    let an = format!("attached_to_name={run}");
+    let files = run_fr(&profile, &["doc", "list", "File", "-f", &dt, "-f", &an, "--fields", "name,file_name", "--limit", "10", "--json"]).await?;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("review-shots").join(&run);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for f in files.as_array().cloned().unwrap_or_default() {
+        let (Some(id), Some(file_name)) = (f["name"].as_str(), f["file_name"].as_str()) else { continue };
+        let lower = file_name.to_lowercase();
+        let mime = if lower.ends_with(".png") {
+            "image/png"
+        } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+            "image/jpeg"
+        } else {
+            continue;
+        };
+        let safe: String = file_name.chars().map(|c| if c.is_ascii_alphanumeric() || ".-_".contains(c) { c } else { '_' }).collect();
+        let path = dir.join(&safe);
+        if !path.is_file() {
+            let target = path.to_string_lossy().to_string();
+            if run_fr(&profile, &["file", "download", id, "-o", &target]).await.is_err() {
+                continue;
+            }
+        }
+        let Ok(bytes) = std::fs::read(&path) else { continue };
+        out.push(serde_json::json!({ "name": file_name, "dataUrl": format!("data:{mime};base64,{}", bridge::base64_encode(&bytes)) }));
+    }
+    Ok(serde_json::Value::Array(out))
+}
+
+#[tauri::command]
 async fn review_request(profile: String, repo: String, pr: u64) -> Result<serde_json::Value, String> {
     let repo = repo.trim().to_string();
     let ok = repo.split('/').count() == 2 && repo.chars().all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c));
@@ -2337,6 +2370,7 @@ pub fn run() {
             claude_title,
             review_runs,
             review_request,
+            review_shots,
             fr_profiles,
             fr_login_terminal,
             complete_once,

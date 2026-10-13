@@ -242,6 +242,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     });
   const shownReviews = reviewRuns.filter((r) => !reviewHidden.includes(r.name));
   const [reviewTick, setReviewTick] = useState(0);
+  const [reviewShots, setReviewShots] = useState<Record<string, { name: string; dataUrl: string }[]>>({});
   const requestReview = async (ref: string): Promise<string> => {
     const m = ref.trim().match(/^(?:https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/)?#?(\d+)\b/);
     if (!m) throw new Error("Give a PR number or a GitHub PR link.");
@@ -2123,6 +2124,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const reviewCfg = settings.reviewServerProfile?.trim() ? { profile: settings.reviewServerProfile.trim() } : null;
   const reviewFast = reviewRuns.some(reviewLive);
   const reviewViewing = view === "review";
+  const reviewShotsRef = useRef(reviewShots);
+  reviewShotsRef.current = reviewShots;
   useEffect(() => {
     if (!reviewCfg) {
       setReviewRuns([]);
@@ -2137,6 +2140,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         if (reviewViewing && reviewSel) {
           const one = await invoke<ReviewRun>("review_runs", { ...reviewCfg, name: reviewSel });
           if (!gone) setReviewDetail(one);
+          if (!reviewShotsRef.current[reviewSel] || reviewLive(one)) {
+            const sel = reviewSel;
+            void invoke<{ name: string; dataUrl: string }[]>("review_shots", { profile: reviewCfg.profile, name: sel })
+              .then((l) => !gone && setReviewShots((m) => ({ ...m, [sel]: l ?? [] })))
+              .catch(() => {});
+          }
         }
         setReviewErr(null);
       } catch (e) {
@@ -2194,7 +2203,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     openChat(id);
     void send({
       text: `Above is the PR review server's review of ${r.repo}#${r.pr}, and the attached file has all of it: verdict, findings, the comments, and the steps it ran. When I question a finding, check it against the code on the local bench. Do not post anything to GitHub. Start with your short take: is the verdict right, and what would you check first.`,
-      attachments: [{ id: newId(), kind: "text", name: `server-review-${r.pr}.md`, text: context }],
+      attachments: [
+        { id: newId(), kind: "text", name: `server-review-${r.pr}.md`, text: context },
+        ...(reviewShots[r.name] ?? []).map((sh) => ({ id: newId(), kind: "image" as const, name: sh.name, dataUrl: sh.dataUrl })),
+      ],
       targetConvId: id,
       hidden: true,
     });
@@ -2537,6 +2549,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             detail={reviewDetail}
             error={reviewErr}
             onSelect={setReviewSel}
+            shots={reviewSel ? reviewShots[reviewSel] ?? [] : []}
+            onPreview={setPreview}
             onRequest={requestReview}
             onDiscuss={discussReview}
             onClose={() => setView("chat")}

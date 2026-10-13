@@ -12,6 +12,8 @@ interface Props {
   onDiscuss: (run: ReviewRun) => void;
   onHide: (names: string[]) => void;
   onRequest: (ref: string) => Promise<string>;
+  shots: { name: string; dataUrl: string }[];
+  onPreview: (src: string) => void;
   onClose: () => void;
 }
 
@@ -67,7 +69,7 @@ function StatusMark({ r }: { r: ReviewRun }) {
   return <span className="block text-[11px] leading-none text-[var(--txt-faint)]">✓</span>;
 }
 
-export default function ReviewPanel({ runs, selected, detail, error, onSelect, onDiscuss, onHide, onRequest, onClose }: Props) {
+export default function ReviewPanel({ runs, selected, detail, error, onSelect, onDiscuss, onHide, onRequest, shots, onPreview, onClose }: Props) {
   const [ask, setAsk] = useState("");
   const [asking, setAsking] = useState(false);
   const [askNote, setAskNote] = useState<string | null>(null);
@@ -240,6 +242,20 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
                 <span className="text-[11px] text-[var(--txt-faint)]">Opens a chat that starts with this review, so you can question any finding.</span>
               </div>
             </div>
+
+            {shots.length > 0 && (
+              <section>
+                <p className="pb-1 text-[11px] text-[var(--txt-faint)]">Screenshots</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {shots.map((sh) => (
+                    <button key={sh.name} onClick={() => onPreview(sh.dataUrl)} className="overflow-hidden rounded-lg border border-[var(--bd-soft)] text-left" title={sh.name}>
+                      <img src={sh.dataUrl} alt={sh.name} className="block w-full" />
+                      <span className="block truncate px-2 py-1 text-[11px] text-[var(--txt-faint)]">{sh.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {run.result && (
               <section>
