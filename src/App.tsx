@@ -783,6 +783,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const send = async (opts?: {
     text?: string;
     hidden?: boolean;
+    attachments?: Attachment[];
     display?: string; // what the bubble shows when `text` carries extra context (e.g. a skill)
     forceNew?: boolean;
     title?: string;
@@ -797,7 +798,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const q = !opts?.text && quote ? quote : null;
     const text = q ? `> ${q.replace(/\n/g, "\n> ")}\n\n${typed}` : typed;
     const shown = opts?.display ?? typed;
-    const atts = opts?.text ? [] : attachments;
+    const atts = opts?.attachments ?? (opts?.text ? [] : attachments);
     if (!typed && atts.length === 0) return;
     if (q) setQuote(null);
 
@@ -2107,17 +2108,53 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     };
   }, [reviewCfg?.profile, reviewViewing, reviewSel, reviewFast]);
   const discussReview = (r: ReviewRun) => {
-    const posted = r.posted ? `It was posted as ${r.post_event === "REQUEST_CHANGES" ? "a request changes review" : "a comment"}${r.posted_url ? ` (${r.posted_url})` : ""}.` : "It was not posted.";
-    const text = [
-      `The PR review server reviewed ${r.repo}#${r.pr}${r.url ? ` (${r.url})` : ""}${r.head_sha ? ` at head ${r.head_sha}` : ""}. Verdict: ${r.verdict || "none"}. Status: ${r.status}. ${posted}`,
-      r.result ? `Its result:\n\n${r.result}` : "",
-      r.draft ? `The review JSON:\n\n\`\`\`json\n${r.draft}\n\`\`\`` : "",
-      "I want to discuss this review with you. When I question a finding, check it against the code on the local bench. Do not post anything to GitHub.",
+    const posted = r.posted ? `Posted as ${r.post_event === "REQUEST_CHANGES" ? "a request changes review" : "a comment"}${r.posted_url ? ` (${r.posted_url})` : ""}.` : "Not posted.";
+    const context = [
+      `# Server review of ${r.repo}#${r.pr}`,
+      `PR: ${r.url || `https://github.com/${r.repo}/pull/${r.pr}`}\nHead: ${r.head_sha || "unknown"}\nVerdict: ${r.verdict || "none"}\nStatus: ${r.status}\n${posted}`,
+      r.result ? `## Result\n\n${r.result}` : "",
+      r.draft ? `## Review comments (JSON)\n\n\`\`\`json\n${r.draft}\n\`\`\`` : "",
+      r.log_tail ? `## Steps the server ran\n\n\`\`\`\n${r.log_tail}\n\`\`\`` : "",
     ]
       .filter(Boolean)
       .join("\n\n");
-    setView("chat");
-    void send({ text, display: `Discuss the server review of ${r.repo}#${r.pr}`, forceNew: true, title: `Review ${r.repo}#${r.pr}` });
+    let comments: { path?: string; line?: number; body?: string }[] = [];
+    let body = "";
+    try {
+      const d = JSON.parse(r.draft || "{}");
+      comments = Array.isArray(d.comments) ? d.comments : [];
+      body = typeof d.body === "string" ? d.body : "";
+    } catch {}
+    const card = [
+      `**Server review of [${r.repo}#${r.pr}](${r.url || `https://github.com/${r.repo}/pull/${r.pr}`})** · ${r.verdict || r.status} · ${posted}`,
+      r.result || "",
+      body.trim() || comments.length ? `**Review ${r.posted ? "it posted" : "it would post"}**` : "",
+      body.trim(),
+      ...comments.map((c) => `\`${c.path ?? ""}${c.line ? `:${c.line}` : ""}\`\n\n${c.body ?? ""}`),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const id = newId();
+    setConversations((prev) => [
+      {
+        id,
+        title: `Review ${r.repo}#${r.pr}`,
+        messages: [{ role: "assistant", content: card }],
+        createdAt: Date.now(),
+        connectionId: settings.activeConnectionId,
+        model: settings.model,
+        effort: settings.effort,
+        folder: folder ?? undefined,
+      },
+      ...prev,
+    ]);
+    openChat(id);
+    void send({
+      text: `Above is the PR review server's review of ${r.repo}#${r.pr}, and the attached file has all of it: verdict, findings, the comments, and the steps it ran. When I question a finding, check it against the code on the local bench. Do not post anything to GitHub. Start with your short take: is the verdict right, and what would you check first.`,
+      attachments: [{ id: newId(), kind: "text", name: `server-review-${r.pr}.md`, text: context }],
+      targetConvId: id,
+      hidden: true,
+    });
   };
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;

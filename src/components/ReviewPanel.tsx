@@ -148,12 +148,15 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
                   )}
                 </p>
               )}
-              <button
-                onClick={() => onDiscuss(run)}
-                className="mt-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-1 text-[12px] text-[var(--txt)] hover:bg-[var(--panel-2)]"
-              >
-                Discuss in a chat
-              </button>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  onClick={() => onDiscuss(run)}
+                  className="shrink-0 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-1 text-[12px] text-[var(--txt)] hover:bg-[var(--panel-2)]"
+                >
+                  Ask about this review
+                </button>
+                <span className="text-[11px] text-[var(--txt-faint)]">Opens a chat that starts with this review, so you can question any finding.</span>
+              </div>
             </div>
 
             {run.result && (
