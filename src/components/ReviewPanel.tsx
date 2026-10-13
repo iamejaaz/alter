@@ -172,7 +172,7 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
                       #{r.pr} {r.title}
                     </span>
                     <span className="block truncate text-[11px] text-[var(--txt-faint)]">
-                      {r.status === "queued" ? "Queued, waiting for the server" : stalled(r, now) ? "No update for a while, may have stopped" : live(r) ? r.current_step || "Starting" : [verdictLabel(r.verdict) || r.status, r.posted ? "posted" : "", took(r, now)].filter(Boolean).join(" · ")}
+                      {r.status === "queued" ? "Queued, waiting for the server" : stalled(r, now) ? "No update for a while, may have stopped" : live(r) ? r.current_step || "Starting" : r.status === "failed" && r.current_step ? `Failed: ${r.current_step}` : [verdictLabel(r.verdict) || r.status, r.posted ? "posted" : "", took(r, now)].filter(Boolean).join(" · ")}
                     </span>
                   </span>
                   {live(r) ? (
@@ -213,6 +213,9 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
                         : run.current_step || "Starting"}
                   </span>
                 </p>
+              )}
+              {(run.status === "failed" || run.status === "unfinished") && run.current_step && (
+                <p className="mt-1.5 text-[12px] text-red-400">{run.current_step}</p>
               )}
               {postedLine(run) && (
                 <p className="mt-1 text-[12px] text-[var(--txt-dim)]">
