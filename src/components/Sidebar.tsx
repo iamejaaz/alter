@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Conversation, Project, ReviewRun, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
-import { IconClock, IconPlus, IconSearch, IconSettings } from "./Icons";
+import { IconChevronRight, IconClock, IconPlus, IconSearch, IconSettings } from "./Icons";
 
 export interface BackgroundRun {
   runId: string;
@@ -482,17 +482,23 @@ export default function Sidebar({
           </div>
         )}
         {sections.map((s) => {
-          const folded = collapsed.includes(s.key) && !s.items.some((c) => c.id === activeId);
+          const folded = collapsed.includes(s.key);
           return (
             <div key={s.key}>
               <div className="group flex items-center px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">
                 <button
                   onClick={() => toggleGroup(s.key)}
-                  className="min-w-0 flex-1 truncate text-left hover:text-[var(--txt)]"
+                  className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-[var(--txt)]"
                   title={s.folder || s.label}
+                  aria-expanded={!folded}
                 >
-                  {s.label}
-                  {folded && <span className="ml-1.5">{s.items.length}</span>}
+                  <span className="truncate">{s.label}</span>
+                  <span
+                    className={`shrink-0 transition-transform [&_svg]:h-3 [&_svg]:w-3 ${folded ? "" : "rotate-90 opacity-0 group-hover:opacity-100"}`}
+                    aria-hidden
+                  >
+                    <IconChevronRight />
+                  </span>
                 </button>
                 {s.folder !== undefined && onNewIn && (
                   <button
