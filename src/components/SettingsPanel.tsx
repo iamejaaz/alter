@@ -175,7 +175,9 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
 
 export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills" | "routines" | "connectors" | "reviews";
 
-const FR_LOGIN = "fr auth login https://pr-reviews.m.frappe.cloud --oauth --read-only --name prreview";
+const REVIEW_SITE = "https://pr-reviews.m.frappe.cloud";
+
+type FrProfile = { profile: string; site: string; auth: string; read_only?: boolean };
 
 const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: React.ReactNode }[] }[] = [
   {
@@ -240,6 +242,34 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [form, setForm] = useState<{ id: string; name: string; baseUrl: string; apiKey: string; model: string; isNew: boolean } | null>(null);
   const [bridge, setBridge] = useState<{ port: number; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [frProfiles, setFrProfiles] = useState<FrProfile[]>([]);
+  const [reviewWaiting, setReviewWaiting] = useState(false);
+  const [reviewNote, setReviewNote] = useState<string | null>(null);
+  const reviewSite = draft.reviewServerSite ?? REVIEW_SITE;
+  const sameSite = (a: string, b: string) => a.trim().replace(/\/+$/, "").toLowerCase() === b.trim().replace(/\/+$/, "").toLowerCase();
+  const reviewMatch = frProfiles.find((p) => sameSite(p.site, reviewSite));
+  useEffect(() => {
+    if (tab !== "reviews") return;
+    let gone = false;
+    const load = () =>
+      invoke<FrProfile[]>("fr_profiles")
+        .then((l) => !gone && setFrProfiles(l ?? []))
+        .catch((e) => !gone && setReviewNote(String(e)));
+    void load();
+    if (!reviewWaiting) return () => void (gone = true);
+    const t = window.setInterval(load, 3000);
+    const stop = window.setTimeout(() => setReviewWaiting(false), 300000);
+    return () => {
+      gone = true;
+      clearInterval(t);
+      clearTimeout(stop);
+    };
+  }, [tab, reviewWaiting]);
+  useEffect(() => {
+    if (!reviewMatch) return;
+    if (reviewWaiting) setReviewWaiting(false);
+    if (draft.reviewServerProfile !== reviewMatch.profile) setDraft((d) => ({ ...d, reviewServerProfile: reviewMatch.profile }));
+  }, [reviewMatch?.profile]);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [memoryImport, setMemoryImport] = useState(false);
@@ -860,28 +890,37 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 </p>
                 <Row
                   title="Connect the server"
-                  desc="Alter reads the runs with frappectl, so no key is stored here. Log in once in Terminal with OAuth, then put the profile name below."
+                  desc="Alter reads the runs through frappectl with an OAuth login, so no key is stored in Alter."
                 >
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 truncate rounded-lg bg-[var(--input)] px-2.5 py-1.5 font-mono text-[12px] text-[var(--txt-dim)]">{FR_LOGIN}</code>
+                  <label className="block text-[12px] text-[var(--txt-dim)]">Site URL</label>
+                  <input
+                    value={reviewSite}
+                    onChange={(e) => setDraft({ ...draft, reviewServerSite: e.target.value })}
+                    className={`${field} mt-1 font-mono`}
+                  />
+                  <div className="mt-3 flex items-center gap-3">
+                    <p className="min-w-0 flex-1 text-[13px] text-[var(--txt-dim)]">
+                      {reviewMatch
+                        ? `Connected as profile ${reviewMatch.profile}${reviewMatch.read_only ? ", read only" : ""}.`
+                        : reviewWaiting
+                          ? "Finish the login in Terminal and your browser. Alter picks it up on its own."
+                          : reviewNote || "Not connected."}
+                    </p>
                     <button
-                      onClick={() => {
-                        void navigator.clipboard.writeText(FR_LOGIN);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 1500);
+                      onClick={async () => {
+                        setReviewNote(null);
+                        try {
+                          await invoke("fr_login_terminal", { site: reviewSite, name: new URL(reviewSite).hostname.split(".")[0] });
+                          setReviewWaiting(true);
+                        } catch (e) {
+                          setReviewNote(String(e));
+                        }
                       }}
                       className={action}
                     >
-                      {copied ? "Copied" : "Copy"}
+                      {reviewMatch ? "Reconnect" : "Connect"}
                     </button>
                   </div>
-                  <label className="mt-3 block text-[12px] text-[var(--txt-dim)]">frappectl profile</label>
-                  <input
-                    value={draft.reviewServerProfile ?? ""}
-                    onChange={(e) => setDraft({ ...draft, reviewServerProfile: e.target.value })}
-                    placeholder="prreview"
-                    className={`${field} mt-1 font-mono`}
-                  />
                 </Row>
               </div>
             )}

@@ -798,7 +798,7 @@ async fn review_runs(profile: String, name: Option<String>) -> Result<serde_json
     if profile.is_empty() || !profile.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
         return Err("Set a frappectl profile name in Settings, Agents, PR review server.".into());
     }
-    let fr = local_cli::find("fr").or_else(|| local_cli::find("frappectl")).ok_or("frappectl (fr) is not installed.")?;
+    let fr = fr_bin()?;
     let mut cmd = tokio::process::Command::new(fr);
     cmd.arg("-s").arg(&profile).arg("doc");
     match &name {
@@ -839,6 +839,42 @@ async fn review_runs(profile: String, name: Option<String>) -> Result<serde_json
         return Err(line.trim_start_matches("error:").trim().to_string());
     }
     serde_json::from_str(stdout.trim()).map_err(|e| format!("frappectl returned something unexpected ({e})"))
+}
+
+fn fr_bin() -> Result<std::path::PathBuf, String> {
+    local_cli::find("fr").or_else(|| local_cli::find("frappectl")).ok_or_else(|| "frappectl (fr) is not installed.".to_string())
+}
+
+#[tauri::command]
+async fn fr_profiles() -> Result<serde_json::Value, String> {
+    let out = tokio::process::Command::new(fr_bin()?)
+        .args(["auth", "list", "--json"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(serde_json::from_str(text.trim()).unwrap_or_else(|_| serde_json::json!([])))
+}
+
+#[tauri::command]
+fn fr_login_terminal(site: String, name: String) -> Result<(), String> {
+    let site = site.trim().trim_end_matches('/').to_string();
+    if !site.starts_with("https://") || site.contains(['\'', '"', ' ', '\\']) {
+        return Err("The site URL must start with https://".into());
+    }
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err("Use letters, numbers, dots, dashes or underscores for the profile name.".into());
+    }
+    let script = format!(
+        "#!/bin/sh\nclear\necho 'Connecting Alter to {site}. Your browser opens to log in; come back to Alter when it says Login complete.'\necho\n'{}' auth login '{site}' --oauth --read-only --name '{name}' --description 'PR review server for Alter'\n",
+        fr_bin()?.display()
+    );
+    let path = std::env::temp_dir().join("alter-fr-login.sh");
+    std::fs::write(&path, script).map_err(|e| e.to_string())?;
+    let osa = format!("tell application \"Terminal\"\nactivate\ndo script \"sh '{}'\"\nend tell", path.display().to_string().replace('"', "\\\""));
+    std::process::Command::new("osascript").arg("-e").arg(osa).output().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // Generate a short chat title via a cheap Claude Code (haiku) call.
@@ -2256,6 +2292,8 @@ pub fn run() {
             quick_complete,
             claude_title,
             review_runs,
+            fr_profiles,
+            fr_login_terminal,
             complete_once,
             git_pr,
             pr_meta,
