@@ -6,6 +6,7 @@
 // content scripts sharing this page's isolated world.
 (() => {
 // The helpdesk this panel is on — the script only runs on helpdesk pages.
+document.getElementById("sup-actions")?.remove();
 const SITE = location.host;
 
 // Prompts live in the support skill (prompts.json); the bridge renders them.

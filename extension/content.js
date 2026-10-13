@@ -16,6 +16,8 @@ function issueParts() {
   return m ? { owner: m[1], repo: m[2], num: m[3] } : null;
 }
 
+document.getElementById("alter-actions")?.remove();
+
 const pageParts = () => prParts() || issueParts();
 
 function prAuthor() {

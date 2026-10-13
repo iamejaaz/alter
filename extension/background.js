@@ -147,7 +147,18 @@ async function stale() {
   return true;
 }
 
-chrome.runtime.onInstalled.addListener(() => void chrome.storage.session.remove(["loadedVersion", "checkedAt"]));
+chrome.runtime.onInstalled.addListener(() => {
+  void chrome.storage.session.remove(["loadedVersion", "checkedAt"]);
+  for (const cs of chrome.runtime.getManifest().content_scripts || []) {
+    if (cs.matches.some((m) => m.startsWith("http://*") || m === "https://*/*")) continue;
+    chrome.tabs.query({ url: cs.matches }, (tabs) => {
+      for (const tab of tabs || []) {
+        if (cs.css) chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: cs.css }).catch(() => {});
+        chrome.scripting.executeScript({ target: { tabId: tab.id }, files: cs.js }).catch(() => {});
+      }
+    });
+  }
+});
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
