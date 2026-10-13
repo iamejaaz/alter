@@ -185,7 +185,7 @@ A real one that was too long, and what it should have been:
 
 Same finding, same anchor, same ask. The bench counts, the six doctype names and the second option went to the result block.
 
-Emit the comments as JSON the poster can use directly. `event` is `REQUEST_CHANGES` when the verdict is NEEDS CHANGES, and `COMMENT` for anything else (READY, NEEDS HUMAN JUDGMENT, a re-review with nothing new, replies). Never `APPROVE`: approving is the maintainer's call. A request-changes review blocks the PR until it is dismissed, so on a re-review where every earlier ask is closed, say so in the section 6 result block (`Prior maintainer review: addressed`) so the caller can dismiss the old one.
+Emit the comments as JSON the poster can use directly. `event` is `REQUEST_CHANGES` only when at least one ask is a change to the code (a bug, a missing guard or permission check, a sibling fix, leftover code, a breaking change without a migration). When every ask is about form (the description, "Part of" framing, the title or commits, a screenshot, a rebase), the verdict is still NEEDS CHANGES but `event` is `COMMENT`, so it does not block the PR. `COMMENT` also for READY, NEEDS HUMAN JUDGMENT, a re-review with nothing new, and replies. Never `APPROVE`: approving is the maintainer's call. A request-changes review blocks the PR until it is dismissed, so on a re-review where every earlier ask is closed, say so in the section 6 result block (`Prior maintainer review: addressed`) so the caller can dismiss the old one.
 
 ```json
 {
