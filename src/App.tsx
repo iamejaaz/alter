@@ -240,7 +240,23 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       } catch {}
       return next;
     });
-  const shownReviews = reviewRuns.filter((r) => !reviewHidden.includes(r.name)); // routine whose Runs panel is open
+  const shownReviews = reviewRuns.filter((r) => !reviewHidden.includes(r.name));
+  const [reviewTick, setReviewTick] = useState(0);
+  const requestReview = async (ref: string): Promise<string> => {
+    const m = ref.trim().match(/^(?:https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/)?#?(\d+)\b/);
+    if (!m) throw new Error("Give a PR number or a GitHub PR link.");
+    if (!settings.reviewServerProfile) throw new Error("Connect the review server first in Settings, Agents, PR review server.");
+    const repo = m[1] ?? "frappe/frappe";
+    const r = await invoke<{ name: string; existing: boolean; status: string }>("review_request", {
+      profile: settings.reviewServerProfile,
+      repo,
+      pr: Number(m[2]),
+    });
+    setView("review");
+    setReviewSel(r.name);
+    setReviewTick((t) => t + 1);
+    return r.existing ? `${repo}#${m[2]} is already ${r.status} on the server.` : `Queued ${repo}#${m[2]}. The server picks it up within a minute.`;
+  }; // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
   const [scheduled, setScheduled] = useState<Scheduled[]>(() => storage.loadScheduled());
   const [quote, setQuote] = useState<string | null>(null); // selected passage the next message replies to
@@ -826,6 +842,16 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       return sendToPeer(activeId, paired, text, atts);
     }
 
+    const revCmd = !opts?.text ? text.match(/^\/review\s+(\S+)\s*$/i) : null;
+    if (revCmd) {
+      setInput("");
+      try {
+        setInfo(await requestReview(revCmd[1]));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
     const hand = !opts?.text ? text.match(/^\/handoff(-full)?\s+([\s\S]+)$/i) : null;
     if (hand && active) {
       setInput("");
@@ -1968,6 +1994,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         if (active && (await confirmDialog(`Delete "${active.title}"?`))) deleteConversation(active.id);
       },
     },
+    { cmd: "/review", desc: "Ask the PR review server to review a PR (number or link)", run: () => setInput("/review ") },
     { cmd: "/handoff", desc: "Hand a task to a background chat (task only)", run: () => setInput("/handoff ") },
     { cmd: "/handoff-full", desc: "Hand a task to a background chat with this conversation", run: () => setInput("/handoff-full ") },
     { cmd: "/usage", desc: "Show cost tally (instant, no tokens)", run: showUsage },
@@ -2122,7 +2149,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       gone = true;
       clearInterval(t);
     };
-  }, [reviewCfg?.profile, reviewViewing, reviewSel, reviewFast]);
+  }, [reviewCfg?.profile, reviewViewing, reviewSel, reviewFast, reviewTick]);
   const discussReview = (r: ReviewRun) => {
     const posted = r.posted ? `Posted as ${r.post_event === "REQUEST_CHANGES" ? "a request changes review" : "a comment"}${r.posted_url ? ` (${r.posted_url})` : ""}.` : "Not posted.";
     const context = [
@@ -2510,6 +2537,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             detail={reviewDetail}
             error={reviewErr}
             onSelect={setReviewSel}
+            onRequest={requestReview}
             onDiscuss={discussReview}
             onClose={() => setView("chat")}
           />

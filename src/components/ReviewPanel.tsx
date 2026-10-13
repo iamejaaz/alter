@@ -11,6 +11,7 @@ interface Props {
   onSelect: (name: string | null) => void;
   onDiscuss: (run: ReviewRun) => void;
   onHide: (names: string[]) => void;
+  onRequest: (ref: string) => Promise<string>;
   onClose: () => void;
 }
 
@@ -55,7 +56,23 @@ function StatusMark({ r }: { r: ReviewRun }) {
   return <span className="block text-[11px] leading-none text-[var(--txt-faint)]">✓</span>;
 }
 
-export default function ReviewPanel({ runs, selected, detail, error, onSelect, onDiscuss, onHide, onClose }: Props) {
+export default function ReviewPanel({ runs, selected, detail, error, onSelect, onDiscuss, onHide, onRequest, onClose }: Props) {
+  const [ask, setAsk] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [askNote, setAskNote] = useState<string | null>(null);
+  const request = async () => {
+    if (!ask.trim() || asking) return;
+    setAsking(true);
+    setAskNote(null);
+    try {
+      setAskNote(await onRequest(ask));
+      setAsk("");
+    } catch (e) {
+      setAskNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAsking(false);
+    }
+  };
   const [now, setNow] = useState(Date.now());
   const run = selected ? (detail?.name === selected ? detail : runs.find((r) => r.name === selected) ?? null) : null;
   useEffect(() => {
@@ -65,7 +82,7 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
   }, [runs]);
   const draft = parseDraft(run?.draft);
   const groups = [
-    { label: "Running", items: runs.filter(live) },
+    { label: "Running and queued", items: runs.filter(live) },
     { label: "Done", items: runs.filter((r) => !live(r)) },
   ].filter((g) => g.items.length);
 
@@ -102,6 +119,28 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
         <div className="mx-auto w-full max-w-3xl px-6 py-5">
         {error && <p className="mb-2 rounded-lg border border-red-900/60 bg-red-950/50 px-2.5 py-1.5 text-[12px] text-red-300">{error}</p>}
 
+        {!run && (
+          <div className="mb-4">
+            <div className="flex items-center gap-2">
+              <input
+                value={ask}
+                onChange={(e) => setAsk(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void request()}
+                placeholder="PR number or link, e.g. 43513"
+                className="min-w-0 flex-1 rounded-lg border border-[var(--bd)] bg-[var(--input)] px-2.5 py-1.5 text-[13px] text-[var(--txt)] focus:border-[var(--txt-faint)] focus:outline-none"
+              />
+              <button
+                onClick={() => void request()}
+                disabled={!ask.trim() || asking}
+                className="shrink-0 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-1.5 text-[13px] text-[var(--txt)] hover:bg-[var(--panel-2)] disabled:opacity-40"
+              >
+                {asking ? "Asking…" : "Review"}
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-[var(--txt-faint)]">{askNote || "The server runs a deep review of that PR next, ahead of the automatic ones. Also /review 43513 in any chat."}</p>
+          </div>
+        )}
+
         {!run && !runs.length && !error && <p className="px-1 py-6 text-center text-[12px] text-[var(--txt-faint)]">No server reviews yet.</p>}
 
         {!run &&
@@ -122,7 +161,7 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
                       #{r.pr} {r.title}
                     </span>
                     <span className="block truncate text-[11px] text-[var(--txt-faint)]">
-                      {live(r) ? r.current_step || "Starting" : [verdictLabel(r.verdict) || r.status, r.posted ? "posted" : "", took(r, now)].filter(Boolean).join(" · ")}
+                      {r.status === "queued" ? "Queued, waiting for the server" : live(r) ? r.current_step || "Starting" : [verdictLabel(r.verdict) || r.status, r.posted ? "posted" : "", took(r, now)].filter(Boolean).join(" · ")}
                     </span>
                   </span>
                   {live(r) ? (
@@ -155,7 +194,7 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
               {live(run) && (
                 <p className="mt-1.5 flex items-center gap-2 text-[12px] text-[var(--txt-dim)]">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" />
-                  <span className="min-w-0 truncate">{run.current_step || "Starting"}</span>
+                  <span className="min-w-0 truncate">{run.status === "queued" ? "Queued, the server picks it up within a minute" : run.current_step || "Starting"}</span>
                 </p>
               )}
               {postedLine(run) && (

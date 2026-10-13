@@ -792,34 +792,13 @@ async fn quick_complete(url: String, api_key: String, model: String, prompt: Str
         .to_string())
 }
 
-#[tauri::command]
-async fn review_runs(profile: String, name: Option<String>) -> Result<serde_json::Value, String> {
-    let profile = profile.trim().to_string();
+async fn run_fr(profile: &str, args: &[&str]) -> Result<serde_json::Value, String> {
+    let profile = profile.trim();
     if profile.is_empty() || !profile.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
-        return Err("Set a frappectl profile name in Settings, Agents, PR review server.".into());
+        return Err("Connect the review server in Settings, Agents, PR review server.".into());
     }
-    let fr = fr_bin()?;
-    let mut cmd = tokio::process::Command::new(fr);
-    cmd.arg("-s").arg(&profile).arg("doc");
-    match &name {
-        Some(n) => {
-            let n: String = n.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
-            cmd.args(["get", "PR Review Run", &n, "--json"]);
-        }
-        None => {
-            cmd.args([
-                "list",
-                "PR Review Run",
-                "--fields",
-                "name,repo,pr,title,url,head_sha,status,verdict,current_step,started,finished,posted,post_event,posted_url,post_error,cost_usd,modified",
-                "--order-by",
-                "modified desc",
-                "--limit",
-                "30",
-                "--json",
-            ]);
-        }
-    }
+    let mut cmd = tokio::process::Command::new(fr_bin()?);
+    cmd.arg("-s").arg(profile).args(args);
     for k in ["FRAPPE_SITE", "FRAPPE_API_KEY", "FRAPPE_API_SECRET"] {
         cmd.env_remove(k);
     }
@@ -827,7 +806,6 @@ async fn review_runs(profile: String, name: Option<String>) -> Result<serde_json
         .await
         .map_err(|_| "frappectl took too long to answer.".to_string())?
         .map_err(|e| e.to_string())?;
-    let stdout = String::from_utf8_lossy(&out.stdout);
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         let line = err
@@ -838,7 +816,73 @@ async fn review_runs(profile: String, name: Option<String>) -> Result<serde_json
             .unwrap_or("frappectl failed.");
         return Err(line.trim_start_matches("error:").trim().to_string());
     }
+    let stdout = String::from_utf8_lossy(&out.stdout);
     serde_json::from_str(stdout.trim()).map_err(|e| format!("frappectl returned something unexpected ({e})"))
+}
+
+#[tauri::command]
+async fn review_runs(profile: String, name: Option<String>) -> Result<serde_json::Value, String> {
+    match name {
+        Some(n) => {
+            let n: String = n.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+            run_fr(&profile, &["doc", "get", "PR Review Run", &n, "--json"]).await
+        }
+        None => {
+            run_fr(
+                &profile,
+                &[
+                    "doc",
+                    "list",
+                    "PR Review Run",
+                    "--fields",
+                    "name,repo,pr,title,url,head_sha,status,verdict,current_step,started,finished,posted,post_event,posted_url,post_error,cost_usd,modified",
+                    "--order-by",
+                    "modified desc",
+                    "--limit",
+                    "30",
+                    "--json",
+                ],
+            )
+            .await
+        }
+    }
+}
+
+#[tauri::command]
+async fn review_request(profile: String, repo: String, pr: u64) -> Result<serde_json::Value, String> {
+    let repo = repo.trim().to_string();
+    let ok = repo.split('/').count() == 2 && repo.chars().all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c));
+    if !ok || pr == 0 {
+        return Err("Give a PR number or a GitHub PR link.".into());
+    }
+    let num = pr.to_string();
+    let rf = format!("repo={repo}");
+    let pf = format!("pr={num}");
+    let existing = run_fr(&profile, &["doc", "list", "PR Review Run", "-f", &rf, "-f", &pf, "--fields", "name,status", "--limit", "50", "--json"]).await?;
+    if let Some(row) = existing.as_array().and_then(|a| a.iter().find(|r| matches!(r["status"].as_str(), Some("queued") | Some("running")))) {
+        return Ok(serde_json::json!({ "name": row["name"], "existing": true, "status": row["status"] }));
+    }
+    let gh = tokio::process::Command::new("gh")
+        .args(["pr", "view", &num, "-R", &repo, "--json", "title,url,state"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .map_err(|e| format!("can't run gh: {e}"))?;
+    if !gh.status.success() {
+        return Err(format!("GitHub has no PR {repo}#{num}."));
+    }
+    let info: serde_json::Value = serde_json::from_slice(&gh.stdout).map_err(|e| e.to_string())?;
+    if info["state"].as_str() != Some("OPEN") {
+        return Err(format!("{repo}#{num} is {}, so there is nothing to review.", info["state"].as_str().unwrap_or("closed").to_lowercase()));
+    }
+    let title = format!("title={}", info["title"].as_str().unwrap_or(""));
+    let url = format!("url={}", info["url"].as_str().unwrap_or(""));
+    let created = run_fr(
+        &profile,
+        &["doc", "create", "PR Review Run", "--set", &format!("repo={repo}"), "--set", &pf, "--set", &title, "--set", &url, "--set", "status=queued"],
+    )
+    .await?;
+    Ok(serde_json::json!({ "name": created["name"], "existing": false, "status": "queued" }))
 }
 
 fn fr_bin() -> Result<std::path::PathBuf, String> {
@@ -2292,6 +2336,7 @@ pub fn run() {
             quick_complete,
             claude_title,
             review_runs,
+            review_request,
             fr_profiles,
             fr_login_terminal,
             complete_once,

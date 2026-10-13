@@ -526,7 +526,7 @@ export default function Sidebar({
                   <span className="flex-1 truncate">
                     #{r.pr} {r.title}
                   </span>
-                  <span className="ml-1.5 shrink-0 text-[10px] text-[var(--txt-faint)] group-hover:hidden">{reviewLive(r) ? "running" : verdictLabel(r.verdict) || r.status}</span>
+                  <span className="ml-1.5 shrink-0 text-[10px] text-[var(--txt-faint)] group-hover:hidden">{reviewLive(r) ? r.status : verdictLabel(r.verdict) || r.status}</span>
                   {!reviewLive(r) && onHideReview && (
                     <button
                       onClick={(e) => {
