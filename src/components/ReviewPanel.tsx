@@ -17,12 +17,23 @@ interface Props {
 
 const at = (s?: string) => (s ? new Date(s.replace(" ", "T")).getTime() : 0);
 
+function runTime(r: ReviewRun, s?: string) {
+  const t = at(s);
+  const created = at(r.creation);
+  if (!t || !created || t >= created - 60000) return t;
+  return t - new Date(t).getTimezoneOffset() * 60000;
+}
+
+export function stalled(r: ReviewRun, now: number) {
+  return live(r) && r.status === "running" && !!r.modified && now - at(r.modified) > 10 * 60000;
+}
+
 export const live = (r: ReviewRun) => r.status === "running" || r.status === "queued";
 
 function took(r: ReviewRun, now: number) {
-  const start = at(r.started);
+  const start = runTime(r, r.started);
   if (!start) return "";
-  const sec = Math.max(0, Math.round(((r.finished ? at(r.finished) : now) - start) / 1000));
+  const sec = Math.max(0, Math.round(((r.finished ? runTime(r, r.finished) : now) - start) / 1000));
   return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m ${sec % 60}s` : `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
 }
 
@@ -161,7 +172,7 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
                       #{r.pr} {r.title}
                     </span>
                     <span className="block truncate text-[11px] text-[var(--txt-faint)]">
-                      {r.status === "queued" ? "Queued, waiting for the server" : live(r) ? r.current_step || "Starting" : [verdictLabel(r.verdict) || r.status, r.posted ? "posted" : "", took(r, now)].filter(Boolean).join(" · ")}
+                      {r.status === "queued" ? "Queued, waiting for the server" : stalled(r, now) ? "No update for a while, may have stopped" : live(r) ? r.current_step || "Starting" : [verdictLabel(r.verdict) || r.status, r.posted ? "posted" : "", took(r, now)].filter(Boolean).join(" · ")}
                     </span>
                   </span>
                   {live(r) ? (
@@ -194,7 +205,13 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
               {live(run) && (
                 <p className="mt-1.5 flex items-center gap-2 text-[12px] text-[var(--txt-dim)]">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" />
-                  <span className="min-w-0 truncate">{run.status === "queued" ? "Queued, the server picks it up within a minute" : run.current_step || "Starting"}</span>
+                  <span className="min-w-0 truncate">
+                    {run.status === "queued"
+                      ? "Queued, the server picks it up within a minute"
+                      : stalled(run, now)
+                        ? `No update for ${Math.round((now - at(run.modified)) / 60000)} minutes, the run may have stopped. Last step: ${run.current_step || "starting"}`
+                        : run.current_step || "Starting"}
+                  </span>
                 </p>
               )}
               {postedLine(run) && (

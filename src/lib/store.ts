@@ -56,6 +56,7 @@ export interface ReviewRun {
   cost_usd?: number;
   log_tail?: string;
   modified?: string;
+  creation?: string;
 }
 
 export interface Conversation {

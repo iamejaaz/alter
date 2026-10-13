@@ -835,7 +835,7 @@ async fn review_runs(profile: String, name: Option<String>) -> Result<serde_json
                     "list",
                     "PR Review Run",
                     "--fields",
-                    "name,repo,pr,title,url,head_sha,status,verdict,current_step,started,finished,posted,post_event,posted_url,post_error,cost_usd,modified",
+                    "name,repo,pr,title,url,head_sha,status,verdict,current_step,started,finished,posted,post_event,posted_url,post_error,cost_usd,modified,creation",
                     "--order-by",
                     "modified desc",
                     "--limit",
