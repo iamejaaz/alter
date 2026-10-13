@@ -175,6 +175,8 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
 
 export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills" | "routines" | "connectors" | "reviews";
 
+const FR_LOGIN = "fr auth login https://pr-reviews.m.frappe.cloud --oauth --read-only --name pr-reviews";
+
 const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: React.ReactNode }[] }[] = [
   {
     heading: "Settings",
@@ -858,26 +860,26 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 </p>
                 <Row
                   title="Connect the server"
-                  desc="The site that keeps the PR Review Run list, with a read only API key and secret."
+                  desc="Alter reads the runs with frappectl, so no key is stored here. Log in once in Terminal with OAuth, then put the profile name below."
                 >
-                  <label className="block text-[12px] text-[var(--txt-dim)]">Site URL</label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 truncate rounded-lg bg-[var(--input)] px-2.5 py-1.5 font-mono text-[12px] text-[var(--txt-dim)]">{FR_LOGIN}</code>
+                    <button
+                      onClick={() => {
+                        void navigator.clipboard.writeText(FR_LOGIN);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      }}
+                      className={action}
+                    >
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <label className="mt-3 block text-[12px] text-[var(--txt-dim)]">frappectl profile</label>
                   <input
-                    value={draft.reviewServerUrl ?? ""}
-                    onChange={(e) => setDraft({ ...draft, reviewServerUrl: e.target.value })}
-                    placeholder="https://pr-reviews.m.frappe.cloud"
-                    className={`${field} mt-1 font-mono`}
-                  />
-                  <label className="mt-2 block text-[12px] text-[var(--txt-dim)]">API key</label>
-                  <input
-                    value={draft.reviewServerKey ?? ""}
-                    onChange={(e) => setDraft({ ...draft, reviewServerKey: e.target.value })}
-                    className={`${field} mt-1 font-mono`}
-                  />
-                  <label className="mt-2 block text-[12px] text-[var(--txt-dim)]">API secret</label>
-                  <input
-                    type="password"
-                    value={draft.reviewServerSecret ?? ""}
-                    onChange={(e) => setDraft({ ...draft, reviewServerSecret: e.target.value })}
+                    value={draft.reviewServerProfile ?? ""}
+                    onChange={(e) => setDraft({ ...draft, reviewServerProfile: e.target.value })}
+                    placeholder="pr-reviews"
                     className={`${field} mt-1 font-mono`}
                   />
                 </Row>

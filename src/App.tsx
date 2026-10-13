@@ -2077,10 +2077,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       tag({ name: peer.name, status: `failed · ${String(e)}` });
     }
   };
-  const reviewCfg =
-    settings.reviewServerUrl && settings.reviewServerKey && settings.reviewServerSecret
-      ? { url: settings.reviewServerUrl, key: settings.reviewServerKey, secret: settings.reviewServerSecret }
-      : null;
+  const reviewCfg = settings.reviewServerProfile?.trim() ? { profile: settings.reviewServerProfile.trim() } : null;
   const reviewFast = reviewRuns.some(reviewLive);
   useEffect(() => {
     if (!reviewCfg) {
@@ -2108,7 +2105,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       gone = true;
       clearInterval(t);
     };
-  }, [reviewCfg?.url, reviewCfg?.key, reviewCfg?.secret, reviewOpen, reviewSel, reviewFast]);
+  }, [reviewCfg?.profile, reviewOpen, reviewSel, reviewFast]);
   const discussReview = (r: ReviewRun) => {
     const posted = r.posted ? `It was posted as ${r.post_event === "REQUEST_CHANGES" ? "a request changes review" : "a comment"}${r.posted_url ? ` (${r.posted_url})` : ""}.` : "It was not posted.";
     const text = [

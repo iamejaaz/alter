@@ -160,9 +160,7 @@ export interface Settings {
   agentBrowser?: boolean;
   connectors?: Connector[];
   prBot?: string; // GitHub account the reviews are posted as
-  reviewServerUrl?: string;
-  reviewServerKey?: string;
-  reviewServerSecret?: string;
+  reviewServerProfile?: string;
   prRepos?: string; // comma-separated owner/repo to watch for replies; empty = every repo the bot reviewed
 }
 
@@ -301,6 +299,10 @@ function save(key: string, value: unknown): boolean {
 export const storage = {
   loadSettings: () => {
     const s = load<Settings>("alter.settings", DEFAULT_SETTINGS);
+    const old = s as Settings & { reviewServerUrl?: string; reviewServerKey?: string; reviewServerSecret?: string };
+    delete old.reviewServerUrl;
+    delete old.reviewServerKey;
+    delete old.reviewServerSecret;
     if (!s.connections || s.connections.length === 0) {
       const conn: Connection = {
         id: newId(),

@@ -793,45 +793,52 @@ async fn quick_complete(url: String, api_key: String, model: String, prompt: Str
 }
 
 #[tauri::command]
-async fn review_runs(url: String, key: String, secret: String, name: Option<String>) -> Result<serde_json::Value, String> {
-    let base = url.trim().trim_end_matches('/');
-    if !base.starts_with("https://") && !base.starts_with("http://") {
-        return Err("The review server URL must start with https://".into());
+async fn review_runs(profile: String, name: Option<String>) -> Result<serde_json::Value, String> {
+    let profile = profile.trim().to_string();
+    if profile.is_empty() || !profile.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err("Set a frappectl profile name in Settings, Agents, PR review server.".into());
     }
-    let path = match &name {
-        Some(n) => format!("{base}/api/resource/PR%20Review%20Run/{}", n.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect::<String>()),
-        None => format!("{base}/api/resource/PR%20Review%20Run"),
-    };
-    let mut req = http_client()?.get(&path).header("Authorization", format!("token {}:{}", key.trim(), secret.trim())).timeout(std::time::Duration::from_secs(20));
-    if name.is_none() {
-        req = req.query(&[
-            ("fields", r#"["name","repo","pr","title","url","head_sha","status","verdict","current_step","started","finished","posted","post_event","posted_url","post_error","cost_usd","modified"]"#),
-            ("order_by", "modified desc"),
-            ("limit_page_length", "30"),
-        ]);
+    let fr = local_cli::find("fr").or_else(|| local_cli::find("frappectl")).ok_or("frappectl (fr) is not installed.")?;
+    let mut cmd = tokio::process::Command::new(fr);
+    cmd.arg("-s").arg(&profile).arg("doc");
+    match &name {
+        Some(n) => {
+            let n: String = n.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+            cmd.args(["get", "PR Review Run", &n, "--json"]);
+        }
+        None => {
+            cmd.args([
+                "list",
+                "PR Review Run",
+                "--fields",
+                "name,repo,pr,title,url,head_sha,status,verdict,current_step,started,finished,posted,post_event,posted_url,post_error,cost_usd,modified",
+                "--order-by",
+                "modified desc",
+                "--limit",
+                "30",
+                "--json",
+            ]);
+        }
     }
-    let resp = req.send().await.map_err(|e| e.to_string())?;
-    let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
-    if !status.is_success() {
-        let hint = match status.as_u16() {
-            401 | 403 => "The review server rejected the API key.",
-            404 => "The review server has no PR Review Run doctype yet.",
-            _ => "The review server returned an error.",
-        };
-        let said = serde_json::from_str::<serde_json::Value>(&text)
-            .ok()
-            .and_then(|v| v["_server_messages"].as_str().and_then(|m| serde_json::from_str::<Vec<String>>(m).ok()))
-            .and_then(|m| m.first().and_then(|x| serde_json::from_str::<serde_json::Value>(x).ok()))
-            .and_then(|m| m["message"].as_str().map(|t| t.split("<br>").next().unwrap_or(t).trim().to_string()))
-            .filter(|t| !t.is_empty());
-        return Err(match said {
-            Some(t) => format!("{hint} The server says: {t} (HTTP {})", status.as_u16()),
-            None => format!("{hint} (HTTP {})", status.as_u16()),
-        });
+    for k in ["FRAPPE_SITE", "FRAPPE_API_KEY", "FRAPPE_API_SECRET"] {
+        cmd.env_remove(k);
     }
-    let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    Ok(v["data"].clone())
+    let out = tokio::time::timeout(std::time::Duration::from_secs(30), cmd.stdin(std::process::Stdio::null()).output())
+        .await
+        .map_err(|_| "frappectl took too long to answer.".to_string())?
+        .map_err(|e| e.to_string())?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let line = err
+            .lines()
+            .map(str::trim)
+            .find(|l| l.starts_with("error:"))
+            .or_else(|| err.lines().map(str::trim).rev().find(|l| !l.is_empty() && !l.contains("Deprecat") && !l.contains("_compat")))
+            .unwrap_or("frappectl failed.");
+        return Err(line.trim_start_matches("error:").trim().to_string());
+    }
+    serde_json::from_str(stdout.trim()).map_err(|e| format!("frappectl returned something unexpected ({e})"))
 }
 
 // Generate a short chat title via a cheap Claude Code (haiku) call.
