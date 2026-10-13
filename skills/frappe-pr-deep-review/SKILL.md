@@ -31,6 +31,8 @@ The bench may be shared with other work. So: note what is already running before
 
 Only when the verdict turns on how the PR actually behaves, or the user asked to test on UI. Pure-logic findings are proven in the console (step 5 of frappe-pr-review); this step is for the desk UI.
 
+In server mode, sections 3 to 5 are required for every PR that changes code; only a PR that touches nothing but docs, CI config or translations may stay read-only. Running the PR is the reason the server exists, so "Reproduced: no, read-only review" is not a server result. Check it out, run its own tests or a console script that exercises the change, and walk any UI change in the browser. If a step cannot run, say which command failed and why.
+
 1. In `APP_PATH`: `git status --short` must be clean of others' work. Save the current branch.
 2. `git fetch <REMOTE> pull/<PR>/head` then `git checkout --detach FETCH_HEAD`. Detached, so no branch is left behind, and it works for forks.
 3. Assets: build with `bench build --app <app>` (writes `sites/assets/assets.json`), then serve the branch yourself with the bench's own python on `PORT`:
