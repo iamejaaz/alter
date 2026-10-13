@@ -5,7 +5,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Routine, Settings, Skill, newId } from "../lib/store";
 import { listen } from "@tauri-apps/api/event";
 import { cliInstallTerminal, cliLogin, cliLoginTerminal, cliSetPath, cliStatus, CliStatus, codexCheck, testConnection } from "../lib/api";
-import { IconBlocks, IconBookmark, IconClock, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconSettings, IconSparkles } from "./Icons";
+import { IconBlocks, IconBookmark, IconClock, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconPullRequest, IconSettings, IconSparkles } from "./Icons";
 import SkillsPage from "./SkillsPage";
 import RoutinesPage from "./RoutinesPage";
 import ConnectorsPage from "./ConnectorsPage";
@@ -173,7 +173,7 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   );
 }
 
-export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills" | "routines" | "connectors";
+export type SettingsTab = "general" | "connections" | "projects" | "memory" | "support" | "extension" | "skills" | "routines" | "connectors" | "reviews";
 
 const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: React.ReactNode }[] }[] = [
   {
@@ -190,6 +190,7 @@ const NAV: { heading: string; items: { id: SettingsTab; label: string; icon: Rea
     items: [
       { id: "support", label: "Support agent", icon: <IconLifebuoy /> },
       { id: "extension", label: "Browser extension", icon: <IconPuzzle /> },
+      { id: "reviews", label: "PR review server", icon: <IconPullRequest /> },
     ],
   },
   {
@@ -847,15 +848,23 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     className={`${field} mt-1 font-mono`}
                   />
                 </Row>
+              </div>
+            )}
+
+            {tab === "reviews" && (
+              <div>
+                <p className="pb-1 text-[13px] text-[var(--txt-faint)]">
+                  A server reviews PRs on its own and posts the result. Alter shows its runs under PR reviews in the sidebar, live, and lets you discuss any run in a chat. Alter only reads; posting happens on the server.
+                </p>
                 <Row
-                  title="PR review server"
-                  desc="Shows the server's automatic PR reviews under PR reviews in the sidebar. Use a read only API key for the site that keeps the PR Review Run list."
+                  title="Connect the server"
+                  desc="The site that keeps the PR Review Run list, with a read only API key and secret."
                 >
                   <label className="block text-[12px] text-[var(--txt-dim)]">Site URL</label>
                   <input
                     value={draft.reviewServerUrl ?? ""}
                     onChange={(e) => setDraft({ ...draft, reviewServerUrl: e.target.value })}
-                    placeholder="https://reviews.example.com"
+                    placeholder="https://pr-reviews.m.frappe.cloud"
                     className={`${field} mt-1 font-mono`}
                   />
                   <label className="mt-2 block text-[12px] text-[var(--txt-dim)]">API key</label>

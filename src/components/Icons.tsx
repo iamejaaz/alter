@@ -69,6 +69,15 @@ export const IconPuzzle = () => (
   </svg>
 );
 
+export const IconPullRequest = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" {...s}>
+    <circle cx="6" cy="6" r="2.5" />
+    <circle cx="6" cy="18" r="2.5" />
+    <circle cx="18" cy="18" r="2.5" />
+    <path d="M6 8.5v7M18 15.5V9a3 3 0 0 0-3-3h-4M13 4l-2 2 2 2" />
+  </svg>
+);
+
 export const IconClock = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4" {...s}>
     <circle cx="12" cy="12" r="9" />
