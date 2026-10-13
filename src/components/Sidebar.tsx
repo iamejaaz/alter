@@ -46,6 +46,7 @@ interface Props {
   reviewRuns?: ReviewRun[];
   reviewSelected?: string | null;
   onOpenReviews?: (name: string | null) => void;
+  reviewStatus?: string | null;
 }
 
 const since = (ms: number) => {
@@ -83,6 +84,7 @@ export default function Sidebar({
   reviewRuns = [],
   reviewSelected = null,
   onOpenReviews,
+  reviewStatus = null,
 }: Props) {
   const [query, setQuery] = useState("");
   const [, setTick] = useState(0);
@@ -443,7 +445,7 @@ export default function Sidebar({
             </div>
           </div>
         )}
-        {!q && reviewRuns.length > 0 && (
+        {!q && (reviewRuns.length > 0 || reviewStatus) && (
           <div>
             <button
               onClick={() => onOpenReviews?.(null)}
@@ -453,6 +455,11 @@ export default function Sidebar({
               PR reviews
             </button>
             <div className="space-y-0.5">
+              {!reviewRuns.length && (
+                <p onClick={() => onOpenReviews?.(null)} className="cursor-pointer truncate px-2 text-[12px] text-[var(--txt-faint)]">
+                  {reviewStatus}
+                </p>
+              )}
               {reviewRuns.slice(0, 5).map((r) => (
                 <div
                   key={r.name}

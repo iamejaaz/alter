@@ -2409,6 +2409,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         onOpenPalette={() => setShowPalette(true)}
         reviewRuns={reviewRuns}
         reviewSelected={reviewOpen ? reviewSel : null}
+        reviewStatus={reviewCfg ? (reviewErr ? "Can't read the server" : "No runs yet") : null}
         onOpenReviews={(name) => {
           setReviewOpen(true);
           setReviewSel(name);
