@@ -94,7 +94,7 @@ Work every step in order. Steps 2, 3 and 4 are the ones normally skipped. Record
 
 ## 5. Reproduce when it decides the verdict
 
-Only when the PR or its linked issue gives concrete steps, and the fix looks correct from reading. Skip for pure UI or design PRs and say "UI-only".
+Only when the PR or its linked issue gives concrete steps, and the fix looks correct from reading. A UI change is not reproduced in the console: when a browser is available (frappe-pr-deep-review, or the caller runs one), test it there; only when none is available say "UI-only". Videos in the description and green UI tests are the author's evidence, not your reproduction.
 
 - No browser, no UI. Use `bench --site <SITE> console`, `bench --site <SITE> execute <dotted.path>`, `frappe.db`, `frappe.get_doc`, or a throwaway script through the console.
 - **The console is a full Python shell with the whole bench environment on its path**, so a claim about any installed library reproduces there too — `pypika`, `requests`, `redis`, `croniter`, anything in `env/lib/python*/site-packages`. Import it and call it directly; a pure-library check needs no site data and no DocType. A PR in another repo (`frappe/pypika`) is still reproducible this way against the installed copy, which is the pre-PR baseline you want. "The helper only drives frappe sites" is wrong; never use it as a reason to skip.
