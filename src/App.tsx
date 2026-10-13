@@ -168,7 +168,7 @@ export default function App() {
     () => localStorage.getItem("alter.activeProject")
   );
   const [skills, setSkills] = useState<Skill[]>(() => storage.loadSkills());
-  const [view, setView] = useState<"chat" | "settings">(() => {
+  const [view, setView] = useState<"chat" | "settings" | "review">(() => {
     const s = storage.loadSettings();
     return s.apiKey || isLocalAgentUrl(s.baseUrl) ? "chat" : "settings";
   });
@@ -223,7 +223,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null);
   const [reviewRuns, setReviewRuns] = useState<ReviewRun[]>([]);
   const [reviewErr, setReviewErr] = useState<string | null>(null);
-  const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewSel, setReviewSel] = useState<string | null>(null);
   const [reviewDetail, setReviewDetail] = useState<ReviewRun | null>(null); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
@@ -2079,6 +2078,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   };
   const reviewCfg = settings.reviewServerProfile?.trim() ? { profile: settings.reviewServerProfile.trim() } : null;
   const reviewFast = reviewRuns.some(reviewLive);
+  const reviewViewing = view === "review";
   useEffect(() => {
     if (!reviewCfg) {
       setReviewRuns([]);
@@ -2090,7 +2090,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         const list = await invoke<ReviewRun[]>("review_runs", { ...reviewCfg, name: null });
         if (gone) return;
         setReviewRuns(list ?? []);
-        if (reviewOpen && reviewSel) {
+        if (reviewViewing && reviewSel) {
           const one = await invoke<ReviewRun>("review_runs", { ...reviewCfg, name: reviewSel });
           if (!gone) setReviewDetail(one);
         }
@@ -2105,7 +2105,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       gone = true;
       clearInterval(t);
     };
-  }, [reviewCfg?.profile, reviewOpen, reviewSel, reviewFast]);
+  }, [reviewCfg?.profile, reviewViewing, reviewSel, reviewFast]);
   const discussReview = (r: ReviewRun) => {
     const posted = r.posted ? `It was posted as ${r.post_event === "REQUEST_CHANGES" ? "a request changes review" : "a comment"}${r.posted_url ? ` (${r.posted_url})` : ""}.` : "It was not posted.";
     const text = [
@@ -2116,6 +2116,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     ]
       .filter(Boolean)
       .join("\n\n");
+    setView("chat");
     void send({ text, display: `Discuss the server review of ${r.repo}#${r.pr}`, forceNew: true, title: `Review ${r.repo}#${r.pr}` });
   };
   const activeIdRef = useRef(activeId);
@@ -2353,7 +2354,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     <div className="flex h-full bg-[var(--bg)] text-[var(--txt)]">
       <Sidebar
         conversations={conversations}
-        activeId={activeId}
+        activeId={view === "review" ? null : activeId}
         routines={routines}
         scheduledIds={scheduled.map((x) => x.convId)}
         jobs={jobs}
@@ -2405,10 +2406,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         }}
         onOpenPalette={() => setShowPalette(true)}
         reviewRuns={reviewRuns}
-        reviewSelected={reviewOpen ? reviewSel : null}
+        reviewSelected={view === "review" ? reviewSel : null}
         reviewStatus={reviewCfg ? (reviewErr ? "Can't read the server" : "No runs yet") : null}
         onOpenReviews={(name) => {
-          setReviewOpen(true);
+          setView("review");
           setReviewSel(name);
         }}
       />
@@ -2443,6 +2444,17 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           <div className="pointer-events-none absolute inset-3 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--txt-faint)] bg-[var(--bg)]/80 text-[15px] text-[var(--txt)]">
             Drop to attach
           </div>
+        )}
+        {view === "review" && (
+          <ReviewPanel
+            runs={reviewRuns}
+            selected={reviewSel}
+            detail={reviewDetail}
+            error={reviewErr}
+            onSelect={setReviewSel}
+            onDiscuss={discussReview}
+            onClose={() => setView("chat")}
+          />
         )}
         {view === "settings" && (
           <SettingsPanel
@@ -3387,18 +3399,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           />
         );
       })()}
-
-      {reviewOpen && (
-        <ReviewPanel
-          runs={reviewRuns}
-          selected={reviewSel}
-          detail={reviewDetail}
-          error={reviewErr}
-          onSelect={setReviewSel}
-          onDiscuss={discussReview}
-          onClose={() => setReviewOpen(false)}
-        />
-      )}
 
       {preview && (
         <div

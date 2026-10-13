@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ReviewRun } from "../lib/store";
-import { useSideWidth } from "../lib/useSideWidth";
 import Markdown from "./Markdown";
 
 interface Props {
@@ -56,7 +55,6 @@ function StatusMark({ r }: { r: ReviewRun }) {
 }
 
 export default function ReviewPanel({ runs, selected, detail, error, onSelect, onDiscuss, onClose }: Props) {
-  const { width, startDrag } = useSideWidth("alter.reviewsWidth", 360, 260, 720);
   const [now, setNow] = useState(Date.now());
   const run = selected ? (detail?.name === selected ? detail : runs.find((r) => r.name === selected) ?? null) : null;
   useEffect(() => {
@@ -71,9 +69,8 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
   ].filter((g) => g.items.length);
 
   return (
-    <aside className="relative shrink-0 flex flex-col border-l border-[var(--bd-soft)] bg-[var(--bg)]" style={{ width }}>
-      <div onPointerDown={startDrag} className="absolute left-0 top-0 z-10 h-full w-1.5 -translate-x-1/2 cursor-col-resize" title="Drag to resize" />
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--bd-soft)] pl-3 pr-2">
+    <div className="absolute inset-0 z-20 flex flex-col bg-[var(--bg)]">
+      <div data-tauri-drag-region className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--bd-soft)] px-5">
         {run && (
           <button onClick={() => onSelect(null)} className="shrink-0 text-[13px] text-[var(--txt-faint)] hover:text-[var(--txt)]" title="All reviews" aria-label="All reviews">
             ‹
@@ -90,7 +87,8 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-2">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-6 py-5">
         {error && <p className="mb-2 rounded-lg border border-red-900/60 bg-red-950/50 px-2.5 py-1.5 text-[12px] text-red-300">{error}</p>}
 
         {!run && !runs.length && !error && <p className="px-1 py-6 text-center text-[12px] text-[var(--txt-faint)]">No server reviews yet.</p>}
@@ -193,7 +191,8 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
             )}
           </div>
         )}
+        </div>
       </div>
-    </aside>
+    </div>
   );
 }

@@ -60,7 +60,7 @@ HTTP chats compact on their own: when the history passes 70% of the model's cont
 
 ## PR reviews from the server
 
-Settings, Agents, **PR review server**: the site that keeps the `PR Review Run` list (`https://pr-reviews.m.frappe.cloud` by default). **Connect** opens Terminal with `fr auth login <site> --oauth --read-only`, your browser finishes the OAuth login, and Alter picks up the new frappectl profile on its own. An existing profile for that site is used without asking. Alter stores no key. Alter then shows a **PR reviews** section in the sidebar with the last five runs. Click a run or the heading to open the side panel.
+Settings, Agents, **PR review server**: the site that keeps the `PR Review Run` list (`https://pr-reviews.m.frappe.cloud` by default). **Connect** opens Terminal with `fr auth login <site> --oauth --read-only`, your browser finishes the OAuth login, and Alter picks up the new frappectl profile on its own. An existing profile for that site is used without asking. Alter stores no key. Alter then shows a **PR reviews** section in the sidebar with the last five runs. Click a run or the heading to open it in the main area, in place of the chat.
 
 - **List:** running runs show their current step and a live timer. Finished ones show the verdict, whether it was posted, and how long it took. Alter checks every 30 seconds, and every 5 seconds while a run is going.
 - **A run:** PR link, verdict, status, duration, cost, whether and how it was posted (request changes or a comment) with a link, the result block, the review comments as cards, and the steps.
