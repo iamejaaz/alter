@@ -10,6 +10,7 @@ interface Props {
   error: string | null;
   onSelect: (name: string | null) => void;
   onDiscuss: (run: ReviewRun) => void;
+  onHide: (names: string[]) => void;
   onClose: () => void;
 }
 
@@ -54,7 +55,7 @@ function StatusMark({ r }: { r: ReviewRun }) {
   return <span className="block text-[11px] leading-none text-[var(--txt-faint)]">✓</span>;
 }
 
-export default function ReviewPanel({ runs, selected, detail, error, onSelect, onDiscuss, onClose }: Props) {
+export default function ReviewPanel({ runs, selected, detail, error, onSelect, onDiscuss, onHide, onClose }: Props) {
   const [now, setNow] = useState(Date.now());
   const run = selected ? (detail?.name === selected ? detail : runs.find((r) => r.name === selected) ?? null) : null;
   useEffect(() => {
@@ -77,6 +78,16 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
           </button>
         )}
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--txt)]">{run ? `${run.repo}#${run.pr}` : "PR reviews"}</span>
+        {run && !live(run) && (
+          <button onClick={() => onHide([run.name])} className="shrink-0 text-[12px] text-[var(--txt-faint)] hover:text-[var(--txt)]">
+            Remove from list
+          </button>
+        )}
+        {!run && runs.some((r) => !live(r)) && (
+          <button onClick={() => onHide(runs.filter((r) => !live(r)).map((r) => r.name))} className="shrink-0 text-[12px] text-[var(--txt-faint)] hover:text-[var(--txt)]">
+            Clear finished
+          </button>
+        )}
         <button
           onClick={onClose}
           className="shrink-0 rounded-md px-1.5 py-0.5 text-xs text-[var(--txt-faint)] hover:bg-[var(--panel-2)] hover:text-[var(--txt)] transition-colors"
@@ -114,7 +125,19 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
                       {live(r) ? r.current_step || "Starting" : [verdictLabel(r.verdict) || r.status, r.posted ? "posted" : "", took(r, now)].filter(Boolean).join(" · ")}
                     </span>
                   </span>
-                  {live(r) && <span className="shrink-0 text-[11px] text-[var(--txt-faint)]">{took(r, now)}</span>}
+                  {live(r) ? (
+                    <span className="shrink-0 text-[11px] text-[var(--txt-faint)]">{took(r, now)}</span>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onHide([r.name]);
+                      }}
+                      className="hidden shrink-0 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] group-hover:block"
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

@@ -47,12 +47,39 @@ interface Props {
   reviewSelected?: string | null;
   onOpenReviews?: (name: string | null) => void;
   reviewStatus?: string | null;
+  onHideReview?: (name: string) => void;
 }
 
 const since = (ms: number) => {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
 };
+
+function GroupHeader({
+  label,
+  title,
+  folded,
+  onToggle,
+  children,
+}: {
+  label: string;
+  title?: string;
+  folded: boolean;
+  onToggle: () => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="group flex items-center gap-1.5 px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">
+      <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-[var(--txt)]" title={title || label} aria-expanded={!folded}>
+        <span className="truncate">{label}</span>
+        <span className={`shrink-0 transition-transform [&_svg]:h-3 [&_svg]:w-3 ${folded ? "" : "rotate-90 opacity-0 group-hover:opacity-100"}`} aria-hidden>
+          <IconChevronRight />
+        </span>
+      </button>
+      {children}
+    </div>
+  );
+}
 
 export default function Sidebar({
   backgroundRuns = [],
@@ -85,6 +112,7 @@ export default function Sidebar({
   reviewSelected = null,
   onOpenReviews,
   reviewStatus = null,
+  onHideReview,
 }: Props) {
   const [query, setQuery] = useState("");
   const [, setTick] = useState(0);
@@ -181,6 +209,26 @@ export default function Sidebar({
       } catch {}
       return next;
     });
+  const renderSection = (s: Section) => {
+          const folded = collapsed.includes(s.key);
+          return (
+            <div key={s.key}>
+              <GroupHeader label={s.label} title={s.folder || s.label} folded={folded} onToggle={() => toggleGroup(s.key)}>
+                {s.folder !== undefined && onNewIn && (
+                  <button
+                    onClick={() => onNewIn(s.projectId ?? null, s.folder || undefined)}
+                    className="shrink-0 opacity-0 hover:text-[var(--txt)] group-hover:opacity-100 transition-opacity"
+                    title={`New chat in ${s.label}`}
+                    aria-label={`New chat in ${s.label}`}
+                  >
+                    <IconPlus />
+                  </button>
+                )}
+              </GroupHeader>
+              {!folded && <div className="space-y-0.5">{s.items.map(renderChat)}</div>}
+            </div>
+          );
+  };
   // Every routine shows, even with no run yet, so the sidebar is the routine list.
   const routineRows = routines.map((r) => ({ routine: r, runs: runsByRoutine.get(r.id) ?? [] }));
 
@@ -414,10 +462,11 @@ export default function Sidebar({
             </div>
           </div>
         )}
+        {sections.filter((s) => s.key === "pinned").map(renderSection)}
         {!q && routineRows.length > 0 && (
           <div>
-            <p className="px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">Routines</p>
-            <div className="space-y-0.5">
+            <GroupHeader label="Routines" folded={collapsed.includes("routines")} onToggle={() => toggleGroup("routines")} />
+            {!collapsed.includes("routines") && <div className="space-y-0.5">
               {routineRows.map(({ routine, runs }) => {
                 const activeHere = runs.some((x) => x.id === activeId);
                 const running = runs.some((x) => streamingIds.includes(x.id));
@@ -442,19 +491,21 @@ export default function Sidebar({
                   </div>
                 );
               })}
-            </div>
+            </div>}
           </div>
         )}
         {!q && (reviewRuns.length > 0 || reviewStatus) && (
           <div>
-            <button
-              onClick={() => onOpenReviews?.(null)}
-              className="block w-full px-2 pt-3 pb-1 text-left text-xs leading-[1.15] text-[var(--txt-faint)] hover:text-[var(--txt)]"
-              title="All server reviews"
-            >
-              PR reviews
-            </button>
-            <div className="space-y-0.5">
+            <GroupHeader label="PR reviews" folded={collapsed.includes("reviews")} onToggle={() => toggleGroup("reviews")}>
+              <button
+                onClick={() => onOpenReviews?.(null)}
+                className="shrink-0 opacity-0 hover:text-[var(--txt)] group-hover:opacity-100 transition-opacity"
+                title="All server reviews"
+              >
+                All
+              </button>
+            </GroupHeader>
+            {!collapsed.includes("reviews") && <div className="space-y-0.5">
               {!reviewRuns.length && (
                 <p onClick={() => onOpenReviews?.(null)} className="cursor-pointer truncate px-2 text-[12px] text-[var(--txt-faint)]">
                   {reviewStatus}
@@ -475,46 +526,25 @@ export default function Sidebar({
                   <span className="flex-1 truncate">
                     #{r.pr} {r.title}
                   </span>
-                  <span className="ml-1.5 shrink-0 text-[10px] text-[var(--txt-faint)]">{reviewLive(r) ? "running" : verdictLabel(r.verdict) || r.status}</span>
+                  <span className="ml-1.5 shrink-0 text-[10px] text-[var(--txt-faint)] group-hover:hidden">{reviewLive(r) ? "running" : verdictLabel(r.verdict) || r.status}</span>
+                  {!reviewLive(r) && onHideReview && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onHideReview(r.name);
+                      }}
+                      className="ml-1.5 hidden shrink-0 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] group-hover:block"
+                      title="Remove from the list"
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               ))}
-            </div>
+            </div>}
           </div>
         )}
-        {sections.map((s) => {
-          const folded = collapsed.includes(s.key);
-          return (
-            <div key={s.key}>
-              <div className="group flex items-center px-2 pt-3 pb-1 text-xs leading-[1.15] text-[var(--txt-faint)]">
-                <button
-                  onClick={() => toggleGroup(s.key)}
-                  className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-[var(--txt)]"
-                  title={s.folder || s.label}
-                  aria-expanded={!folded}
-                >
-                  <span className="truncate">{s.label}</span>
-                  <span
-                    className={`shrink-0 transition-transform [&_svg]:h-3 [&_svg]:w-3 ${folded ? "" : "rotate-90 opacity-0 group-hover:opacity-100"}`}
-                    aria-hidden
-                  >
-                    <IconChevronRight />
-                  </span>
-                </button>
-                {s.folder !== undefined && onNewIn && (
-                  <button
-                    onClick={() => onNewIn(s.projectId ?? null, s.folder || undefined)}
-                    className="shrink-0 opacity-0 hover:text-[var(--txt)] group-hover:opacity-100 transition-opacity"
-                    title={`New chat in ${s.label}`}
-                    aria-label={`New chat in ${s.label}`}
-                  >
-                    <IconPlus />
-                  </button>
-                )}
-              </div>
-              {!folded && <div className="space-y-0.5">{s.items.map(renderChat)}</div>}
-            </div>
-          );
-        })}
+        {sections.filter((s) => s.key !== "pinned").map(renderSection)}
         {conversations.length === 0 && <p className="px-2 py-6 text-center text-xs text-[var(--txt-faint)]">No chats yet</p>}
         {conversations.length > 0 && filtered.length === 0 && (
           <p className="px-2 py-6 text-center text-xs text-[var(--txt-faint)]">No chats match</p>

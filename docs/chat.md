@@ -65,6 +65,8 @@ Settings, Agents, **PR review server**: the site that keeps the `PR Review Run` 
 - **List:** running runs show their current step and a live timer. Finished ones show the verdict, whether it was posted, and how long it took. Alter checks every 30 seconds, and every 5 seconds while a run is going.
 - **A run:** PR link, verdict, status, duration, cost, whether and how it was posted (request changes or a comment) with a link, the result block, the review comments as cards, and the steps.
 - **Discuss in a chat** opens a new chat with the run's result, its review JSON and the PR link, told to check findings on the local bench when you question them and never to post.
+- **Remove** (on hover in the sidebar or the list, or **Remove from list** on a run) hides a finished run in Alter only; **Clear finished** hides all of them. A new review of the same PR shows up again. Nothing is deleted on the server.
+- Pinned chats come first in the sidebar, then Routines and PR reviews. Every group, including Routines and PR reviews, collapses with a click on its name.
 - Alter only reads. Posting happens on the server.
 
 ## Memory

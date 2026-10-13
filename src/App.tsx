@@ -224,7 +224,23 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [reviewRuns, setReviewRuns] = useState<ReviewRun[]>([]);
   const [reviewErr, setReviewErr] = useState<string | null>(null);
   const [reviewSel, setReviewSel] = useState<string | null>(null);
-  const [reviewDetail, setReviewDetail] = useState<ReviewRun | null>(null); // routine whose Runs panel is open
+  const [reviewDetail, setReviewDetail] = useState<ReviewRun | null>(null);
+  const [reviewHidden, setReviewHidden] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("alter.reviewHidden") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const hideReviews = (names: string[]) =>
+    setReviewHidden((prev) => {
+      const next = [...new Set([...prev, ...names])].slice(-500);
+      try {
+        localStorage.setItem("alter.reviewHidden", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  const shownReviews = reviewRuns.filter((r) => !reviewHidden.includes(r.name)); // routine whose Runs panel is open
   const [queued, setQueued] = useState<Record<string, string[]>>({}); // messages typed while a turn runs
   const [scheduled, setScheduled] = useState<Scheduled[]>(() => storage.loadScheduled());
   const [quote, setQuote] = useState<string | null>(null); // selected passage the next message replies to
@@ -2442,7 +2458,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           if (runs.length && !runs.some((c) => c.id === activeId)) openChat(runs[0].id);
         }}
         onOpenPalette={() => setShowPalette(true)}
-        reviewRuns={reviewRuns}
+        reviewRuns={shownReviews}
+        onHideReview={(name) => hideReviews([name])}
         reviewSelected={view === "review" ? reviewSel : null}
         reviewStatus={reviewCfg ? (reviewErr ? "Can't read the server" : "No runs yet") : null}
         onOpenReviews={(name) => {
@@ -2484,7 +2501,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         )}
         {view === "review" && (
           <ReviewPanel
-            runs={reviewRuns}
+            runs={shownReviews}
+            onHide={(names) => {
+              hideReviews(names);
+              if (reviewSel && names.includes(reviewSel)) setReviewSel(null);
+            }}
             selected={reviewSel}
             detail={reviewDetail}
             error={reviewErr}
