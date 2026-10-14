@@ -150,7 +150,7 @@ Rules for the block:
 - **Checked** is the evidence, one line per item, and only the items that apply. The reproduction snippet goes in a fenced block at the very end of the section, and only when it is short.
 - If FOCUS was set, the first sentence of the summary answers it.
 
-Verdict rules: any real ask is NEEDS CHANGES. Blocking, not a nit: a new crash, leftover no-op code, the same bug in a sibling file, a missing permission check, a breaking change without `!` and a migration path. READY only when there is nothing you would actually ask to change. NEEDS HUMAN JUDGMENT for product or UX trade-offs; state the trade-off in two sentences.
+Verdict rules: any real ask is NEEDS CHANGES. Blocking, not a nit: a new crash, leftover no-op code, the same bug in a sibling file, a missing permission check, a breaking change without `!` and a migration path. READY only when there is nothing you would actually ask to change. NEEDS HUMAN JUDGMENT for product, UX or design trade-offs only; state the trade-off in two sentences. A doubt about behaviour you could settle by running the code is not a trade-off: reproduce it on the bench, or drop it if you cannot. Never hand the maintainer an unverified bug as a question.
 
 ## 7. Comments
 
