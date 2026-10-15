@@ -4,6 +4,7 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
+    "predev": "sh scripts/trim-build-cache.sh",
     "dev": "tauri dev",
     "build": "tsc && vite build",
     "vite": "vite",
