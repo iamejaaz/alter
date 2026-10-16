@@ -32,6 +32,7 @@ It prints `BENCH`, `APP` (the repo name, so a `frappe/erpnext` PR reads
 - A finding about a *sibling* app (an `erpnext` caller of a changed `frappe`
   helper) needs that app's own checkout: run `where.sh` again for it.
 - Reproduce on `SITE`, from `BENCH`. No site, no reproduction.
+- App lens: when `references/<app>.md` exists next to this skill for the repo's app (for example `references/erpnext.md` for `frappe/erpnext`), read it before reviewing and judge the PR from that app's side too: what it means for that app's data and users, not only for the framework.
 - `RUBRIC` files (`code_review.md`, `AGENTS.md`) are the repo's written rules.
   Cite their section names when a finding maps to one. An app that ships none is
   reviewed on this skill alone; never quote a rubric from a different repo.
