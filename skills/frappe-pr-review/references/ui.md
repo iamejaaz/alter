@@ -25,6 +25,6 @@ Read this when a PR changes anything a user sees (JS, Vue, CSS, HTML and Jinja t
 - Short, plain labels that match the ones next to them. A message tells the user what to do next, not what went wrong inside.
 
 ## Evidence
-- For a visual finding, attach a screenshot of the exact spot, before and after when the change is a fix, and name the width or mode it shows.
+- Every visual finding (spacing, alignment, overflow, colour, a hover or focus state, a wrong label on screen) carries the screenshot you took of that exact spot, cropped close, before and after when the change is a fix, with the width or mode it shows in the caption. A visual point with only words, even with a measured number, is incomplete.
 - When the PR has no screenshots or video and changes the UI, ask for a before and after.
 - Do not raise taste. A finding is a broken state, an inconsistency with the rest of desk, a convention the change breaks, or a flow that got harder. "I would use a different colour" is not one.
