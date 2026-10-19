@@ -1239,7 +1239,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       return;
     }
 
-    const MAX_ROUNDS = 6;
+    const MAX_ROUNDS = 60;
     // Try the active connection first, then every other saved connection as a fallback.
     const fallbacks: Settings[] = [
       settings,
@@ -1266,7 +1266,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       controller.signal.addEventListener("abort", () => c.abort(), { once: true });
       return c.signal;
     };
-    const deadline = Date.now() + 90_000; // hard cap: stop tool-looping after 90s
+    const deadline = Date.now() + 30 * 60_000;
     try {
       let full = "";
       let finished = false;
@@ -1335,8 +1335,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           throw e;
         }
 
-        if (result.content) full = result.content;
         if (interruptsRef.current[convId]) {
+          full = result.content;
           interrupted = true;
           break;
         }
@@ -1456,13 +1456,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       const ccConnection = (settings.connections ?? []).find((c) => isClaudeCodeUrl(c.baseUrl));
       let deadEnd = false;
       if (!full && !controller.signal.aborted) {
-        if (!finished && !cappedOut && !images.length && ccConnection) {
-          deadEnd = true;
-          full =
-            "I ran out of steps before finishing. If this needs a terminal, GitHub or sub-agents, this connection doesn't have them, and Claude Code does.";
-        } else if (cappedOut) {
-          full =
-            "Stopped — the model kept running tools for over 90 seconds without finishing. Try a sharper request, or switch to a stronger model.";
+        if (cappedOut) {
+          full = "Paused after 30 minutes of work. Send **continue** and it picks up where it stopped.";
+        } else if (!finished && !images.length) {
+          full = `Paused after ${MAX_ROUNDS} steps. Send **continue** and it picks up where it stopped.`;
         } else if (images.length) {
           full =
             "I couldn't get a response for that image. The current model is likely text-only — switch to a vision-capable model (check the gateway's /v1/models) to analyze images.";
