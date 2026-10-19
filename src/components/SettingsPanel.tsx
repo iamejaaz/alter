@@ -238,7 +238,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === "light");
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string; fixUrl?: string } | null>(null);
   const [form, setForm] = useState<{ id: string; name: string; baseUrl: string; apiKey: string; model: string; isNew: boolean } | null>(null);
   const [bridge, setBridge] = useState<{ port: number; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -344,7 +344,15 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
       const msg = await testConnection(form ? { ...draft, baseUrl: form.baseUrl, apiKey: form.apiKey, model: form.model } : draft);
       setTestResult({ ok: true, msg });
     } catch (e) {
-      setTestResult({ ok: false, msg: e instanceof Error ? e.message : String(e) });
+      const msg = e instanceof Error ? e.message : String(e);
+      const hinted = msg.match(/use\s+(\/[\w./-]*?)\/chat\/completions/i)?.[1];
+      let fixUrl: string | undefined;
+      try {
+        const cur = form?.baseUrl ?? draft.baseUrl;
+        if (hinted) fixUrl = new URL(cur).origin + hinted;
+        if (fixUrl === cur.replace(/\/+$/, "")) fixUrl = undefined;
+      } catch {}
+      setTestResult({ ok: false, msg, fixUrl });
     } finally {
       setTesting(false);
     }
@@ -703,7 +711,20 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     title="Test connection"
                     desc={
                       testResult ? (
-                        <span className={testResult.ok ? "text-green-400" : "text-red-400"}>{testResult.msg}</span>
+                        <>
+                          <span className={testResult.ok ? "text-green-400" : "text-red-400"}>{testResult.msg}</span>
+                          {testResult.fixUrl && (
+                            <button
+                              onClick={() => {
+                                setForm({ ...editing, baseUrl: testResult.fixUrl! });
+                                setTestResult({ ok: false, msg: `Base URL changed to ${testResult.fixUrl}. Test again, then Save.` });
+                              }}
+                              className="mt-1.5 block text-left text-[12px] text-[var(--txt)] underline"
+                            >
+                              Use {testResult.fixUrl}
+                            </button>
+                          )}
+                        </>
                       ) : !editing.apiKey && !isLocalAgentUrl(editing.baseUrl) ? (
                         "Enter an API key first."
                       ) : (
