@@ -2228,6 +2228,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       hidden: true,
     });
   };
+  const busy = streamingIds.length > 0;
+  useEffect(() => {
+    void invoke("keep_awake", { on: busy }).catch(() => {});
+  }, [busy]);
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
   const convsRef = useRef(conversations);

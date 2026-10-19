@@ -39,6 +39,16 @@ A chat keeps running when you switch to another chat or hide the window.
 - Steps from connectors read as `<connector>: <tool>`. Browser steps read as plain actions: open, click, type, screenshot, read the page.
 - When it finishes and you are not looking at that chat, the chat is marked unread, and if it ran for 20 seconds or more Alter sends a notification with how long it took. Mute a chat from its row menu to stop the notification.
 
+## Long runs
+
+A turn has no step or time limit, for Claude Code, Codex and HTTP models alike. It runs until the model is done or you press Stop. For HTTP models Alter also:
+
+- trims the output of older tool steps (keeps the last 8 in full) when the turn's context passes about 60% of the model's window, so a run that lasts hours does not overflow
+- retries a request that hits a rate limit or a provider hiccup up to 4 times (2s, 5s, 15s, 30s) before giving up
+- sends "Continue" when the model says it will keep going but stops without calling a tool while its plan still has open steps, up to 3 times in a row
+
+While any chat is running, Alter keeps the Mac from idle sleeping (`caffeinate -i`), and lets it sleep again when every chat is done.
+
 ## Send later
 
 The clock beside Send schedules the typed message:

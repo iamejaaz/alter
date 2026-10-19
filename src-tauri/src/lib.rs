@@ -918,6 +918,28 @@ async fn review_request(profile: String, repo: String, pr: u64) -> Result<serde_
     Ok(serde_json::json!({ "name": created["name"], "existing": false, "status": "queued" }))
 }
 
+static AWAKE: std::sync::Mutex<Option<std::process::Child>> = std::sync::Mutex::new(None);
+
+#[tauri::command]
+fn keep_awake(on: bool) {
+    let mut slot = AWAKE.lock().unwrap_or_else(|e| e.into_inner());
+    if on {
+        if slot.as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None))) {
+            return;
+        }
+        *slot = std::process::Command::new("/usr/bin/caffeinate")
+            .args(["-i", "-w", &std::process::id().to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .ok();
+    } else if let Some(mut c) = slot.take() {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+}
+
 fn fr_bin() -> Result<std::path::PathBuf, String> {
     local_cli::find("fr").or_else(|| local_cli::find("frappectl")).ok_or_else(|| "frappectl (fr) is not installed.".to_string())
 }
@@ -2369,6 +2391,7 @@ pub fn run() {
             quick_complete,
             claude_title,
             review_runs,
+            keep_awake,
             review_request,
             review_shots,
             fr_profiles,
