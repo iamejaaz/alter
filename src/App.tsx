@@ -1268,6 +1268,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     try {
       let full = "";
       let finished = false;
+      let nudges = 0;
       let lastFinish: string | undefined;
       let lastRaw = "";
       let interrupted = false;
@@ -1315,7 +1316,28 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             }
             result = chosen!;
           } else {
-            result = await streamChat(activeSettings, payload, writePartial, streamSignal(), useTools, convId);
+            const budget = 0.6 * (contextWindowFor(activeSettings.model, false) ?? 128_000) * 4;
+            const toolIdx = payload.map((m, i) => (m.role === "tool" ? i : -1)).filter((i) => i >= 0);
+            let size = payload.reduce((n, m) => n + (typeof m.content === "string" ? m.content.length : 2000), 0);
+            for (const i of toolIdx.slice(0, -8)) {
+              if (size <= budget) break;
+              const c = payload[i].content;
+              if (typeof c !== "string" || c.length <= 600) continue;
+              size -= c.length - 600;
+              payload[i] = { ...payload[i], content: c.slice(0, 500) + "\n[older output trimmed to keep the context small; run the command again if you need it]" };
+            }
+            for (let attempt = 0; ; attempt++) {
+              try {
+                result = await streamChat(activeSettings, payload, writePartial, streamSignal(), useTools, convId);
+                break;
+              } catch (e) {
+                const m = e instanceof Error ? e.message : String(e);
+                if (controller.signal.aborted || roundPartial || !isRetryable(m) || attempt >= 4) throw e;
+                setConvInfo(convId, `${connLabel(activeSettings)} hiccuped, retrying (${attempt + 1}/4)…`);
+                await new Promise((r) => setTimeout(r, [2000, 5000, 15000, 30000][attempt]));
+                setConvInfo(convId, "");
+              }
+            }
             lastFinish = result.finishReason;
             lastRaw = result.rawTail ?? "";
           }
@@ -1335,10 +1357,24 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         }
 
         if (result.toolCalls.length === 0 || controller.signal.aborted) {
+          const plan = convsRef.current.find((c) => c.id === convId)?.plan ?? [];
+          const open = plan.some((p) => p.status === "pending" || p.status === "in_progress");
+          const promises = /\b(let me|i'?ll|i will|next,? i|now i|going to|pushing through)\b/i.test(result.content.slice(-400));
+          if (!controller.signal.aborted && open && promises && nudges < 3 && !result.content.includes("?")) {
+            nudges++;
+            payload.push({ role: "assistant", content: result.content });
+            payload.push({ role: "user", content: "Continue: do it now with your tools. Only stop when every plan step is done, or when you need me to decide something." });
+            updateConversation(convId, (c) => ({
+              ...c,
+              messages: [...c.messages.slice(0, -1), ...(result.content ? [{ role: "assistant", content: result.content } as Message] : []), { role: "assistant", content: "" } as Message],
+            }));
+            continue;
+          }
           full = result.content;
           finished = true;
           break;
         }
+        nudges = 0;
 
         payload.push({ role: "assistant", content: result.content, tool_calls: result.toolCalls });
         const activity = result.toolCalls
