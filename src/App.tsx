@@ -1239,7 +1239,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       return;
     }
 
-    const MAX_ROUNDS = 60;
     // Try the active connection first, then every other saved connection as a fallback.
     const fallbacks: Settings[] = [
       settings,
@@ -1266,20 +1265,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       controller.signal.addEventListener("abort", () => c.abort(), { once: true });
       return c.signal;
     };
-    const deadline = Date.now() + 30 * 60_000;
     try {
       let full = "";
       let finished = false;
-      let cappedOut = false;
       let lastFinish: string | undefined;
       let lastRaw = "";
       let interrupted = false;
-      for (let round = 0; round < MAX_ROUNDS; round++) {
+      for (let round = 0; ; round++) {
         if (controller.signal.aborted) break;
-        if (Date.now() > deadline) {
-          cappedOut = true;
-          break;
-        }
         roundPartial = "";
         let result: ChatResult;
         try {
@@ -1378,10 +1371,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             args = {};
           }
           if (controller.signal.aborted) break;
-          if (Date.now() > deadline) {
-            cappedOut = true;
-            break;
-          }
           let output: string;
           if (tc.function.name === "ask_user") {
             const opts = Array.isArray(args.options) ? (args.options as unknown[]).map(String).filter(Boolean) : [];
@@ -1437,7 +1426,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             return { ...c, messages: msgs };
           });
         }
-        if (cappedOut) break;
         if (interruptsRef.current[convId]) {
           interrupted = true;
           full = "";
@@ -1456,11 +1444,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       const ccConnection = (settings.connections ?? []).find((c) => isClaudeCodeUrl(c.baseUrl));
       let deadEnd = false;
       if (!full && !controller.signal.aborted) {
-        if (cappedOut) {
-          full = "Paused after 30 minutes of work. Send **continue** and it picks up where it stopped.";
-        } else if (!finished && !images.length) {
-          full = `Paused after ${MAX_ROUNDS} steps. Send **continue** and it picks up where it stopped.`;
-        } else if (images.length) {
+        if (images.length) {
           full =
             "I couldn't get a response for that image. The current model is likely text-only — switch to a vision-capable model (check the gateway's /v1/models) to analyze images.";
         } else if (!finished) {
