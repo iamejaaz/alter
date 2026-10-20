@@ -39,7 +39,7 @@ Find the exact message, read the cause, apply the fix. Messages are grouped by w
 
 | Message | Cause | Fix |
 | --- | --- | --- |
-| `Couldn't save your chats — local storage is full.` | Web storage quota | Delete old chats. Images already live on disk and do not count |
+| `Couldn't save your chats — local storage is full.` | Older builds kept chats in 5 MB web storage | Update. Chats are now one file each in `chats/` in the app data folder, with no size cap |
 | `Folder picker is only available in the desktop app` | You are on the Vite dev page in a browser | Use the Tauri window |
 | `The app was quit while you were working. Please continue from where you left off.` appears in a chat | Alter quit or restarted while that chat was running, so it resumes the turn once on the next start. The dead turn's empty reply is removed first, so only one resume shows | Nothing to do. In development every Rust change restarts the app, so avoid long jobs while editing `src-tauri` |
 | A permission or question card appeared and I cannot type | The turn is waiting for the card | Answer, Skip or Deny. Esc interrupts the turn |
