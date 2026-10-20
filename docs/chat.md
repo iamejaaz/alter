@@ -45,7 +45,7 @@ A turn has no step or time limit, for Claude Code, Codex and HTTP models alike. 
 
 - trims the output of older tool steps (keeps the last 8 in full) when the turn's context passes about 60% of the model's window, so a run that lasts hours does not overflow
 - retries a request that hits a rate limit or a provider hiccup up to 4 times (2s, 5s, 15s, 30s) before giving up
-- sends "Continue" when the model says it will keep going but stops without calling a tool while its plan still has open steps, up to 3 times in a row
+- sends "Continue" when the model only narrates a next step (a short note while its plan has open steps, a line ending in a colon, or "checking", "verifying", "let me" and the like) without calling a tool, up to 3 times in a row; if it still stops with plan steps open, a note says so and how to resume
 
 While any chat is running, Alter keeps the Mac from idle sleeping (`caffeinate -i`), and lets it sleep again when every chat is done.
 

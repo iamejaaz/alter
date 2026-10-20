@@ -1379,8 +1379,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         if (result.toolCalls.length === 0 || controller.signal.aborted) {
           const plan = convsRef.current.find((c) => c.id === convId)?.plan ?? [];
           const open = plan.some((p) => p.status === "pending" || p.status === "in_progress");
-          const promises = /\b(let me|i'?ll|i will|next,? i|now i|going to|pushing through)\b/i.test(result.content.slice(-400));
-          if (!controller.signal.aborted && open && promises && nudges < 3 && !result.content.includes("?")) {
+          const text = result.content.trim();
+          const promises =
+            /:\s*$/.test(text) ||
+            /\b(let me|i'?ll|i will|next,? i|now i|going to|pushing through|picking up|continuing|checking|verifying|moving (on|to))\b/i.test(text.slice(-400)) ||
+            (open && text.length < 600);
+          if (!controller.signal.aborted && (open || /:\s*$/.test(text)) && promises && nudges < 3 && !text.includes("?")) {
             nudges++;
             payload.push({ role: "assistant", content: result.content });
             payload.push({ role: "user", content: "Continue: do it now with your tools. Only stop when every plan step is done, or when you need me to decide something." });
@@ -1392,6 +1396,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }
           full = result.content;
           finished = true;
+          if (open && !controller.signal.aborted)
+            setConvInfo(convId, `Stopped with ${plan.filter((p) => p.status === "pending" || p.status === "in_progress").length} plan step(s) still open. Send "continue" to keep going.`);
           break;
         }
         nudges = 0;
