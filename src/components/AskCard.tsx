@@ -110,7 +110,7 @@ function Permission({ ask, onAnswer }: { ask: ToolAsk; onAnswer: (a: Answer) => 
           <button
             key={k}
             className={plain}
-            title="Stops asking for this until the chat's session restarts"
+            title="Stops asking for this in this chat"
             onClick={() => onAnswer({ behavior: "allow", updatedInput: ask.input, updatedPermissions: [{ ...s, destination: "session" }] })}
           >
             {RULE_LABEL[str(s.type)]}

@@ -2043,7 +2043,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     { cmd: "/handoff-full", desc: "Hand a task to a background chat with this conversation", run: () => setInput("/handoff-full ") },
     { cmd: "/usage", desc: "Show cost tally (instant, no tokens)", run: showUsage },
     { cmd: "/compact", desc: "Summarize this chat and continue from the summary", run: () => void compactChat() },
-    { cmd: "/auto", desc: "Auto — act freely, writes confirm", run: () => applyMode("auto") },
+    { cmd: "/auto", desc: "Auto: act freely, ask only before risky or outward actions", run: () => applyMode("auto") },
     { cmd: "/ask", desc: "Ask before every action", run: () => applyMode("ask") },
     { cmd: "/plan", desc: "Plan only, no actions", run: () => applyMode("plan") },
     { cmd: "/chat", desc: "Chat only, no tools", run: () => applyMode("chat") },
