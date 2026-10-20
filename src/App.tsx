@@ -30,6 +30,14 @@ function extractArtifacts(content: string): ArtifactType[] {
 function ToolSteps({ lines, live }: { lines: string[]; live: boolean }) {
   const [open, setOpen] = useState<boolean | null>(null);
   if (lines.length === 0) return null;
+  if (live)
+    return (
+      <div className="animate-fade-up flex min-w-0 items-center gap-2 font-mono text-xs text-[var(--txt-faint)]">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--txt-dim)] animate-pulse" />
+        <span className="shrink-0">Step {lines.length}</span>
+        <span className="min-w-0 truncate">{lines[lines.length - 1]}</span>
+      </div>
+    );
   const expanded = open ?? live;
   return (
     <div className="animate-fade-up font-mono text-xs leading-[1.15] text-[var(--txt-faint)]">
@@ -60,23 +68,35 @@ function ToolSteps({ lines, live }: { lines: string[]; live: boolean }) {
 
 type RenderItem = { kind: "tools"; lines: string[]; key: string } | { kind: "msg"; m: Message; i: number };
 
-// Merge consecutive tool messages so their steps render as one collapsible group.
-function groupMessages(messages: Message[]): RenderItem[] {
+const plainReply = (m: Message) => m.role === "assistant" && !m.peer && !m.handoff && !m.summary && !m.needsClaudeCode && !m.sentTo;
+
+// One turn reads as one reply: the text of every round is joined, and tool steps
+// only show while the turn is still running.
+function groupMessages(messages: Message[], streaming = false): RenderItem[] {
   const items: RenderItem[] = [];
+  let steps: string[] = [];
+  let stepsKey = "";
   messages.forEach((m, i) => {
     if (m.hidden) return;
-    if (m.role === "assistant" && !m.content && !m.peer && !m.handoff && i < messages.length - 1) return;
     if (m.role === "tool" && !m.handoff) {
-      const lines = m.content.split("\n").filter(Boolean).map((l) => l.replace(/^▸\s*/, ""));
-      const last = items[items.length - 1];
-      if (last && last.kind === "tools") last.lines.push(...lines);
-      else items.push({ kind: "tools", lines, key: `t${i}` });
-    } else {
-      items.push({ kind: "msg", m, i });
+      if (!steps.length) stepsKey = `t${i}`;
+      steps.push(...m.content.split("\n").filter(Boolean).map((l) => l.replace(/^▸\s*/, "")));
+      return;
     }
+    if (m.role === "user") steps = [];
+    if (m.role === "assistant" && !m.content && !m.peer && !m.handoff && i < messages.length - 1) return;
+    const last = items[items.length - 1];
+    if (plainReply(m) && last && last.kind === "msg" && plainReply(last.m)) {
+      last.m = { ...last.m, content: [last.m.content, m.content].filter(Boolean).join("\n\n") };
+      last.i = i;
+      return;
+    }
+    items.push({ kind: "msg", m, i });
   });
+  if (streaming && steps.length) items.push({ kind: "tools", lines: steps, key: stepsKey });
   return items;
 }
+
 import {
   buildHistory,
   buildSystemPrompt,
@@ -2758,9 +2778,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </div>
               )}
             <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
-              {groupMessages(active.messages).map((item, idx, items) =>
+              {groupMessages(active.messages, activeStreaming).map((item) =>
                 item.kind === "tools" ? (
-                  <ToolSteps key={item.key} lines={item.lines} live={activeStreaming && items.slice(idx + 1).every((x) => x.kind === "msg" && x.m.role === "assistant" && !x.m.content)} />
+                  <ToolSteps key={item.key} lines={item.lines} live />
                 ) : ((m, i) =>
                   m.handoff ? (
                   <div key={i} className="flex justify-center animate-fade-up">
