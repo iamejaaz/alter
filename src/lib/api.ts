@@ -577,7 +577,20 @@ export interface ToolAsk {
 }
 
 const localWaiting = new Map<string, (response: Record<string, unknown>) => void>();
-const localAllowed = new Map<string, Set<string>>();
+const localAllowed = new Map<string, Set<string>>(
+  (() => {
+    try {
+      return Object.entries(JSON.parse(localStorage.getItem("alter.localAllowed") || "{}") as Record<string, string[]>).map(([k, v]) => [k, new Set(v)] as [string, Set<string>]);
+    } catch {
+      return [];
+    }
+  })()
+);
+const keepAllowed = () => {
+  try {
+    localStorage.setItem("alter.localAllowed", JSON.stringify(Object.fromEntries([...localAllowed].map(([k, v]) => [k, [...v]]))));
+  } catch {}
+};
 
 export function localAsk(convId: string, tool: string, input: Record<string, unknown>, description: string, show: (ask: ToolAsk) => void): Promise<boolean> {
   if (localAllowed.get(convId)?.has(tool)) return Promise.resolve(true);
@@ -621,7 +634,10 @@ const codexAnswer = (ask: ToolAsk, a: Record<string, unknown>): Record<string, u
 export function answerAsk(convId: string, ask: ToolAsk, response: Record<string, unknown>) {
   if (ask.engine === "local") {
     const allow = response.behavior === "allow";
-    if (allow && response.updatedPermissions) localAllowed.set(convId, new Set([...(localAllowed.get(convId) ?? []), ask.tool]));
+    if (allow && response.updatedPermissions) {
+      localAllowed.set(convId, new Set([...(localAllowed.get(convId) ?? []), ask.tool]));
+      keepAllowed();
+    }
     localWaiting.get(ask.id)?.(response);
     localWaiting.delete(ask.id);
     return Promise.resolve();

@@ -252,6 +252,30 @@ export function setSharedBrowser(on: boolean) {
   sharedBrowser = on;
 }
 
+const READ_ONLY = new Set(["ls", "cat", "head", "tail", "grep", "rg", "find", "wc", "pwd", "echo", "which", "file", "stat", "du", "df", "ps", "lsof", "sort", "uniq", "cut", "tree", "date", "jq", "basename", "dirname", "realpath", "diff", "true", "test", "["]);
+const READ_ONLY_GIT = new Set(["status", "log", "diff", "show", "rev-parse", "ls-files", "blame", "grep", "remote", "describe", "shortlog", "cat-file", "branch"]);
+
+export function readOnlyCommand(cmd: string): boolean {
+  const c = cmd.replace(/\d?>\s*\/dev\/null|2>&1/g, " ");
+  if (/[`>]|\$\(|<\(|\bsudo\b|-delete\b|-exec\b|-execdir\b|-ok\b|\btee\b|-i\b/.test(c)) return false;
+  return c
+    .split(/&&|\|\||;|\|/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .every((part) => {
+      const words = part.split(/\s+/);
+      if (words[0] === "cd") return words.length <= 2;
+      if (words[0] === "git") {
+        const sub = words.find((w, i) => i > 0 && !w.startsWith("-") && words[i - 1] !== "-C");
+        if (!sub || !READ_ONLY_GIT.has(sub)) return false;
+        if (sub === "branch" && words.some((w) => /^-(d|D|m|M|c|C)$|^--(delete|move|copy|force)/.test(w))) return false;
+        if (sub === "remote" && words.some((w) => /^(add|remove|rm|rename|set-url|prune)$/.test(w))) return false;
+        return true;
+      }
+      return READ_ONLY.has(words[0]);
+    });
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -259,7 +283,7 @@ export async function executeTool(
   approve?: (tool: string, input: Record<string, unknown>, description: string) => Promise<boolean>
 ): Promise<string> {
   const ask = approve ?? ((tool: string, input: Record<string, unknown>, description: string) => confirmDialog(`Alter wants to use ${tool}:\n${description || JSON.stringify(input, null, 2)}\n\nAllow?`));
-  if (name === "run_command") {
+  if (name === "run_command" && !(mode === "auto" && readOnlyCommand(String(args.command ?? "")))) {
     const ok = await ask("Bash", { command: String(args.command ?? "") }, args.cwd ? `in ${String(args.cwd)}` : "");
     if (!ok) return "User denied this command.";
   } else if (mode === "ask" && name !== "write_file" && name !== "edit_file") {

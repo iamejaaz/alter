@@ -186,7 +186,7 @@ A PR a chat opened shows as a chip above the composer with its checks and open r
 
 DeepSeek, OpenRouter and other HTTP connections get the same kind of reach as Claude Code, through Alter:
 
-- `run_command` runs a shell command in the chat's working folder (zsh, up to 5 minutes, output trimmed to the last 12,000 characters). Every command shows an inline card first: Allow once, Always allow in this chat, Deny.
+- `run_command` runs a shell command in the chat's working folder (zsh, up to 5 minutes, output trimmed to the last 12,000 characters). In Auto mode a read only command runs without asking: every part is `ls`, `cat`, `grep`, `find` (no `-delete` or `-exec`), `head`, `tail`, `lsof`, `ps`, `cd` and the like, or a read only `git` subcommand (`status`, `log`, `diff`, `show`, `rev-parse`, `branch` without delete), with no output redirect to a file and no `$(...)`. Anything else shows an inline card first: Allow once, Always allow in this chat, Deny. Always allow in this chat is remembered across restarts.
 - `edit_file` changes part of a file by exact replacement. The card shows the diff before anything is written, and a text that is missing or matches more than once is refused so the model reads the file again. `write_file` is for new files and full rewrites.
 - `ask_user` shows a question card with up to four options and a free text answer, and the model waits for it. Plan steps that need you become questions instead of "blocked".
 - `use_skill` loads skills added in Alter and every skill in `~/.claude/skills` (frappe-debugging, frappe-pr-review and the rest), with the skill's folder so its scripts resolve.
