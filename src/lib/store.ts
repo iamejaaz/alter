@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 export interface ToolCall {
   id: string;
   type: "function";
@@ -289,6 +290,44 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
+let fileChats: string | null = null;
+export async function bootChats() {
+  try {
+    fileChats = await invoke<string | null>("load_conversations");
+  } catch {
+    fileChats = null;
+  }
+}
+
+let chatTimer: number | undefined;
+let chatPending: Conversation[] = [];
+const chatSaved = new Map<string, Conversation>();
+function saveChatsFile(value: Conversation[], originals: Conversation[]): boolean {
+  chatPending = value;
+  chatOriginals = originals;
+  if (chatTimer) return true;
+  chatTimer = window.setTimeout(() => {
+    chatTimer = undefined;
+    if (!chatOriginals.length && !chatSaved.size) return;
+    const changed: [string, string][] = [];
+    chatOriginals.forEach((orig, i) => {
+      if (chatSaved.get(orig.id) !== orig) changed.push([orig.id, JSON.stringify(chatPending[i])]);
+    });
+    const snapshot = new Map(chatOriginals.map((c) => [c.id, c]));
+    void invoke("save_conversations", { order: chatOriginals.map((c) => c.id), changed })
+      .then(() => {
+        chatSaved.clear();
+        snapshot.forEach((v, k) => chatSaved.set(k, v));
+        try {
+          localStorage.removeItem("alter.conversations");
+        } catch {}
+      })
+      .catch(() => save("alter.conversations", chatPending));
+  }, 800);
+  return true;
+}
+let chatOriginals: Conversation[] = [];
+
 function save(key: string, value: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -331,10 +370,16 @@ export const storage = {
     return s;
   },
   saveSettings: (s: Settings) => save("alter.settings", s),
-  loadConversations: () => load<Conversation[]>("alter.conversations", []),
+  loadConversations: (): Conversation[] => {
+    if (fileChats) {
+      try {
+        return JSON.parse(fileChats) as Conversation[];
+      } catch {}
+    }
+    return load<Conversation[]>("alter.conversations", []);
+  },
   saveConversations: (c: Conversation[]) =>
-    save(
-      "alter.conversations",
+    saveChatsFile(
       c.map((conv) => ({
         ...conv,
         messages: conv.messages.map((m) =>
@@ -342,7 +387,8 @@ export const storage = {
             ? { ...m, attachments: m.attachments.map((a) => (a.kind === "image" ? { ...a, dataUrl: undefined } : a)) }
             : m
         ),
-      }))
+      })),
+      c
     ),
   loadMemories: () => load<MemoryItem[]>("alter.memories", []),
   saveMemories: (m: MemoryItem[]) => save("alter.memories", m),

@@ -918,6 +918,66 @@ async fn review_request(profile: String, repo: String, pr: u64) -> Result<serde_
     Ok(serde_json::json!({ "name": created["name"], "existing": false, "status": "queued" }))
 }
 
+fn chats_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("chats");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn chat_file(dir: &std::path::Path, id: &str) -> Result<std::path::PathBuf, String> {
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err("bad chat id".into());
+    }
+    Ok(dir.join(format!("{id}.json")))
+}
+
+#[tauri::command]
+fn load_conversations(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let dir = chats_dir(&app)?;
+    let ids: Vec<String> = std::fs::read_to_string(dir.join("_order.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default();
+    if ids.is_empty() {
+        let legacy = app.path().app_data_dir().map_err(|e| e.to_string())?.join("conversations.json");
+        return Ok(std::fs::read_to_string(legacy).ok());
+    }
+    let mut out = Vec::new();
+    for id in ids {
+        if let Ok(p) = chat_file(&dir, &id) {
+            if let Ok(t) = std::fs::read_to_string(p) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&t) {
+                    out.push(v);
+                }
+            }
+        }
+    }
+    Ok(Some(serde_json::Value::Array(out).to_string()))
+}
+
+#[tauri::command]
+async fn save_conversations(app: tauri::AppHandle, order: Vec<String>, changed: Vec<(String, String)>) -> Result<(), String> {
+    let dir = chats_dir(&app)?;
+    for (id, json) in changed {
+        let p = chat_file(&dir, &id)?;
+        let tmp = p.with_extension("json.tmp");
+        std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &p).map_err(|e| e.to_string())?;
+    }
+    let keep: std::collections::HashSet<String> = order.iter().map(|id| format!("{id}.json")).collect();
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.ends_with(".json") && name != "_order.json" && !keep.contains(&name) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let tmp = dir.join("_order.json.tmp");
+    std::fs::write(&tmp, serde_json::to_string(&order).unwrap_or_default()).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, dir.join("_order.json")).map_err(|e| e.to_string())
+}
+
 static AWAKE: std::sync::Mutex<Option<std::process::Child>> = std::sync::Mutex::new(None);
 
 #[tauri::command]
@@ -2392,6 +2452,8 @@ pub fn run() {
             claude_title,
             review_runs,
             keep_awake,
+            load_conversations,
+            save_conversations,
             review_request,
             review_shots,
             fr_profiles,
