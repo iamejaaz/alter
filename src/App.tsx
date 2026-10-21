@@ -1481,7 +1481,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
           toolResults.push({ id: tc.id, name: tc.function.name, output: output.slice(0, 6000) });
-          const changed = tc.function.name === "edit_file" || tc.function.name === "write_file";
+          const changed = (tc.function.name === "edit_file" || tc.function.name === "write_file") && !/^\/(private\/)?tmp\/|scratch/i.test(String(args.path ?? ""));
           sinceChange = changed ? 0 : sinceChange + 1;
           if (changed) seen.clear();
           else if (!before) seen.set(sig, { step: stepCount, output });
