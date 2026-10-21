@@ -62,3 +62,18 @@ Settings, General, Launch at login uses the Tauri autostart plugin. Closing the 
 
 - [connections.md](connections.md) for the first connection
 - [troubleshooting.md](troubleshooting.md) for build and start errors
+
+## Daily use: the installed app with auto update
+
+Build once and install, then use `/Applications/Alter.app` day to day instead of `npm run dev`:
+
+```bash
+cd ~/projects/frappe/alter && npm run tauri build -- --bundles app && ditto src-tauri/target/release/bundle/macos/Alter.app /Applications/Alter.app
+```
+
+The installed app keeps itself current:
+
+- Every 10 minutes (first check a minute after start) it fetches `master` from iamejaaz/alter. When there is a new commit, it fast forwards this checkout and rebuilds the app in the background. The build log is `update.log` in the app data folder.
+- When the build is ready, it waits until no chat or extension run is going, then quits, swaps `/Applications/Alter.app` for the new build and opens it again. A running chat is never cut off.
+- **Update** in Settings checks right away, or restarts at once into a build that is already ready.
+- Run only one Alter at a time: the installed app and `npm run dev` share the bridge port, the peer socket and the data folder.

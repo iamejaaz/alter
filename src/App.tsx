@@ -2279,6 +2279,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       hidden: true,
     });
   };
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    let gone = false;
+    void listen<{ text: string }>("alter://update", (e) => setInfo(e.payload.text)).then((u) => (gone ? u() : (un = u)));
+    return () => {
+      gone = true;
+      un?.();
+    };
+  }, []);
   const busy = streamingIds.length > 0;
   useEffect(() => {
     void invoke("keep_awake", { on: busy }).catch(() => {});

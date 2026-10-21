@@ -52,6 +52,7 @@ mod browser;
 mod agent_browser;
 mod browser_pane;
 mod peers;
+mod updater;
 
 pub(crate) fn html_to_text(html: &str) -> String {
     let mut out = String::with_capacity(html.len() / 2);
@@ -982,6 +983,7 @@ static AWAKE: std::sync::Mutex<Option<std::process::Child>> = std::sync::Mutex::
 
 #[tauri::command]
 fn keep_awake(on: bool) {
+    updater::BUSY.store(on, std::sync::atomic::Ordering::SeqCst);
     let mut slot = AWAKE.lock().unwrap_or_else(|e| e.into_inner());
     if on {
         if slot.as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None))) {
@@ -2452,6 +2454,7 @@ pub fn run() {
             claude_title,
             review_runs,
             keep_awake,
+            updater::update_now,
             load_conversations,
             save_conversations,
             review_request,
@@ -2506,6 +2509,7 @@ pub fn run() {
             });
             bridge::start(app.handle().clone());
             peers::start(app.handle().clone());
+            updater::start(app.handle().clone());
 
             let show = MenuItem::with_id(app, "show", "Show Alter", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

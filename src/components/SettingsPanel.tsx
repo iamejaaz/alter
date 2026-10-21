@@ -285,6 +285,11 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     setUpdating(true);
     setUpdateNote(null);
     try {
+      const installed = await invoke<string>("update_now");
+      if (!installed.startsWith("Auto update works")) {
+        setUpdateNote({ ok: true, text: `${installed} The installed app also checks every 10 minutes and restarts into a new version only when no chat is running.` });
+        return;
+      }
       const u = await invoke<{ ok: boolean; error?: string; updated?: boolean; head?: string; commits?: string[]; backend?: boolean; extension?: boolean; skills?: boolean; switchedFrom?: string }>("app_update");
       const moved = u.switchedFrom ? ` Switched from the branch ${u.switchedFrom} to master, which is kept as it was.` : "";
       if (!u.ok) setUpdateNote({ ok: false, text: u.error ?? "Update failed." });
