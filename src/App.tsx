@@ -1290,6 +1290,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       let finished = false;
       let nudges = 0;
       let sinceChange = 0;
+      let stepCount = 0;
+      let hinted = false;
+      const seen = new Map<string, { step: number; output: string }>();
       let lastFinish: string | undefined;
       let lastRaw = "";
       let interrupted = false;
@@ -1434,8 +1437,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             args = {};
           }
           if (controller.signal.aborted) break;
+          stepCount++;
           let output: string;
-          if (tc.function.name === "ask_user") {
+          const sig = `${tc.function.name}:${JSON.stringify(args)}`;
+          const before = seen.get(sig);
+          if (before && tc.function.name !== "ask_user" && tc.function.name !== "update_plan") {
+            output = `Not run: you already ran this exact call at step ${before.step} and nothing has changed since. Its output was:\n${before.output.slice(0, 1500)}\nAct on that result instead of repeating it.`;
+          } else if (tc.function.name === "ask_user") {
             const opts = Array.isArray(args.options) ? (args.options as unknown[]).map(String).filter(Boolean) : [];
             output = await localQuestion(String(args.question ?? ""), opts, (ask) => {
               setAsks((a) => ({ ...a, [convId!]: [...(a[convId!] ?? []), ask] }));
@@ -1473,7 +1481,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
           toolResults.push({ id: tc.id, name: tc.function.name, output: output.slice(0, 6000) });
-          sinceChange = tc.function.name === "edit_file" || tc.function.name === "write_file" ? 0 : sinceChange + 1;
+          const changed = tc.function.name === "edit_file" || tc.function.name === "write_file";
+          sinceChange = changed ? 0 : sinceChange + 1;
+          if (changed) seen.clear();
+          else if (!before) seen.set(sig, { step: stepCount, output });
+          if (!hinted && stepCount >= 30 && !isLocalAgentUrl(activeSettings.baseUrl) && (settings.connections ?? []).some((c) => isClaudeCodeUrl(c.baseUrl))) {
+            hinted = true;
+            setConvInfo(convId, `This is a long task for ${connLabel(activeSettings)}. Claude Code handles long bench work much better: pick it in the model menu below the message box for the next message.`);
+          }
         }
         // Keep the real calls + outputs on the step message so later turns (and a
         // turn after an interrupt) know what the tools returned, not just their labels.
