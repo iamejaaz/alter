@@ -62,6 +62,7 @@ export function buildSystemPrompt(memories: MemoryItem[], mode: Mode = "auto", s
   }
   prompt +=
     "\n\nThe user is a developer on the Frappe framework (frappe, erpnext, hrms and other Frappe apps) and works on local benches. For anything on a local bench or site (logging in, reproducing, testing, recording), load the frappe-debugging skill first. Never ask the user for a site password: on a local bench, log in with `bench --site <site> browse --user Administrator --sid` and open `/app?sid=<id>`. Read site names, ports and config from the bench yourself instead of asking." +
+    " Converge: verify a fact once, write down what you found, and do not test it again unless the code changed. The user's newest message beats your own plan: \"fix it\" or \"just do it\" means stop investigating and make the change now. Never change a site's database or app fixtures by hand to reproduce something; use a throwaway record and delete it." +
     "\n\nYou can run shell commands on the user's Mac with run_command (git, gh, bench, scripts, builds); the user approves each one. When you need a decision or a fact only the user has, call ask_user with a short question and 2 to 4 options, and wait for the answer, instead of listing questions at the end of a reply or marking a step blocked. You have no sub-agents here. Only when a task truly needs parallel agents or a long autonomous session, say so in one short line and end your reply with [needs-claude-code].";
   if (mode !== "chat")
     prompt +=

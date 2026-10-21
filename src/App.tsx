@@ -1289,6 +1289,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       let full = "";
       let finished = false;
       let nudges = 0;
+      let sinceChange = 0;
       let lastFinish: string | undefined;
       let lastRaw = "";
       let interrupted = false;
@@ -1472,6 +1473,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           }
           payload.push({ role: "tool", content: output, tool_call_id: tc.id });
           toolResults.push({ id: tc.id, name: tc.function.name, output: output.slice(0, 6000) });
+          sinceChange = tc.function.name === "edit_file" || tc.function.name === "write_file" ? 0 : sinceChange + 1;
         }
         // Keep the real calls + outputs on the step message so later turns (and a
         // turn after an interrupt) know what the tools returned, not just their labels.
@@ -1486,6 +1488,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               }
             }
             return { ...c, messages: msgs };
+          });
+        }
+        if (sinceChange >= 40) {
+          sinceChange = 0;
+          payload.push({
+            role: "user",
+            content:
+              "Checkpoint: 40 steps without changing a file. Stop re-checking what you already confirmed. Either make the change now, or stop and tell me in a few lines what you know, what is blocking you, and what you need from me.",
           });
         }
         if (interruptsRef.current[convId]) {
