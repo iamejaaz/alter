@@ -60,6 +60,8 @@ If the flag's field is new in the PR and the DB predates it, `frappe.reload_doc(
 
 Checking out the branch is not the test; *using* the feature is. Exercise **every surface the PR changes** the way a real user manually would, end to end — the UI flow in the browser **and** the backend path behind it. Reading the code tells you what it should do; this step is where you find out what it actually does.
 
+Open the browser only when the PR changes something a user sees (JS, Vue, CSS, HTML or Jinja templates, print formats, a doctype JSON's layout, labels or field options) or the maintainer asked for screenshots or a UI test. A backend-only change (Python logic, queries, permissions, patches, an API) is proven without the browser or the review web server: run the PR's own tests, `bench --site <SITE> execute`, or a console script that calls the changed code on develop and on the PR head. Each browser step costs a full turn, so do not open it just to look.
+
 Log in without a password: `bench --site <SITE> browse --user Administrator --sid` prints a raw sid. Open `http://127.0.0.1:<PORT>/app?sid=<sid>` with whatever browser tools this session has: the built-in browser pane or Claude in Chrome on a desktop, Playwright MCP (headless Chromium) on a server. Then walk the feature.
 
 - **Walk the whole flow, not one line.** Do what the PR's description and its screenshots/video show a user doing, step by step, and confirm each step produces the right result — the feature *works*, not merely that nothing threw.
