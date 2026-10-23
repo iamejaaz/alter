@@ -47,11 +47,11 @@ It prints `BENCH`, `APP` (the repo name, so a `frappe/erpnext` PR reads
 
 ## 1. Gather
 
-1. `gh pr view <PR> -R <REPO> --json number,title,body,author,baseRefName,isDraft,isCrossRepository,additions,deletions,changedFiles,reviews,comments,statusCheckRollup`
-2. `gh pr diff <PR> -R <REPO>`. Read the whole diff. In a diff, `-` is the base side and `+` is the PR side; state direction correctly in every finding.
+1. Run `<this skill's folder>/scripts/pr-context.sh <owner/repo> <PR> <APP_PATH>` once, by its absolute path. It prints the PR details and body, the CI state with failing checks named, `PR_REF`, `BASE_REF` and `MERGE_BASE` (the PR head is already fetched into `APP_PATH`), the review threads, and the diff. Do not run `gh pr view`, `gh pr diff` or `pr-threads.sh` separately for what it already printed.
+2. Read the whole diff. In a diff, `-` is the base side and `+` is the PR side; state direction correctly in every finding.
 3. Every issue the body links (`closes #N`, `fixes #N`, an issue URL): `gh issue view <N> -R <REPO> --comments`. Verify the "Closes #N" claim against the issue text, not the PR title. **A `closes: #N` line is not a description.** The issue says what was broken; the body still has to say what changed and how to test it, which is what `code_review.md` asks for before reviewing. Ask for it whenever the body is only a link, however clear the issue is.
 4. Read the existing review threads. Note what Greptile or another bot claimed; you will confirm or contradict each claim with a file and line, never repeat it.
-5. Run `<this skill's folder>/scripts/pr-threads.sh <owner/repo> <PR>` by its absolute path (expand `~` yourself; a `~` path is denied). It prints every earlier review, every inline thread with all replies and its resolved / outdated state, and the conversation comments. When any review by the maintainer or `frappe-pr-bot` exists, this is a re-review: for each earlier ask decide, against the current diff, whether it is addressed, still open, or no longer applies. A reply that says "done" or names a commit is a claim, not proof: check the diff. A reply that pushes back with a reason gets judged: if the reason holds, the ask is dropped and not mentioned again; if it does not, the ask stays open with one plain sentence answering the reason, once. A thread resolved by the author counts as addressed only if the diff agrees. Three things close an ask for good, whatever you think of it: a maintainer (anyone with write access who is not the author) settled it or told the bot not to raise it; you already answered the author's pushback once and they declined again; or it is a call about form rather than behaviour (title type, the `!` breaking marker, description wording, labels, docs) and the author declined it with a reason. A closed ask is never posted again, in a thread, the body or a new comment. If you still disagree, say so in the section 6 result block, which only the maintainer reads.
+5. The threads part of `pr-context.sh` shows every earlier review, every inline thread with all replies and its resolved / outdated state, and the conversation comments (`scripts/pr-threads.sh` prints the same on its own). When any review by the maintainer or `frappe-pr-bot` exists, this is a re-review: for each earlier ask decide, against the current diff, whether it is addressed, still open, or no longer applies. A reply that says "done" or names a commit is a claim, not proof: check the diff. A reply that pushes back with a reason gets judged: if the reason holds, the ask is dropped and not mentioned again; if it does not, the ask stays open with one plain sentence answering the reason, once. A thread resolved by the author counts as addressed only if the diff agrees. Three things close an ask for good, whatever you think of it: a maintainer (anyone with write access who is not the author) settled it or told the bot not to raise it; you already answered the author's pushback once and they declined again; or it is a call about form rather than behaviour (title type, the `!` breaking marker, description wording, labels, docs) and the author declined it with a reason. A closed ask is never posted again, in a thread, the body or a new comment. If you still disagree, say so in the section 6 result block, which only the maintainer reads.
 6. The `RUBRIC` files `where.sh` printed, if the repo ships any.
 
 ## 2. Before reading the code
@@ -89,6 +89,7 @@ Work every step in order. Steps 2, 3 and 4 are the ones normally skipped. Record
 ## 4. Verify before you report
 
 - Grep every symbol, string, class, token and file:line you are about to name, in the repo and in the diff. If it is not where you say it is, drop the finding. Never invent a CSS variable, class or helper name. Every finding cites a line you actually read.
+- Read the anchored line at the PR head (`gh api repos/<REPO>/contents/<path>?ref=<head sha>`), not the diff from an earlier round or another reviewer's quote of it. When the line already says what your suggestion says, the finding is already fixed: drop it.
 - Say which element carries a class before claiming an override, and check the rule sets the property at all.
 - **Before you say something is missing, prove it is missing.** Every "there is no guard", "this is not handled", "no test covers this", "it should also do X" is a claim about absence, and absence is the easiest thing to get wrong. Grep the file, the caller, the parent class, the base method, the decorator and the test file before you write it, and say where you looked. An ask for something that already sits three lines below, in the superclass, or in a `validate` hook is the fastest way to lose the author.
 - **Another reviewer's finding gets the same test.** Greptile, Copilot or a human saying something is broken or missing is a claim, not a fact. Confirm it against the code before you echo it, defer to it, or build a finding on top of it, and say plainly when it does not hold. A false finding you repeat becomes yours.
@@ -210,24 +211,4 @@ Emit the comments as JSON the poster can use directly. `event` is `REQUEST_CHANG
 
 ## 8. Thread replies
 
-The caller may hand you one reply instead of a whole PR. It comes in two shapes, and `scripts/pr-threads.sh` prints both:
-- **An inline thread**: "Reply in thread <comment id>". Read the thread end to end and answer in `replies`.
-- **A conversation comment**: someone answered the review body, or `@`-mentioned the bot, under `=== CONVERSATION COMMENTS ===`. There is no thread to reply into, so answer in `discussion` as one plain comment. When it disputes an inline ask of yours and they are right, resolve that thread in the same output.
-
-Either way, read what they said in full, then check the current diff and code for what it claims; the branch may have moved since the ask.
-
-**When the author says the ask is wrong, start from the assumption that they are right.** They wrote the code, they know the intent and the history; you read a diff. So investigate their claim before you answer it — go back to the code and test what they said, not what you concluded last time. Read the function they name, the call site they point at, the commit that introduced the behaviour, the test that covers it. Your earlier reasoning is not evidence, and repeating it is not an argument.
-
-Then hold the ask **only** if you can point at a concrete fact their reply does not account for: a line, a call site, a test, a repro result you actually ran. If the strongest thing you have is that you still think so, you are wrong — say so plainly ("You're right, `x` already handles that at `file.py:NN`. My mistake."), drop the ask and resolve the thread. Being wrong once costs nothing; arguing a stale point costs the author's trust in every later review.
-
-Decide one of four:
-- Addressed: the diff shows the change. Resolve the thread without a reply. If it was fixed a different way from the ask, one line naming the commit instead.
-- Declined with a reason that holds: drop the ask for good and resolve the thread without a reply; their reason already stands on the thread.
-- The ask itself was wrong: say that in one line, name what you missed, and resolve the thread. Do not soften it into a half-retraction that keeps the ask alive.
-- Declined with a reason that does not hold, or "done" that the diff does not show: one or two plain sentences with the new fact that decides it, anchored to what you saw. Put it as a question where it rests on an assumption about their intent. Leave the thread open. No repeat of the original ask word for word, no lecture. This answer happens once per ask, and only for behaviour (a crash, wrong data, a missing permission check), never for a form call such as the title, the breaking marker or the description. If the author declines again, or a maintainer weighs in, the ask is closed: drop it and resolve.
-
-A reply continues a conversation someone else is already in, so it never opens with `Could you please` and never restates the ask. Never reply to your own or the maintainer's comments, and never reply twice to the same comment.
-
-Output the same JSON as section 7 with `event` `COMMENT`, `body` empty and `comments` empty. Put an inline answer in `replies` (`[{"in_reply_to": <comment id>, "body": "…"}]`), a conversation answer in `discussion` (`["…"]`), and carry the thread `id` in `resolve` whenever the point is now closed.
-
-"Out of scope for this PR" is a reason that holds far more often than not: the framework is fixed one change at a time. If what you asked for is real but belongs in its own PR, say so, drop it here, and resolve.
+When the caller hands you one reply to answer instead of a whole PR, read `references/replies.md` next to this skill and follow it.
