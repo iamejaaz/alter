@@ -53,12 +53,61 @@ fn app_path(name: &str) -> Option<PathBuf> {
     [PathBuf::from("/Applications").join(name), home().join("Applications").join(name)].into_iter().find(|p| p.is_dir())
 }
 
+fn playwright_chromium() -> Option<PathBuf> {
+    let root = home().join("Library/Caches/ms-playwright");
+    let mut dirs: Vec<(u32, PathBuf)> = std::fs::read_dir(&root)
+        .ok()?
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let n = name.strip_prefix("chromium-")?.parse::<u32>().ok()?;
+            e.path().join("INSTALLATION_COMPLETE").is_file().then(|| (n, e.path()))
+        })
+        .collect();
+    dirs.sort();
+    let (_, dir) = dirs.pop()?;
+    std::fs::read_dir(&dir)
+        .ok()?
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("chrome-mac"))
+        .find_map(|e| {
+            std::fs::read_dir(e.path()).ok()?.flatten().map(|a| a.path()).find(|p| p.extension().map(|x| x == "app").unwrap_or(false))
+        })
+}
+
+static INSTALLING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn install_chromium() {
+    if INSTALLING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let Some(bin) = node_bin() else { return };
+    let path = format!("{}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", bin.display());
+    std::thread::spawn(move || {
+        let _ = std::process::Command::new(bin.join("npx"))
+            .args(["-y", "playwright", "install", "chromium"])
+            .env("PATH", path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        INSTALLING.store(false, Ordering::SeqCst);
+    });
+}
+
 fn chrome_app() -> Option<PathBuf> {
+    if let Some(p) = playwright_chromium() {
+        return Some(p);
+    }
+    install_chromium();
     let preferred = default_browser_id().and_then(|id| CHROMIUM.iter().find(|(b, _)| *b == id).map(|(_, n)| *n));
     preferred.and_then(app_path).or_else(|| CHROMIUM.iter().find_map(|(_, n)| app_path(n)))
 }
 
 pub fn browser_name() -> Option<String> {
+    if playwright_chromium().is_some() {
+        return Some("Chromium".into());
+    }
     chrome_app().and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
 }
 
@@ -180,6 +229,7 @@ pub fn ensure(app: &tauri::AppHandle, front: bool) -> Result<(), String> {
         format!("--remote-debugging-port={CDP_PORT}"),
         "--no-first-run".into(),
         "--no-default-browser-check".into(),
+        "--use-mock-keychain".into(),
     ];
     if front {
         std::process::Command::new("open")

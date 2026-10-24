@@ -541,7 +541,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   title="Agent browser"
                   desc={
                     <>
-                      A {browserApp ?? "Chrome"} window Alter's agents can drive, with its own profile that stays signed in. It uses your default browser when it is Chromium based. Sign in to a site there once, then ask a chat to work on it. Agents never type passwords.
+                      A {browserApp ?? "Chrome"} window Alter's agents can drive, with its own profile that stays signed in. It uses Playwright's Chromium, separate from your own browser. Sign in to a site there once, then ask a chat to work on it. Agents never type passwords.
                       {browserNote && <span className="mt-1 block text-[var(--txt-dim)]">{browserNote}</span>}
                     </>
                   }
