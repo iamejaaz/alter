@@ -36,19 +36,39 @@ export default function Markdown({ text }: { text: string }) {
       if (el.dataset.highlighted) return;
       hljs.highlightElement(el);
       const pre = el.parentElement;
-      if (pre && !pre.querySelector(".copy-code")) {
-        const btn = document.createElement("button");
-        btn.textContent = "Copy";
-        btn.className =
-          "copy-code absolute top-2 right-2 rounded bg-[var(--panel-2)] px-2 py-0.5 text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]";
-        btn.onclick = () => {
-          navigator.clipboard.writeText(el.innerText);
-          btn.textContent = "Copied";
-          setTimeout(() => (btn.textContent = "Copy"), 1200);
+      if (!pre || pre.parentElement?.classList.contains("code-box")) return;
+      const box = document.createElement("div");
+      box.className = "code-box my-2 overflow-hidden rounded-lg bg-[var(--code-bg)]";
+      const head = document.createElement("div");
+      head.className = "flex items-center justify-between px-3 pt-1.5 text-[11px] text-[var(--txt-faint)]";
+      const lang = document.createElement("span");
+      lang.textContent = (el.className.match(/language-(\S+)/)?.[1] ?? "").replace(/^plaintext$/, "");
+      const btn = document.createElement("button");
+      btn.textContent = "Copy";
+      btn.className = "copy-code rounded px-1.5 py-0.5 hover:bg-[var(--panel-2)] hover:text-[var(--txt)]";
+      btn.onclick = () => {
+        navigator.clipboard.writeText(el.innerText);
+        btn.textContent = "Copied";
+        setTimeout(() => (btn.textContent = "Copy"), 1200);
+      };
+      head.append(lang, btn);
+      pre.replaceWith(box);
+      box.append(head, pre);
+      pre.className = "!my-0 !rounded-none !bg-transparent !pt-1 whitespace-pre-wrap [overflow-wrap:anywhere] max-h-80 !overflow-hidden";
+      requestAnimationFrame(() => {
+        if (pre.scrollHeight <= pre.clientHeight + 4) {
+          pre.classList.remove("max-h-80");
+          return;
+        }
+        const more = document.createElement("button");
+        more.className = "w-full border-t border-[var(--bd)] py-1 text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]";
+        more.textContent = "Show more";
+        more.onclick = () => {
+          const open = pre.classList.toggle("max-h-80");
+          more.textContent = open ? "Show more" : "Show less";
         };
-        pre.style.position = "relative";
-        pre.appendChild(btn);
-      }
+        box.append(more);
+      });
     });
   }, [html]);
 
