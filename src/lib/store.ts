@@ -254,6 +254,10 @@ export const PROVIDER_PRESETS: Record<string, { baseUrl: string; models: string[
     // gemini-flash-latest: free tier + vision. pro-preview needs billing.
     models: ["gemini-flash-latest", "gemini-3.1-pro-preview", "gemini-2.5-flash"],
   },
+  "Claude API": {
+    baseUrl: "https://api.anthropic.com/v1",
+    models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+  },
   OpenRouter: {
     baseUrl: "https://openrouter.ai/api/v1",
     // Free models — they share rate-limit pools, so keep a couple as fallbacks.

@@ -166,6 +166,7 @@ import {
   whenLabel,
   limitResetAt,
   PlanItem,
+  PROVIDER_PRESETS,
 } from "./lib/store";
 
 interface Peer {
@@ -1952,6 +1953,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     return [fam < 0 ? 98 : fam, -(m ? Number(m[2]) * 100 + Number(m[3] ?? 0) : 0)];
   };
   const KNOWN_CLAUDE_MODELS = ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5-20251001"];
+  const presetModels =
+    Object.values(PROVIDER_PRESETS).find((p) => p.baseUrl.replace(/\/$/, "") === settings.baseUrl?.replace(/\/$/, ""))?.models ?? [];
   const CLAUDE_MODELS: { id: string; label: string }[] = [
     { id: "claude-code", label: "Default" },
     ...[...new Set([...KNOWN_CLAUDE_MODELS, ...seenClaudeModels, ...(settings.model?.startsWith("claude-") && settings.model !== "claude-code" ? [settings.model] : [])])]
@@ -3467,6 +3470,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     onChange={setClaudeModel}
                     options={CLAUDE_MODELS.map((m) => ({ value: m.id, label: m.label }))}
                     title="Claude Code model"
+                  />
+                )}
+                {!claudeCodeActive && presetModels.length > 1 && (
+                  <ComposerSelect
+                    value={settings.model}
+                    onChange={setClaudeModel}
+                    options={[...new Set([...presetModels, settings.model])].map((m) => ({ value: m, label: modelLabel(m) }))}
+                    title="Model"
                   />
                 )}
                 <ComposerSelect
