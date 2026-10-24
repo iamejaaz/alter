@@ -229,7 +229,7 @@ interface Props {
   projectsInitialId?: string | null;
 }
 
-const QUICK_ADD_HIDDEN = ["DeepSeek", "Gemini"];
+const QUICK_ADD_HIDDEN = ["DeepSeek", "Gemini", "Claude API"];
 
 export default function SettingsPanel({ settings, memories, projects, onProjectsChange, onSave, onDeleteMemory, onAddMemory, onEditMemory, onImportMemories, skills, onSkillsChange, routines, onRoutinesChange, onRunRoutine, parseRoutine, onClose, initialTab, projectsInitialId }: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
