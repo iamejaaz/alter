@@ -1,10 +1,17 @@
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
 pub const CDP_PORT: u16 = 9333;
 const PLAYWRIGHT_MCP: &str = "@playwright/mcp@0.0.83";
+const IDLE_SECS: u64 = 300;
+static LAST_USE: AtomicU64 = AtomicU64::new(0);
+
+fn now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
 
 fn home() -> PathBuf {
     std::env::var("HOME").map(PathBuf::from).unwrap_or_default()
@@ -131,7 +138,23 @@ fn close_spare_blanks() {
     }
 }
 
+pub fn stop_headless() {
+    if is_up() && headless() {
+        stop_running();
+    }
+}
+
+pub fn start_reaper(app: tauri::AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(60));
+        if now().saturating_sub(LAST_USE.load(Ordering::SeqCst)) >= IDLE_SECS && !crate::updater::busy(&app) {
+            stop_headless();
+        }
+    });
+}
+
 pub fn ensure(app: &tauri::AppHandle, front: bool) -> Result<(), String> {
+    LAST_USE.store(now(), Ordering::SeqCst);
     if is_up() {
         if !front {
             close_spare_blanks();

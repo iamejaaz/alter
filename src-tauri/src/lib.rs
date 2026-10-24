@@ -2510,6 +2510,7 @@ pub fn run() {
             bridge::start(app.handle().clone());
             peers::start(app.handle().clone());
             updater::start(app.handle().clone());
+            agent_browser::start_reaper(app.handle().clone());
 
             let show = MenuItem::with_id(app, "show", "Show Alter", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -2563,6 +2564,7 @@ pub fn run() {
             if matches!(event, tauri::RunEvent::Exit) {
                 bridge::kill_all_agents(app);
                 peers::stop();
+                agent_browser::stop_headless();
             }
         });
 }

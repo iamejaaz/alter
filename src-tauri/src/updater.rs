@@ -28,7 +28,7 @@ fn status(app: &AppHandle, text: &str) {
     let _ = app.emit("alter://update", serde_json::json!({ "text": text }));
 }
 
-fn busy(app: &AppHandle) -> bool {
+pub fn busy(app: &AppHandle) -> bool {
     BUSY.load(Ordering::SeqCst)
         || app
             .try_state::<crate::bridge::BridgeState>()
