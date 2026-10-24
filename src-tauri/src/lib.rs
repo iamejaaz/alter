@@ -149,6 +149,7 @@ struct ClaudeProc {
     effort: String,
     perm: String,
     mcp: String,
+    api_key: String,
     last_used: std::time::Instant,
     child: tokio::process::Child,
     stdin: tokio::process::ChildStdin,
@@ -1398,6 +1399,7 @@ async fn claude_code(
     images: Option<Vec<ImageAttachment>>,
     identity: Option<String>,
     mcp: Option<serde_json::Value>,
+    api_key: Option<String>,
     on_chunk: tauri::ipc::Channel<String>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -1414,6 +1416,7 @@ async fn claude_code(
         _ => "bypassPermissions".to_string(), // default: act freely on the user's own machine
     };
     let mcp_key = mcp.as_ref().map(|m| m.to_string()).unwrap_or_default();
+    let api_key = api_key.map(|k| k.trim().to_string()).unwrap_or_default();
     let slot = procs.slot(&conv_id).await;
     let mut guard = slot.lock().await;
 
@@ -1422,7 +1425,7 @@ async fn claude_code(
     let reuse = match guard.as_mut() {
         Some(p) => {
             let alive = matches!(p.child.try_wait(), Ok(None));
-            alive && p.model == model && p.cwd == cwd && p.effort == effort && p.perm == perm && p.mcp == mcp_key
+            alive && p.model == model && p.cwd == cwd && p.effort == effort && p.perm == perm && p.mcp == mcp_key && p.api_key == api_key
         }
         None => false,
     };
@@ -1449,6 +1452,9 @@ async fn claude_code(
         }
         if let Some(path) = agent_browser::claude_config(&mcp) {
             cmd.arg("--mcp-config").arg(path);
+        }
+        if !api_key.is_empty() {
+            cmd.env("ANTHROPIC_API_KEY", &api_key);
         }
         if !model.is_empty() && model != "claude-code" {
             cmd.arg("--model").arg(&model);
@@ -1495,6 +1501,7 @@ async fn claude_code(
             effort: effort.clone(),
             perm: perm.clone(),
             mcp: mcp_key.clone(),
+            api_key: api_key.clone(),
             last_used: std::time::Instant::now(),
             child,
             stdin,

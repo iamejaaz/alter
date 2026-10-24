@@ -245,6 +245,10 @@ export async function testConnection(settings: Settings): Promise<string> {
   if (isClaudeCodeUrl(settings.baseUrl)) {
     const s = await cliStatus("claude");
     if (!s.installed) throw new Error("Claude Code isn't installed. Settings, Connections, Claude Code has an Install button.");
+    if (settings.apiKey?.trim()) {
+      await invoke<string>("test_connection", { url: "https://api.anthropic.com/v1", apiKey: settings.apiKey.trim(), model: "claude-haiku-5-5" });
+      return `Claude Code ready · ${s.version} · billed to your API key`;
+    }
     if (s.signedIn === false) throw new Error("Claude Code is installed but not signed in. Click Sign in.");
     return `Claude Code ready · ${s.version}${s.account ? ` · ${s.account}` : ""}`;
   }
@@ -665,7 +669,8 @@ export async function claudeCodeChat(
   onSession?: (sid: string) => void,
   onPr?: (url: string) => void,
   onAgents?: (agents: AgentRun[]) => void,
-  onAsk?: (ask: ToolAsk | null, cancelledId?: string) => void
+  onAsk?: (ask: ToolAsk | null, cancelledId?: string) => void,
+  apiKey?: string
 ): Promise<{ content: string; sessionId: string | null; costUsd: number | null; tokens: number | null }> {
   let streamed = ""; // text of the current segment (reset at each tool boundary)
   let result = ""; // authoritative final answer from the result event
@@ -855,7 +860,7 @@ export async function claudeCodeChat(
   const onAbort = () => void invoke("cancel_chat", { id: convId }).catch(() => {});
   signal.addEventListener("abort", onAbort);
   try {
-    await invoke("claude_code", { prompt, images, cwd, convId, sessionId, model, effort, permissionMode, identity: chatIdentity(), mcp: chatServers(), onChunk: channel });
+    await invoke("claude_code", { prompt, images, cwd, convId, sessionId, model, effort, permissionMode, identity: chatIdentity(), mcp: chatServers(), apiKey: apiKey || null, onChunk: channel });
   } finally {
     signal.removeEventListener("abort", onAbort);
   }

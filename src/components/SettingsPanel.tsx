@@ -663,7 +663,24 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     control={<input value={editing.name} placeholder={editing.model || "My connection"} onChange={(e) => setForm({ ...editing, name: e.target.value })} className={`${field} w-72`} />}
                   />
                   {isLocalAgentUrl(editing.baseUrl) ? (
-                    <LocalAgentCard kind={isCodexUrl(editing.baseUrl) ? "codex" : "claude"} />
+                    <>
+                      <LocalAgentCard kind={isCodexUrl(editing.baseUrl) ? "codex" : "claude"} />
+                      {!isCodexUrl(editing.baseUrl) && (editing.apiKey || editing.name === "Claude Code (API)") && (
+                        <Row
+                          title="API key"
+                          desc="Runs Claude Code on your Claude API credits. Your Claude Code connection keeps using your sign in."
+                          control={
+                            <input
+                              type="password"
+                              value={editing.apiKey}
+                              onChange={(e) => setForm({ ...editing, apiKey: e.target.value })}
+                              placeholder="sk-ant-..."
+                              className={`${field} w-72 font-mono`}
+                            />
+                          }
+                        />
+                      )}
+                    </>
                   ) : (
                     <>
                       <Row

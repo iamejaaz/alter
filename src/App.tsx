@@ -578,7 +578,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     const conns = settings.connections ?? [];
     // Use the connection the extension picked (its support model); fall back to a
     // Claude Code connection so the seeded chat can still run tools.
-    const conn = (connectionId && conns.find((c) => c.id === connectionId)) || conns.find((c) => isClaudeCodeUrl(c.baseUrl));
+    const conn = (connectionId && conns.find((c) => c.id === connectionId)) || (conns.find((c) => isClaudeCodeUrl(c.baseUrl) && !c.apiKey) ?? conns.find((c) => isClaudeCodeUrl(c.baseUrl)));
     const convId = newId();
     setConversations((prev) => [
       {
@@ -734,7 +734,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const connLabel = (s: Settings) => {
     const list = s.connections ?? settings.connections ?? [];
     const c = list.find((x) => x.id === s.activeConnectionId);
-    if (c && isClaudeCodeUrl(c.baseUrl)) return "Claude Code";
+    if (c && isClaudeCodeUrl(c.baseUrl)) return c.apiKey ? "Claude Code (API)" : "Claude Code";
     if (c && isCodexUrl(c.baseUrl)) return "Codex";
     const model = s.model.includes("/") ? s.model.split("/").pop() : s.model;
     return c && c.name !== "Default" ? `${c.name} · ${model}` : model || "model";
@@ -1230,7 +1230,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             }));
           },
           (list) => setAgents((a) => ({ ...a, [convId!]: list })),
-          onAsk
+          onAsk,
+          (settings.connections ?? []).find((c) => c.id === settings.activeConnectionId)?.apiKey
         );
         updateConversation(convId, (c) => ({
           ...c,
@@ -1529,7 +1530,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         });
         return;
       }
-      const ccConnection = (settings.connections ?? []).find((c) => isClaudeCodeUrl(c.baseUrl));
+      const ccConnection = (settings.connections ?? []).find((c) => isClaudeCodeUrl(c.baseUrl) && !c.apiKey) ?? (settings.connections ?? []).find((c) => isClaudeCodeUrl(c.baseUrl));
       let deadEnd = false;
       if (!full && !controller.signal.aborted) {
         if (images.length) {
@@ -1907,7 +1908,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       : !settings.model
         ? "Pick a model"
         : null;
-  const ccConn = connections.find((c) => isClaudeCodeUrl(c.baseUrl));
+  const ccConn = connections.find((c) => isClaudeCodeUrl(c.baseUrl) && !c.apiKey) ?? connections.find((c) => isClaudeCodeUrl(c.baseUrl));
   const retryOnClaudeCode = (msgIndex: number) => {
     if (!ccConn || !active) return;
     const ask = active.messages.slice(0, msgIndex).reverse().find((m) => m.role === "user" && m.content)?.content;
@@ -3455,7 +3456,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   options={connections.map((c) => {
                     const short = c.model ? (c.model.includes("/") ? c.model.split("/").pop() : c.model) : "(no model)";
                     const label = isClaudeCodeUrl(c.baseUrl)
-                      ? "Claude Code"
+                      ? c.apiKey ? "Claude Code · API" : "Claude Code"
                       : isCodexUrl(c.baseUrl)
                         ? c.model && c.model !== "codex" ? `Codex · ${c.model}` : "Codex"
                         : c.name === "Default"

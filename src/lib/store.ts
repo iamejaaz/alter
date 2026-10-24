@@ -272,6 +272,10 @@ export const PROVIDER_PRESETS: Record<string, { baseUrl: string; models: string[
     baseUrl: CLAUDE_CODE_URL,
     models: ["claude-code"],
   },
+  "Claude Code (API)": {
+    baseUrl: CLAUDE_CODE_URL,
+    models: ["claude-code"],
+  },
   "Codex (local)": {
     baseUrl: CODEX_URL,
     models: ["codex"],
@@ -365,8 +369,8 @@ export const storage = {
     // Heal stale labels: a Claude Code connection has one fixed identity, so its
     // name can never legitimately read like some other provider/model.
     s.connections = s.connections.map((c) =>
-      isClaudeCodeUrl(c.baseUrl) && c.name !== "Claude Code"
-        ? { ...c, name: "Claude Code", model: "claude-code" }
+      isClaudeCodeUrl(c.baseUrl) && c.name !== (c.apiKey ? "Claude Code (API)" : "Claude Code") && !(c.name === "Claude Code (API)" && !c.apiKey)
+        ? { ...c, name: c.apiKey ? "Claude Code (API)" : "Claude Code", model: c.model || "claude-code" }
         : isCodexUrl(c.baseUrl) && c.name !== "Codex"
           ? { ...c, name: "Codex", model: c.model || "codex" }
           : c
