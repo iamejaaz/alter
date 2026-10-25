@@ -62,8 +62,20 @@ fn check(app: &AppHandle) {
         return;
     }
     let Some(remote) = git(&root, &["rev-parse", "FETCH_HEAD"]) else { return };
-    if remote == installed_commit() {
+    let installed = installed_commit();
+    if remote == installed {
         return;
+    }
+    if let Some(files) = git(&root, &["diff", "--name-only", &installed, &remote]) {
+        if !files.is_empty() && files.lines().all(|f| f.starts_with("skills/")) {
+            if crate::bridge::self_update()["ok"].as_bool() == Some(true) {
+                crate::install_bundled_skills();
+                if let Some(p) = installed_path() {
+                    let _ = std::fs::write(p, &remote);
+                }
+            }
+            return;
+        }
     }
     if READY.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|(c, _)| *c == remote) {
         return;

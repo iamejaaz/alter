@@ -2337,7 +2337,7 @@ use tauri_plugin_autostart::MacosLauncher;
 // Install or refresh the bundled support skill in ~/.claude/skills. Each file is
 // rewritten only when the bundled copy differs, so a user's own edits to other
 // files survive and a newer app build ships newer prompts/scripts.
-fn install_bundled_skills() {
+pub fn install_bundled_skills() {
     let home = match std::env::var("HOME") {
         Ok(h) => h,
         Err(_) => return,
@@ -2368,8 +2368,11 @@ fn install_bundled_skills() {
         ("demo-video", "compositor.py", include_str!("../../skills/demo-video/compositor.py"), false),
         ("demo-video", "example-multicase.py", include_str!("../../skills/demo-video/example-multicase.py"), false),
     ];
+    let repo = bridge::repo_root().join("skills");
     let write = |skill: &str, rel: &str, body: &str, exec: bool| {
         let path = root.join(skill).join(rel);
+        let disk = std::fs::read_to_string(repo.join(skill).join(rel)).ok();
+        let body = disk.as_deref().unwrap_or(body);
         if std::fs::read_to_string(&path).map(|cur| cur == body).unwrap_or(false) {
             return;
         }

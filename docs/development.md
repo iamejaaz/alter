@@ -84,6 +84,7 @@ env -i HOME=$HOME PATH=$PATH USER=$USER claude -p "say hi" --output-format json
 Commit to `master` and push right away. That is the release.
 
 - The installed app checks GitHub every 10 minutes. When `master` is ahead of `installed-commit`, it fast forwards this checkout, runs `npm run tauri build -- --bundles app` in the background (log in `update.log`), and installs the new build **only** when you quit Alter or while its window is closed and no chat or extension run is going. It never restarts under an open window. After a background install it comes back hidden in the menu bar.
+- A push that only changes files under `skills/` is not rebuilt. The updater pulls it and copies the skills into `~/.claude/skills` from the checkout, with no restart. The app always installs skills from the checkout on disk, falling back to the copy built into it.
 - Settings, General, **Update** installs a ready build at once or checks now.
 - So every push becomes an update for the user. Group small fixes when you can.
 - To install by hand: `npm run tauri build -- --bundles app`, quit Alter, `ditto src-tauri/target/release/bundle/macos/Alter.app /Applications/Alter.app`, write the commit into `installed-commit`, open it.
