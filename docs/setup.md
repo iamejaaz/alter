@@ -22,7 +22,7 @@ npm run dev
 npm run tauri build
 ```
 
-The `.app` and `.dmg` land in `src-tauri/target/release/bundle/`. There is no auto update. Install a new build by replacing `Alter.app`.
+The `.app` and `.dmg` land in `src-tauri/target/release/bundle/`. The installed app updates itself, see Daily use below.
 
 ## Updating
 
@@ -32,7 +32,8 @@ Settings, General, **Update Alter**, or **Update** in the extension popup. Both 
 
 | What | Where |
 | --- | --- |
-| Settings, chats, memories, routines, skills, projects, scheduled messages | The app's web storage, keys prefixed `alter.` (`alter.settings`, `alter.conversations`, `alter.memories`, `alter.routines`, `alter.skills`, `alter.projects`, `alter.scheduled`, `alter.theme`, `alter.folder`, `alter.activeProject`) |
+| Chats | One file per chat in `~/Library/Application Support/com.ejaaz.alter/chats/` |
+| Settings, memories, routines, skills, projects, scheduled messages | The app's web storage, keys prefixed `alter.` (`alter.settings`, `alter.conversations`, `alter.memories`, `alter.routines`, `alter.skills`, `alter.projects`, `alter.scheduled`, `alter.theme`, `alter.folder`, `alter.activeProject`) |
 | Bridge pairing token | `~/Library/Application Support/com.ejaaz.alter/bridge.token` (dev builds use the `alter` identifier) |
 | Image attachments, snapshots, routine state and results | `~/Library/Application Support/com.ejaaz.alter/attachments`, `snapshots`, `results.json` |
 | Bundled skills | Installed into `~/.claude/skills/frappe-support-diagnosis`, `~/.claude/skills/frappe-pr-review`, `~/.claude/skills/plain-writing` on every start, refreshed when the bundled copy changed |
@@ -40,7 +41,7 @@ Settings, General, **Update Alter**, or **Update** in the extension popup. Both 
 | Extension settings | The extension's own storage: `token`, `models`, `claudeModel`, `helpdeskSite`, `grammarEverywhere`, `autoReview`, `autoReviewPost` |
 | Panel size and position | The page's local storage on github.com and the helpdesk site: `alter_panel_box`, `alter_sup_box` |
 
-Chats are limited by web storage size. When it is full Alter shows `Couldn't save your chats`. Delete old chats to free space.
+The dev build and the installed app keep web storage apart (`~/Library/WebKit/alter` and `~/Library/WebKit/com.ejaaz.alter`), so settings changed in one don't show in the other. Chats are files and are shared.
 
 ## Background service
 
@@ -74,6 +75,6 @@ cd ~/projects/frappe/alter && npm run tauri build -- --bundles app && ditto src-
 The installed app keeps itself current:
 
 - Every 10 minutes (first check a minute after start) it fetches `master` from iamejaaz/alter. When there is a new commit, it fast forwards this checkout and rebuilds the app in the background. The build log is `update.log` in the app data folder.
-- When the build is ready, it waits until no chat or extension run is going, then quits, swaps `/Applications/Alter.app` for the new build and opens it again. A running chat is never cut off.
+- When the build is ready, it installs when you quit Alter, or while the window is closed and no chat or extension run is going. Then it comes back hidden in the menu bar. It never restarts under an open window.
 - **Update** in Settings checks right away, or restarts at once into a build that is already ready.
 - Run only one Alter at a time: the installed app and `npm run dev` share the bridge port, the peer socket and the data folder.

@@ -6,6 +6,7 @@ Alter is a Tauri desktop chat app (Rust backend, React front end) with a browser
 
 | Page | Covers |
 | --- | --- |
+| [Development](development.md) | Repo map, how a turn flows, where state lives, run, check, ship, and the rules for changing Alter |
 | [Setup](setup.md) | Install, run in dev, build, where data is stored, background service |
 | [Connections and sign in](connections.md) | API providers, Claude Code, Codex, sign in flows and their errors |
 | [Chat](chat.md) | Modes, permission cards, queued and scheduled messages, memory, skills, projects, routines, sidebar |
