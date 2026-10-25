@@ -243,7 +243,7 @@ pub fn ensure(app: &tauri::AppHandle, front: bool) -> Result<(), String> {
             .map_err(|e| format!("Couldn't start the agent browser ({e})"))?;
     } else {
         let name = chrome.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        std::process::Command::new(chrome.join("Contents/MacOS").join(name))
+        let child = crate::own_group(std::process::Command::new(chrome.join("Contents/MacOS").join(name)))
             .args(&args)
             .arg("--headless=new")
             .arg("--window-size=1280,900")
@@ -253,6 +253,7 @@ pub fn ensure(app: &tauri::AppHandle, front: bool) -> Result<(), String> {
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|e| format!("Couldn't start the agent browser ({e})"))?;
+        crate::children::track(child.id());
     }
     for _ in 0..40 {
         if is_up() {

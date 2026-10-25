@@ -9,6 +9,15 @@ fn read_file(path: String) -> Result<String, String> {
 
 pub const DISCLAIM_FLAG: &str = "--alter-run-disclaimed";
 
+pub fn own_group(mut cmd: std::process::Command) -> std::process::Command {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    cmd
+}
+
 pub fn agent_cmd(bin: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     #[cfg(target_os = "macos")]
     if let Ok(exe) = std::env::current_exe() {
@@ -53,6 +62,7 @@ mod agent_browser;
 mod browser_pane;
 mod peers;
 mod updater;
+mod children;
 
 pub(crate) fn html_to_text(html: &str) -> String {
     let mut out = String::with_capacity(html.len() / 2);
@@ -1265,7 +1275,7 @@ async fn codex_chat(
         overrides.push("-c".into());
         overrides.push(o);
     }
-    let mut child = tokio::process::Command::from(agent_cmd(&bin))
+    let mut child = tokio::process::Command::from(own_group(agent_cmd(&bin)))
         .args(["app-server", "--enable", "default_mode_request_user_input"])
         .args(&overrides)
         .current_dir(&dir)
@@ -1275,6 +1285,9 @@ async fn codex_chat(
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("Couldn't start Codex ({e})"))?;
+    if let Some(pid) = child.id() {
+        children::track(pid);
+    }
     let mut stdin = child.stdin.take().ok_or("Codex gave no input stream")?;
     let stdout = child.stdout.take().ok_or("Codex gave no output stream")?;
     if let Some(e) = child.stderr.take() {
@@ -1435,7 +1448,7 @@ async fn claude_code(
             let _ = old.child.kill().await;
         }
         procs.evict_idle(&conv_id).await;
-        let mut cmd = Command::from(agent_cmd(crate::local_cli::claude_bin()));
+        let mut cmd = Command::from(own_group(agent_cmd(crate::local_cli::claude_bin())));
         cmd.arg("-p")
             .arg("--input-format").arg("stream-json")
             .arg("--output-format").arg("stream-json")
@@ -1477,6 +1490,9 @@ async fn claude_code(
         let mut child = cmd.spawn().map_err(|e| {
             format!("Couldn't start Claude Code — is the `claude` CLI installed and on your PATH? ({e})")
         })?;
+        if let Some(pid) = child.id() {
+            children::track(pid);
+        }
         let stdin = child.stdin.take().ok_or("no stdin")?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let stderr = child.stderr.take().ok_or("no stderr")?;
@@ -2161,12 +2177,13 @@ fn walk(dir: &std::path::Path, prefix: &str, depth: usize, out: &mut Vec<String>
 async fn run_command(command: String, cwd: Option<String>) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         use std::io::Read;
-        let mut cmd = agent_cmd("/bin/zsh");
+        let mut cmd = own_group(agent_cmd("/bin/zsh"));
         cmd.arg("-lc").arg(&command).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(d) = cwd.filter(|d| std::path::Path::new(d).is_dir()) {
             cmd.current_dir(d);
         }
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+        children::track(child.id());
         let mut out = child.stdout.take();
         let mut err = child.stderr.take();
         let t_out = std::thread::spawn(move || {
@@ -2189,6 +2206,7 @@ async fn run_command(command: String, cwd: Option<String>) -> Result<String, Str
                 break Some(st);
             }
             if started.elapsed() > std::time::Duration::from_secs(300) {
+                let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{}", child.id())]).status();
                 let _ = child.kill();
                 break None;
             }
@@ -2498,6 +2516,7 @@ pub fn run() {
             agent_browser::agent_browser_mcp
         ])
         .setup(|app| {
+            children::sweep();
             if !std::env::args().any(|a| a == "--background") {
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.show();
@@ -2584,6 +2603,7 @@ pub fn run() {
                 bridge::kill_all_agents(app);
                 peers::stop();
                 agent_browser::stop_headless();
+                children::kill_all();
                 updater::install_on_exit();
             }
         });

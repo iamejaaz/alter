@@ -1102,6 +1102,7 @@ async fn run_completion(
             cmd.process_group(0);
         }
         let child = cmd.spawn().map_err(|e| e.to_string())?;
+        crate::children::track(child.id());
         if let Some((map, id)) = reg {
             map.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), child.id());
         }
