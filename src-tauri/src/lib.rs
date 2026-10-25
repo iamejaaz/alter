@@ -2407,7 +2407,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            None,
+            Some(vec!["--background"]),
         ))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
@@ -2498,6 +2498,11 @@ pub fn run() {
             agent_browser::agent_browser_mcp
         ])
         .setup(|app| {
+            if !std::env::args().any(|a| a == "--background") {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                }
+            }
             if let Ok(dir) = app.path().app_data_dir() {
                 let _ = std::fs::create_dir_all(&dir);
                 tauri::async_runtime::spawn(async move {
@@ -2568,6 +2573,13 @@ pub fn run() {
             // Warm chat processes die with the app through kill_on_drop, but bridge
             // agents are spawned into their own process group, so they outlive it
             // unless we take them down here.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
             if matches!(event, tauri::RunEvent::Exit) {
                 bridge::kill_all_agents(app);
                 peers::stop();

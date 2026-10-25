@@ -86,8 +86,13 @@ fn check(app: &AppHandle) {
 
 fn swap(app: &AppHandle, new_app: &std::path::Path) {
     let Some(dest) = installed_app() else { return };
+    let shown = app
+        .get_webview_window("main")
+        .map(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
+        .unwrap_or(false);
     let script = format!(
-        "#!/bin/sh\nwhile kill -0 {pid} 2>/dev/null; do sleep 0.3; done\nrm -rf '{d}.old'\nmv '{d}' '{d}.old' && ditto '{n}' '{d}' && rm -rf '{d}.old' || mv '{d}.old' '{d}'\nopen '{d}'\n",
+        "#!/bin/sh\nwhile kill -0 {pid} 2>/dev/null; do sleep 0.3; done\nrm -rf '{d}.old'\nmv '{d}' '{d}.old' && ditto '{n}' '{d}' && rm -rf '{d}.old' || mv '{d}.old' '{d}'\n{open}\n",
+        open = if shown { format!("open '{}'", dest.display()) } else { format!("open -g '{}' --args --background", dest.display()) },
         pid = std::process::id(),
         d = dest.display(),
         n = new_app.display()
