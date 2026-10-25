@@ -2584,6 +2584,7 @@ pub fn run() {
                 bridge::kill_all_agents(app);
                 peers::stop();
                 agent_browser::stop_headless();
+                updater::install_on_exit();
             }
         });
 }

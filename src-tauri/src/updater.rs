@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 pub static BUSY: AtomicBool = AtomicBool::new(false);
 static READY: Mutex<Option<(String, PathBuf)>> = Mutex::new(None);
 static BUILDING: AtomicBool = AtomicBool::new(false);
+static SWAPPING: AtomicBool = AtomicBool::new(false);
 
 const REPO: &str = "https://github.com/iamejaaz/alter.git";
 
@@ -78,32 +79,58 @@ fn check(app: &AppHandle) {
     let built = root.join("src-tauri/target/release/bundle/macos/Alter.app");
     if ok && built.is_dir() {
         *READY.lock().unwrap_or_else(|e| e.into_inner()) = Some((head, built));
-        status(app, "A new version of Alter is ready. It restarts when no chat is running.");
+        status(app, "A new version of Alter is ready. It installs when you quit Alter or close its window. Settings, Update installs it now.");
     } else {
         status(app, "Building the update failed. Details are in update.log in Alter's data folder.");
     }
 }
 
-fn swap(app: &AppHandle, new_app: &std::path::Path) {
-    let Some(dest) = installed_app() else { return };
-    let shown = app
-        .get_webview_window("main")
+fn window_shown(app: &AppHandle) -> bool {
+    app.get_webview_window("main")
         .map(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
-        .unwrap_or(false);
+        .unwrap_or(false)
+}
+
+pub fn install_on_exit() {
+    let ready = READY.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if let Some((_, path)) = ready {
+        write_swap(&path, None);
+    }
+}
+
+fn swap(app: &AppHandle, new_app: &std::path::Path) {
+    let open = if window_shown(app) { "open" } else { "open -g" };
+    let extra = if window_shown(app) { "" } else { " --args --background" };
+    if write_swap(new_app, Some(format!("{open} '{{d}}'{extra}"))) {
+        app.exit(0);
+    }
+}
+
+fn write_swap(new_app: &std::path::Path, reopen: Option<String>) -> bool {
+    let Some(dest) = installed_app() else { return false };
+    if SWAPPING.swap(true, Ordering::SeqCst) {
+        return false;
+    }
     let script = format!(
         "#!/bin/sh\nwhile kill -0 {pid} 2>/dev/null; do sleep 0.3; done\nrm -rf '{d}.old'\nmv '{d}' '{d}.old' && ditto '{n}' '{d}' && rm -rf '{d}.old' || mv '{d}.old' '{d}'\n{open}\n",
-        open = if shown { format!("open '{}'", dest.display()) } else { format!("open -g '{}' --args --background", dest.display()) },
+        open = reopen.map(|r| r.replace("{d}", &dest.display().to_string())).unwrap_or_default(),
         pid = std::process::id(),
         d = dest.display(),
         n = new_app.display()
     );
     let path = std::env::temp_dir().join("alter-swap.sh");
-    if std::fs::write(&path, script).is_err() {
-        return;
+    let ok = std::fs::write(&path, script).is_ok()
+        && std::process::Command::new("/bin/sh")
+            .arg(&path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .is_ok();
+    if !ok {
+        SWAPPING.store(false, Ordering::SeqCst);
     }
-    if std::process::Command::new("/bin/sh").arg(&path).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().is_ok() {
-        app.exit(0);
-    }
+    ok
 }
 
 pub fn start(app: AppHandle) {
@@ -122,7 +149,7 @@ pub fn start(app: AppHandle) {
         std::thread::sleep(Duration::from_secs(20));
         let ready = READY.lock().unwrap_or_else(|e| e.into_inner()).clone();
         if let Some((_, path)) = ready {
-            if !busy(&app) {
+            if !busy(&app) && !window_shown(&app) {
                 swap(&app, &path);
             }
         }
