@@ -21,6 +21,19 @@ fn git(root: &std::path::Path, args: &[&str]) -> Option<String> {
     o.status.success().then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
+fn installed_path() -> Option<PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(PathBuf::from(home).join("Library/Application Support/com.ejaaz.alter/installed-commit"))
+}
+
+fn installed_commit() -> String {
+    installed_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| env!("ALTER_BUILD_COMMIT").to_string())
+}
+
 fn log_path(app: &AppHandle) -> Option<PathBuf> {
     Some(app.path().app_data_dir().ok()?.join("update.log"))
 }
@@ -49,7 +62,7 @@ fn check(app: &AppHandle) {
         return;
     }
     let Some(remote) = git(&root, &["rev-parse", "FETCH_HEAD"]) else { return };
-    if remote == env!("ALTER_BUILD_COMMIT") {
+    if remote == installed_commit() {
         return;
     }
     if READY.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|(c, _)| *c == remote) {
@@ -93,28 +106,29 @@ fn window_shown(app: &AppHandle) -> bool {
 
 pub fn install_on_exit() {
     let ready = READY.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    if let Some((_, path)) = ready {
-        write_swap(&path, None);
+    if let Some((head, path)) = ready {
+        write_swap(&path, &head, None);
     }
 }
 
-fn swap(app: &AppHandle, new_app: &std::path::Path) {
+fn swap(app: &AppHandle, new_app: &std::path::Path, head: &str) {
     let open = if window_shown(app) { "open" } else { "open -g" };
     let extra = if window_shown(app) { "" } else { " --args --background" };
-    if write_swap(new_app, Some(format!("{open} '{{d}}'{extra}"))) {
+    if write_swap(new_app, head, Some(format!("{open} '{{d}}'{extra}"))) {
         app.exit(0);
     }
 }
 
-fn write_swap(new_app: &std::path::Path, reopen: Option<String>) -> bool {
+fn write_swap(new_app: &std::path::Path, head: &str, reopen: Option<String>) -> bool {
     let Some(dest) = installed_app() else { return false };
     if SWAPPING.swap(true, Ordering::SeqCst) {
         return false;
     }
     let script = format!(
-        "#!/bin/sh\nwhile kill -0 {pid} 2>/dev/null; do sleep 0.3; done\nrm -rf '{d}.old'\nmv '{d}' '{d}.old' && ditto '{n}' '{d}' && rm -rf '{d}.old' || mv '{d}.old' '{d}'\n{open}\n",
+        "#!/bin/sh\nwhile kill -0 {pid} 2>/dev/null; do sleep 0.3; done\nrm -rf '{d}.old'\nmv '{d}' '{d}.old' && ditto '{n}' '{d}' && echo '{head}' > '{c}' && rm -rf '{d}.old' || {{ rm -rf '{d}'; mv '{d}.old' '{d}'; }}\n{open}\n",
         open = reopen.map(|r| r.replace("{d}", &dest.display().to_string())).unwrap_or_default(),
         pid = std::process::id(),
+        c = installed_path().map(|p| p.display().to_string()).unwrap_or_else(|| "/dev/null".into()),
         d = dest.display(),
         n = new_app.display()
     );
@@ -148,9 +162,9 @@ pub fn start(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(20));
         let ready = READY.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        if let Some((_, path)) = ready {
+        if let Some((head, path)) = ready {
             if !busy(&app) && !window_shown(&app) {
-                swap(&app, &path);
+                swap(&app, &path, &head);
             }
         }
     });
@@ -162,8 +176,8 @@ pub fn update_now(app: AppHandle, _s: State<'_, crate::bridge::BridgeState>) -> 
         return "Auto update works in the installed app, not in npm run dev.".into();
     }
     let ready = READY.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    if let Some((_, path)) = ready {
-        swap(&app, &path);
+    if let Some((head, path)) = ready {
+        swap(&app, &path, &head);
         return "Restarting into the new version.".into();
     }
     let a = app.clone();
