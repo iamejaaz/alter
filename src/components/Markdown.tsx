@@ -34,6 +34,7 @@ export default function Markdown({ text }: { text: string }) {
     root.querySelectorAll("pre code").forEach((block) => {
       const el = block as HTMLElement;
       if (el.dataset.highlighted) return;
+      const given = el.className.match(/language-(\S+)/)?.[1] ?? "";
       hljs.highlightElement(el);
       const pre = el.parentElement;
       if (!pre || pre.parentElement?.classList.contains("code-box")) return;
@@ -42,7 +43,7 @@ export default function Markdown({ text }: { text: string }) {
       const head = document.createElement("div");
       head.className = "flex items-center justify-between px-3 pt-1.5 text-[11px] text-[var(--txt-faint)]";
       const lang = document.createElement("span");
-      lang.textContent = (el.className.match(/language-(\S+)/)?.[1] ?? "").replace(/^plaintext$/, "");
+      lang.textContent = given.replace(/^plaintext$/, "");
       const btn = document.createElement("button");
       btn.textContent = "Copy";
       btn.className = "copy-code rounded px-1.5 py-0.5 hover:bg-[var(--panel-2)] hover:text-[var(--txt)]";
