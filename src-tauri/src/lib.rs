@@ -2517,6 +2517,23 @@ pub fn run() {
         ])
         .setup(|app| {
             children::sweep();
+            #[cfg(unix)]
+            tauri::async_runtime::spawn(async {
+                use tokio::signal::unix::{signal, SignalKind};
+                let (Ok(mut int), Ok(mut term), Ok(mut hup)) =
+                    (signal(SignalKind::interrupt()), signal(SignalKind::terminate()), signal(SignalKind::hangup()))
+                else {
+                    return;
+                };
+                tokio::select! {
+                    _ = int.recv() => {}
+                    _ = term.recv() => {}
+                    _ = hup.recv() => {}
+                }
+                agent_browser::stop_headless();
+                children::kill_all();
+                std::process::exit(0);
+            });
             if !std::env::args().any(|a| a == "--background") {
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.show();
