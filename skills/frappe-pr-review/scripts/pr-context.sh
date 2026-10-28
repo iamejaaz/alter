@@ -6,6 +6,9 @@
 set -uo pipefail
 repo="${1:?owner/repo}"; num="${2:?pr number}"; app="${3:-}"
 here="$(cd "$(dirname "$0")" && pwd)"
+saved="/tmp/pr-context-${repo//\//-}-${num}.txt"
+exec > >(tee "$saved")
+echo "saved to $saved"
 
 echo "=== PR ==="
 gh pr view "$num" -R "$repo" --json number,title,author,state,isDraft,isCrossRepository,baseRefName,headRefName,headRefOid,additions,deletions,changedFiles,labels,body \

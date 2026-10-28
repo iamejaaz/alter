@@ -15,7 +15,7 @@ Inputs: `PR` number, optional `FOCUS`, optional `post` (post the result, don't j
 
 No single pass is trusted on its own. Split the work across agents: one produces findings, another tears them down.
 
-1. **Reviewer pass.** Run the `frappe-pr-review` skill with the PR number and FOCUS — its rubric and maintainer voice are the single source, so do not re-derive them. For a large or multi-area PR, fan out: one reviewer agent per area (server logic, client/UI, schema, tests), each handed the whole skill and told to return findings only — file:line, the ask, and which rubric steps it cleared. Every reviewer agent is read-only: it never posts, dispatches, switches branches, or writes outside its scratchpad.
+1. **Reviewer pass.** Run the `frappe-pr-review` skill with the PR number and FOCUS — its rubric and maintainer voice are the single source, so do not re-derive them. For a large or multi-area PR, fan out: one reviewer agent per area (server logic, client/UI, schema, tests), each handed the whole skill, the saved `pr-context.sh` file and the refs it printed (so none of them fetches the PR again), and told to return findings only — file:line, the ask, and which rubric steps it cleared. Every reviewer agent is read-only: it never posts, dispatches, switches branches, or writes outside its scratchpad.
 
 2. **Verifier pass.** Hand every finding to a *separate* agent that did not produce it. The verifier re-checks each one adversarially against the code as it stands now: it greps the symbol, reads the caller, the parent class, the base method and the test, and actively tries to prove the finding wrong — already handled three lines down, in a superclass, in a `validate` hook, or on a path the input can't reach. It returns CONFIRMED or REJECTED per finding with the one file:line that decides it. A finding the verifier cannot confirm is dropped, not softened.
 
@@ -62,7 +62,28 @@ Checking out the branch is not the test; *using* the feature is. Exercise **ever
 
 Open the browser only when the PR changes something a user sees (JS, Vue, CSS, HTML or Jinja templates, print formats, a doctype JSON's layout, labels or field options) or the maintainer asked for screenshots or a UI test. A backend-only change (Python logic, queries, permissions, patches, an API) is proven without the browser or the review web server: run the PR's own tests, `bench --site <SITE> execute`, or a console script that calls the changed code on develop and on the PR head. Each browser step costs a full turn, so do not open it just to look.
 
-Log in without a password: `bench --site <SITE> browse --user Administrator --sid` prints a raw sid. Open `http://127.0.0.1:<PORT>/app?sid=<sid>` with whatever browser tools this session has: the built-in browser pane or Claude in Chrome on a desktop, Playwright MCP (headless Chromium) on a server. Then walk the feature.
+Drive the desk headless, entirely through Bash. Nothing then asks for permission, and the run never waits on a prompt.
+
+1. **sid** — mint it in-process for that exact site. Don't use `bench browse`: it opens a tab in the user's Brave. From `<BENCH>/sites`, run `../env/bin/python`:
+   ```python
+   import frappe
+   from werkzeug.test import EnvironBuilder
+   from werkzeug.wrappers import Request
+   frappe.init(site="<SITE>", sites_path="."); frappe.connect()
+   frappe.local.request = Request(EnvironBuilder(path="/").get_environ())
+   frappe.local.request_ip = "127.0.0.1"; frappe.local.form_dict = frappe._dict()
+   from frappe.sessions import Session
+   s = Session(user="Administrator", full_name="Administrator", user_type="System User"); frappe.db.commit()
+   print("SID=" + s.sid)
+   ```
+   Check it with `curl -s <BASE>/api/method/frappe.auth.get_logged_user -b "sid=$SID"`. A sid works only on the site it was made for.
+2. **Browser** — Python Playwright: `<BENCH>/env/bin/python`, or `~/.claude/skills/demo-video/.venv/bin/python`. If `launch()` reports that the browser executable is missing, don't download one. Pass `executable_path=` to a Chromium already on disk (`~/Library/Caches/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-mac-arm64/chrome-headless-shell`). Set the cookie for the exact origin you serve on: `ctx.add_cookies([{"name": "sid", "value": SID, "url": BASE}])`. Close the browser in a `finally`.
+3. **Serve the PR's code, then prove it** — a running `bench start` watcher does not reliably rebuild after a `git checkout`, so a stale bundle can be served without any error. Run `bench build --app <app>` (it takes seconds). Then assert in the page, with `page.evaluate`, a string that only the PR's code contains. Do this before trusting any result. For a quick check with no build, inject the changed JS instead: `page.evaluate("(src) => { (0, eval)(src); }", src)`.
+4. **Test data** — create it in the same Python process as the browser: `frappe.init` + `frappe.connect` + `frappe.set_user`, then `insert()` and `frappe.db.commit()`. Don't create it over HTTP. Helpers marked `@whitelist_for_tests` in `frappe.tests.ui_test_helpers` answer 417 over HTTP unless the server runs in test mode, so call them in-process as `inspect.unwrap(helper)(...)`. Use only `example.com` and placeholder names, and delete the data in the `finally`.
+5. **Desk returns 500 on boot** — redis_cache is down. Start it from `config/redis_cache.conf` and shut it down afterwards. Some deletes also need redis_queue.
+6. **Never use the in-app browser pane or Claude in Chrome** for these checks. On any host other than `localhost`, `127.0.0.1`, `*.localhost` or `*.test` (for example a `.local` site), they ask for permission on every action.
+
+Then walk the feature.
 
 - **Walk the whole flow, not one line.** Do what the PR's description and its screenshots/video show a user doing, step by step, and confirm each step produces the right result — the feature *works*, not merely that nothing threw.
 - **Produce the real thing the feature makes, with genuine data.** Don't stop at the control — create the actual record, document, render or output the feature exists to produce, using realistic data, and then *look at it as a user would*: is it correct, does it look right, is the interaction good? UX and visual defects (misalignment, wrong label, awkward step order, a state that reads wrong) only show up on the real output, never in the code. Where a real reference exists (the existing format, the old screen, the documented result), compare against it — parity with the real thing is the bar; a scaffold that merely renders is not done.
