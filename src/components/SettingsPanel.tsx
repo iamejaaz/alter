@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
-import { isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Routine, Settings, Skill, newId } from "../lib/store";
+import { isClaudeCodeUrl, isCodexUrl, isLocalAgentUrl, MemoryItem, Project, PROVIDER_PRESETS, Routine, Settings, Skill, newId } from "../lib/store";
 import { listen } from "@tauri-apps/api/event";
 import { cliInstallTerminal, cliLogin, cliLoginTerminal, cliSetPath, cliStatus, CliStatus, codexCheck, testConnection } from "../lib/api";
 import { IconBlocks, IconBookmark, IconClock, IconFolder, IconLifebuoy, IconPlug, IconPuzzle, IconPullRequest, IconSettings, IconSparkles } from "./Icons";
@@ -772,6 +772,20 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                       )
                     }
                   />
+                  {!editing.isNew && !isCodexUrl(editing.baseUrl) && (
+                    <Row
+                      title="Duplicate connection"
+                      desc="A new connection with the same URL and key, to try another model."
+                      control={
+                        <button
+                          onClick={() => openForm({ ...editing, id: newId(), name: isClaudeCodeUrl(editing.baseUrl) ? editing.name : "" }, true)}
+                          className={action}
+                        >
+                          Duplicate
+                        </button>
+                      }
+                    />
+                  )}
                   {!editing.isNew && conns.length > 1 && (
                     <Row
                       title="Delete connection"
