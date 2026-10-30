@@ -1645,6 +1645,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     if (!activeId) return;
     abortsRef.current[activeId]?.abort();
     setQueued((q) => ({ ...q, [activeId]: [] }));
+    for (const ask of asks[activeId] ?? []) void answerAsk(activeId, ask, { behavior: "deny", message: "The user stopped the turn." });
+    setAsks((a) => ({ ...a, [activeId]: [] }));
   };
 
   // Soft interrupt (Esc / a message typed mid-turn): the turn ends at its next
