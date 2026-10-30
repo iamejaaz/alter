@@ -2962,7 +2962,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                         </div>
                       )}
                       {m.content && (
-                        <div className="rounded-xl bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap [overflow-wrap:anywhere]">
+                        <div className="ml-auto w-fit max-w-full rounded-xl bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap [overflow-wrap:anywhere]">
                           {m.quote && (
                             <div className="mb-2 line-clamp-3 border-l-2 border-[var(--bd)] pl-2.5 text-[12px] text-[var(--txt-dim)]">{m.quote}</div>
                           )}
