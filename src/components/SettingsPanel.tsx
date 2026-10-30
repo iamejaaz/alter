@@ -250,7 +250,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string; fixUrl?: string } | null>(null);
   const [form, setForm] = useState<{ id: string; name: string; baseUrl: string; apiKey: string; model: string; isNew: boolean } | null>(null);
-  useEscapeHold(form !== null);
+  useEscapeHold(form !== null && tab === "connections");
   const [bridge, setBridge] = useState<{ port: number; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [frProfiles, setFrProfiles] = useState<FrProfile[]>([]);
