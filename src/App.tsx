@@ -746,6 +746,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     return c && c.name !== "Default" ? `${c.name} · ${model}` : model || "model";
   };
   // Turn raw provider errors into plain-English guidance.
+  const errText = (e: unknown) => humanizeError(e instanceof Error ? e.message : String(e).replace(/^Error:\s*/, ""));
   const humanizeError = (raw: string): string => {
     if (
       isLocalAgentUrl(settings.baseUrl) &&
@@ -2058,7 +2059,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       updateConversation(id, (c) => ({ ...c, claudeSessionId: undefined, codexThreadId: undefined, lastTokens: undefined, messages: [...c.messages, summaryMessage(summary)] }));
       setConvInfo(id, "");
     } catch (e) {
-      setConvInfo(id, `Compact failed: ${String(e).slice(0, 160)}`);
+      setConvInfo(id, `Compact failed: ${errText(e).slice(0, 200)}`);
     }
   };
 
@@ -2178,7 +2179,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       const realId = await invoke<string>("peer_send", { pid: peer.pid, text, fromName: `Alter · ${title}`, files });
       patch("sent", realId);
     } catch (e) {
-      patch(`failed · ${String(e)}`);
+      patch(`failed · ${errText(e)}`);
     }
   };
   const relayToPeer = async (convId: string, at: number, peer: { pid: number; name: string }, text: string) => {
@@ -2225,7 +2226,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         }
         setReviewErr(null);
       } catch (e) {
-        if (!gone) setReviewErr(String(e));
+        if (!gone) setReviewErr(errText(e));
       }
     };
     void tick();
@@ -2396,7 +2397,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         if (!reply) return stop("Auto reply got an empty answer from Claude Code.");
         await relayToPeer(c.id, at, peer, reply);
       } catch (e) {
-        stop(`Auto reply failed: ${String(e).slice(0, 160)}`);
+        stop(`Auto reply failed: ${errText(e).slice(0, 200)}`);
       }
       return;
     }
@@ -2422,7 +2423,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       updateConversation(c.id, (x) => (x.peer ? { ...x, peer: { ...x.peer, left: left - 1 } } : x));
       await sendToPeer(c.id, peer, reply);
     } catch (e) {
-      stop(`Auto reply failed: ${String(e).slice(0, 160)}`);
+      stop(`Auto reply failed: ${errText(e).slice(0, 200)}`);
     }
   };
   useEffect(() => {
