@@ -3671,7 +3671,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         </div>
       )}
 
-      {showPalette && <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />}
+      {showPalette && (
+        <CommandPalette
+          commands={paletteCommands}
+          onClose={() => {
+            setShowPalette(false);
+            setTimeout(() => composerRef.current?.focus(), 0);
+          }}
+        />
+      )}
 
       <ConfirmHost />
 
