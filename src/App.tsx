@@ -1756,12 +1756,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       });
     } catch {
       await navigator.clipboard.writeText(md);
-      setError("Saved to clipboard (file dialog unavailable).");
+      setInfo("Copied the chat to the clipboard, the save dialog wasn't available.");
       return;
     }
     if (!path) return;
     try {
       await invoke("write_file", { path, content: md });
+      setInfo(`Exported to ${path.split("/").pop()}.`);
     } catch (e) {
       setError(`Couldn't write ${path}: ${humanizeError(String(e))}`);
     }
