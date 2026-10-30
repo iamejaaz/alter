@@ -14,6 +14,7 @@ import Row, { action, field } from "./SettingsRow";
 import ProjectsEditor from "./ProjectsEditor";
 import Switch from "./Switch";
 import { confirmDialog } from "../lib/confirm";
+import { useEscapeHold } from "../lib/escape";
 
 function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   const [status, setStatus] = useState<CliStatus | null>(null);
@@ -249,6 +250,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string; fixUrl?: string } | null>(null);
   const [form, setForm] = useState<{ id: string; name: string; baseUrl: string; apiKey: string; model: string; isNew: boolean } | null>(null);
+  useEscapeHold(form !== null);
   const [bridge, setBridge] = useState<{ port: number; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [frProfiles, setFrProfiles] = useState<FrProfile[]>([]);
@@ -406,7 +408,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

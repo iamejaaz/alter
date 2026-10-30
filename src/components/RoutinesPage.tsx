@@ -4,6 +4,7 @@ import { confirmDialog } from "../lib/confirm";
 import { Chevron } from "./Icons";
 import Switch from "./Switch";
 import Row, { action, field } from "./SettingsRow";
+import { useEscapeHold } from "../lib/escape";
 
 interface Props {
   routines: Routine[];
@@ -46,6 +47,7 @@ export default function RoutinesPage({
   parseRoutine,
 }: Props) {
   const [creating, setCreating] = useState(false);
+  useEscapeHold(creating);
   const [draft, setDraft] = useState<Draft>(emptyDraft(activeConnectionId ?? connections[0]?.id ?? ""));
   const [desc, setDesc] = useState("");
   const [generating, setGenerating] = useState(false);

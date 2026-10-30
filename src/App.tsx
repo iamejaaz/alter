@@ -676,7 +676,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         e.preventDefault();
         setShowPalette((v) => !v);
       }
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !e.defaultPrevented) {
         setPreview(null);
         setShowPalette(false);
         setView("chat");
@@ -944,7 +944,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         const parsed = await parseRoutine(desc);
         if (parsed?.schedule) {
           const label = scheduleLabel({ schedule: parsed.schedule, everyMinutes: 60 } as Routine);
-          if (slash || (await confirmDialog(`Create routine “${parsed.name}” — ${label}?\n\n${parsed.prompt}\n\nCancel to send as a normal message.`))) {
+          if (slash || (await confirmDialog(`Create routine “${parsed.name}” — ${label}?\n\n${parsed.prompt}\n\nCancel to send as a normal message.`, { confirmLabel: "Create routine" }))) {
             addRoutineFromParsed(parsed);
             setInput("");
             setInfo(`Routine created: ${parsed.name} — ${label}.`);

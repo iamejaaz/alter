@@ -4,6 +4,7 @@ import { homeDir, join } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Skill, newId } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
+import { useEscapeHold } from "../lib/escape";
 
 interface Props {
   skills: Skill[];
@@ -37,6 +38,7 @@ export function parseSkillFile(raw: string, fallbackName: string): Found {
 
 export default function SkillsPage({ skills, onChange, onBack, embedded }: Props) {
   const [editing, setEditing] = useState<string | null | "new">(null);
+  useEscapeHold(editing !== null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");

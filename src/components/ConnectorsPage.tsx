@@ -4,6 +4,7 @@ import { Connector, connectorKey, newId } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Row, { action, field } from "./SettingsRow";
 import Switch from "./Switch";
+import { useEscapeHold } from "../lib/escape";
 
 interface Props {
   connectors: Connector[];
@@ -23,6 +24,7 @@ const PRESETS: { name: string; c: Omit<Connector, "id" | "enabled"> }[] = [
 
 export default function ConnectorsPage({ connectors, onChange, browserOn, onBrowser }: Props) {
   const [editing, setEditing] = useState<Connector | null>(null);
+  useEscapeHold(editing !== null);
   const [claude, setClaude] = useState<{ name: string; what: string }[]>([]);
   useEffect(() => {
     void invoke<{ name: string; what: string }[]>("claude_mcp_servers").then(setClaude).catch(() => {});

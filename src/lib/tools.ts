@@ -279,7 +279,7 @@ export async function executeTool(
   mode: "auto" | "ask" | "plan" | "chat" = "auto",
   approve?: (tool: string, input: Record<string, unknown>, description: string) => Promise<boolean>
 ): Promise<string> {
-  const ask = approve ?? ((tool: string, input: Record<string, unknown>, description: string) => confirmDialog(`Alter wants to use ${tool}:\n${description || JSON.stringify(input, null, 2)}\n\nAllow?`));
+  const ask = approve ?? ((tool: string, input: Record<string, unknown>, description: string) => confirmDialog(`Alter wants to use ${tool}:\n${description || JSON.stringify(input, null, 2)}\n\nAllow?`, { confirmLabel: "Allow", destructive: false }));
   if (name === "run_command" && !(mode === "auto" && !riskyCommand(String(args.command ?? "")))) {
     const ok = await ask("Bash", { command: String(args.command ?? "") }, args.cwd ? `in ${String(args.cwd)}` : "");
     if (!ok) return "User denied this command.";
