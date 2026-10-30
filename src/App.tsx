@@ -2791,6 +2791,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           onScroll={() => {
             const el = scrollRef.current;
             if (!el) return;
+            if (selMenu) setSelMenu(null);
             const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
             atBottomRef.current = gap < 120;
             setFarFromBottom(gap > 400);
