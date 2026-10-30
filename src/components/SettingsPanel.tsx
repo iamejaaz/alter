@@ -64,6 +64,7 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
     }
   };
   const [installing, setInstalling] = useState<string | null>(null);
+  const [openingInstall, setOpeningInstall] = useState(false);
   const locate = async () => {
     setProblem(null);
     const picked = await open({
@@ -90,16 +91,20 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
             <button
               onClick={async () => {
                 setProblem(null);
+                setOpeningInstall(true);
                 try {
                   const cmd = await cliInstallTerminal(kind);
                   setInstalling(cmd);
                 } catch (e) {
                   setProblem(e instanceof Error ? e.message : String(e));
+                } finally {
+                  setOpeningInstall(false);
                 }
               }}
-              className={`${action} border-[var(--txt-dim)] bg-[var(--panel-2)]`}
+              disabled={openingInstall}
+              className={`${action} border-[var(--txt-dim)] bg-[var(--panel-2)] disabled:opacity-60`}
             >
-              Install
+              {openingInstall ? "Opening Terminal…" : "Install"}
             </button>
             <button onClick={() => void locate()} className={action}>
               Locate…
@@ -278,6 +283,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [memoryImport, setMemoryImport] = useState(false);
   const [browserNote, setBrowserNote] = useState<string | null>(null);
+  const [openingBrowser, setOpeningBrowser] = useState(false);
   const [browserApp, setBrowserApp] = useState<string | null>(null);
   const [version, setVersion] = useState<{ root: string; head: string } | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -559,7 +565,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   desc={
                     <>
                       A {browserApp ?? "Chrome"} window Alter's agents can drive, with its own profile that stays signed in. It uses Playwright's Chromium, separate from your own browser. Sign in to a site there once, then ask a chat to work on it. Agents never type passwords.
-                      {browserNote && <span className="mt-1 block text-[var(--txt-dim)]">{browserNote}</span>}
+                      {browserNote && <span className="mt-1 block text-red-400">{browserNote}</span>}
                     </>
                   }
                   control={
@@ -568,15 +574,19 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                         <button
                           onClick={async () => {
                             setBrowserNote(null);
+                            setOpeningBrowser(true);
                             try {
                               await invoke("agent_browser_open");
                             } catch (e) {
                               setBrowserNote(String(e));
+                            } finally {
+                              setOpeningBrowser(false);
                             }
                           }}
-                          className={action}
+                          disabled={openingBrowser}
+                          className={`${action} disabled:opacity-60`}
                         >
-                          Open browser
+                          {openingBrowser ? "Opening…" : "Open browser"}
                         </button>
                       )}
                       <Switch on={draft.agentBrowser !== false} onChange={() => setDraft({ ...draft, agentBrowser: draft.agentBrowser === false })} />
