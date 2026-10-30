@@ -836,8 +836,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       return "This Gemini model needs a special tool-call format Alter can't send. Reload the app — Gemini now runs tool-free (still reads images and writes code), or use a non-Gemini connection for file/web tools.";
     if (/image input|support image|no endpoints.*image/i.test(raw))
       return "This model can't read images — it's text-only. Switch to a vision model (e.g. google/gemma-4-31b-it:free or minimax/minimax-m3:free), then resend.";
-    if (/\b429\b|rate.?limit|temporarily|overloaded|upstream|shared_pool/i.test(raw))
-      return "The model is rate-limited right now. Try again in a moment, switch to another connection, or add your own OpenRouter key for higher limits.";
+    if (/\b429\b|rate.?limit|shared_pool/i.test(raw))
+      return `${connLabel(settings)} is rate-limited right now. Try again in a moment, or switch to another connection below.${/openrouter/i.test(settings.baseUrl) ? " Your own OpenRouter key gets higher limits." : ""}`;
+    if (/\b50[234]\b|upstream|overloaded|temporarily|model unavailable/i.test(raw))
+      return `${connLabel(settings)}'s provider is down or overloaded right now (${raw.match(/\b5\d\d\b/)?.[0] ?? "server error"}). This is on their side. Try again later, or switch to another connection below.`;
     if (/\b401\b|invalid.?api|unauthor|no auth/i.test(raw))
       return "The API key was rejected. Check the key for this connection in Settings.";
     if (/\b404\b/.test(raw))
