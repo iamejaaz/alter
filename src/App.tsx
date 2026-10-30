@@ -1618,7 +1618,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         } else if (!finished) {
           full = "I took several steps but couldn't wrap this up. Try narrowing the question, or attach the specific folder you mean.";
         } else {
-          full = `(The model returned an empty response${lastFinish ? `, finish_reason ${lastFinish}` : ""}.)${lastRaw ? `\n\n<details><summary>Raw response</summary>\n\n\`\`\`\n${lastRaw}\n\`\`\`\n\n</details>` : ""}`;
+          full = `The model sent back an empty reply. Try again, or switch to another model.${lastRaw || lastFinish ? `\n\n<details><summary>Raw response</summary>\n\n\`\`\`\n${lastFinish ? `finish_reason: ${lastFinish}\n` : ""}${lastRaw}\n\`\`\`\n\n</details>` : ""}`;
         }
       }
       if (full.includes("[needs-claude-code]")) {
