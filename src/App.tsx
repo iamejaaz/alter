@@ -688,6 +688,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const draftsRef = useRef<Record<string, { input: string; attachments: Attachment[]; quote: string | null }>>({});
   const liveDraftRef = useRef({ input, attachments, quote });
   liveDraftRef.current = { input, attachments, quote };
+  const paletteWasOpen = useRef(false);
+  useEffect(() => {
+    if (showPalette) paletteWasOpen.current = true;
+    else if (paletteWasOpen.current) {
+      paletteWasOpen.current = false;
+      if (view === "chat") composerRef.current?.focus();
+    }
+  }, [showPalette]);
   const shownChatRef = useRef(activeId);
   const settledRef = useRef(active?.messages.length ?? 0);
   const settledFor = useRef(activeId);
@@ -3689,10 +3697,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       {showPalette && (
         <CommandPalette
           commands={paletteCommands}
-          onClose={() => {
-            setShowPalette(false);
-            setTimeout(() => composerRef.current?.focus(), 0);
-          }}
+          onClose={() => setShowPalette(false)}
         />
       )}
 
