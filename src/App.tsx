@@ -316,6 +316,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     });
   const [info, setInfo] = useState<string | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [editAt, setEditAt] = useState<{ convId: string; idx: number } | null>(null);
   useEffect(() => {
     if (!info) return;
     const t = setTimeout(() => setInfo((cur) => (cur === info ? null : cur)), 6000);
@@ -1009,12 +1010,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       if (!opts?.background) setActiveId(convId);
     }
 
+    const cut = !opts?.text && editAt && editAt.convId === convId ? editAt.idx : null;
+    if (cut !== null) setEditAt(null);
     const userMsg: Message = { role: "user", content: shown, attachments: atts.length ? atts : undefined, quote: q ?? undefined, hidden: opts?.hidden };
-    let priorMessages = opts?.historyOverride ?? conversations.find((c) => c.id === convId)?.messages ?? [];
+    let priorMessages = opts?.historyOverride ?? (conversations.find((c) => c.id === convId)?.messages ?? []).slice(0, cut ?? undefined);
     updateConversation(convId, (c) => ({
       ...c,
       title: c.messages.length === 0 ? opts?.title ?? shown.slice(0, 40) : c.title,
-      messages: [...c.messages, userMsg, { role: "assistant", content: "" }],
+      messages: [...(cut !== null ? c.messages.slice(0, cut) : c.messages), userMsg, { role: "assistant", content: "" }],
     }));
 
     setConvError(convId, null);
@@ -1709,7 +1712,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     if (!active || activeStreaming) return;
     const m = active.messages[idx];
     if (m.role !== "user") return;
-    updateConversation(active.id, (c) => ({ ...c, messages: c.messages.slice(0, idx) }));
+    setEditAt({ convId: active.id, idx });
     setInput(m.content);
     if (m.attachments) setAttachments(m.attachments);
   };
@@ -3105,6 +3108,21 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   title="Dismiss"
                 >
                   ×
+                </button>
+              </div>
+            )}
+            {editAt && editAt.convId === activeId && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1.5 text-[12px] text-[var(--txt-dim)]">
+                <span className="min-w-0 flex-1">Editing an earlier message. Sending it replaces that message and everything after it.</span>
+                <button
+                  onClick={() => {
+                    setEditAt(null);
+                    setInput("");
+                    setAttachments([]);
+                  }}
+                  className="shrink-0 text-[var(--txt-faint)] hover:text-[var(--txt)]"
+                >
+                  Cancel
                 </button>
               </div>
             )}
