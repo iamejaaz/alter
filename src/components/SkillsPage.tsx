@@ -53,8 +53,10 @@ export default function SkillsPage({ skills, onChange, onBack, embedded }: Props
     return fresh.length;
   };
 
+  const [scanning, setScanning] = useState(false);
   const scanClaudeCode = async () => {
     setNote(null);
+    setScanning(true);
     try {
       const dir = await join(await homeDir(), ".claude", "skills");
       const entries = await invoke<string[]>("list_dir", { path: dir });
@@ -143,8 +145,8 @@ export default function SkillsPage({ skills, onChange, onBack, embedded }: Props
           {note && <p className={`mt-1 text-[12px] ${/^(Imported|Found)/.test(note) ? "text-[var(--txt-dim)]" : "text-red-400"}`}>{note}</p>}
         </div>
         <div className="flex shrink-0 gap-2">
-          <button onClick={() => void scanClaudeCode()} className={action}>
-            From Claude Code
+          <button onClick={() => void scanClaudeCode().finally(() => setScanning(false))} disabled={scanning} className={`${action} disabled:opacity-60`}>
+            {scanning ? "Looking…" : "From Claude Code"}
           </button>
           <button onClick={() => void importFile()} className={action}>
             From a file
