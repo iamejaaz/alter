@@ -1087,16 +1087,30 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   <p className="py-8 text-center text-[13px] text-[var(--txt-faint)]">Nothing remembered yet. Add one above, import, or tell Alter something in a chat that should stick.</p>
                 )}
                 {memories.map((m) => (
-                  <div key={m.id} className="group flex items-center gap-2 border-b border-[var(--bd-soft)] py-2 last:border-b-0">
-                    <input
+                  <div key={m.id} className="group flex items-start gap-2 border-b border-[var(--bd-soft)] py-2 last:border-b-0">
+                    <textarea
                       defaultValue={m.text}
+                      rows={1}
+                      ref={(el) => {
+                        if (el) el.style.height = `${el.scrollHeight}px`;
+                      }}
+                      onInput={(e) => {
+                        const el = e.currentTarget;
+                        el.style.height = "auto";
+                        el.style.height = `${el.scrollHeight}px`;
+                      }}
                       onBlur={(e) => {
                         const t = e.target.value.trim();
                         if (t && t !== m.text) onEditMemory(m.id, t);
                         else e.target.value = m.text;
                       }}
-                      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                      className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--txt)] focus:outline-none"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          (e.target as HTMLTextAreaElement).blur();
+                        }
+                      }}
+                      className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-[13px] leading-[1.5] text-[var(--txt)] focus:outline-none"
                     />
                     <button
                       onClick={async () => {
