@@ -266,7 +266,7 @@ export default function Sidebar({
             />
           )}
           <span className="min-w-0 flex-1">
-            <span className={`block truncate ${c.unread && c.id !== activeId ? "font-medium text-[var(--txt)]" : ""}`}>
+            <span title={c.title} className={`block truncate ${c.unread && c.id !== activeId ? "font-medium text-[var(--txt)]" : ""}`}>
               {c.pinned && <span className="mr-1.5 text-[var(--txt-faint)]">★</span>}
               {c.title}
             </span>

@@ -2680,7 +2680,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           {folder ? (
             <div className="flex h-[22px] min-w-0 items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 text-xs text-[var(--txt-dim)] max-w-[240px]">
               <IconFolder />
-              <span className="font-mono truncate">{folder.split("/").pop()}</span>
+              <span className="font-mono truncate" title={folder}>{folder.split("/").pop()}</span>
               <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)] px-0.5" title="Detach folder">
                 ×
               </button>
