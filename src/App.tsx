@@ -3072,6 +3072,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     {signingIn ? "Finish in your browser…" : "Sign in"}
                   </button>
                 )}
+                <button
+                  onClick={() => (activeId && convErrors[activeId] ? setConvError(activeId, null) : setError(null))}
+                  className="shrink-0 text-red-300/70 hover:text-red-200"
+                  title="Dismiss"
+                >
+                  ×
+                </button>
               </div>
             )}
             {((activeId && convInfos[activeId]) || info) && (
