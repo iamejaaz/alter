@@ -563,7 +563,7 @@ export default function Sidebar({
         {sections.filter((s) => s.key !== "pinned").map(renderSection)}
         {conversations.length === 0 && <p className="px-2 py-6 text-center text-xs text-[var(--txt-faint)]">No chats yet</p>}
         {conversations.length > 0 && filtered.length === 0 && (
-          <p className="px-2 py-6 text-center text-xs text-[var(--txt-faint)]">No chats match</p>
+          <p className="px-2 py-6 text-center text-xs text-[var(--txt-faint)]">{q ? "No chats match" : "No chats here yet"}</p>
         )}
       </nav>
 
