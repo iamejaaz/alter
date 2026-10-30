@@ -2403,6 +2403,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       .filter(Boolean)
       .join("\n\n");
     const id = newId();
+    const bench = settings.reproBenches?.develop?.trim() || folder || undefined;
     setConversations((prev) => [
       {
         id,
@@ -2412,10 +2413,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         connectionId: settings.activeConnectionId,
         model: settings.model,
         effort: settings.effort,
-        folder: folder ?? undefined,
+        folder: bench,
+        projectId: projects.find((p) => p.folder && bench && p.folder.replace(/\/+$/, "") === bench.replace(/\/+$/, ""))?.id,
       },
       ...prev,
     ]);
+    if (bench) {
+      setFolder(bench);
+      localStorage.setItem("alter.folder", bench);
+    }
     openChat(id);
     void send({
       text: `Above is the PR review server's review of ${r.repo}#${r.pr}, and the attached file has all of it: verdict, findings, the comments, and the steps it ran. When I question a finding, check it against the code on the local bench. Do not post anything to GitHub. Start with your short take: is the verdict right, and what would you check first.`,
