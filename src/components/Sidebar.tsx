@@ -424,9 +424,26 @@ export default function Sidebar({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && query) {
+                e.preventDefault();
+                e.stopPropagation();
+                setQuery("");
+              }
+            }}
             placeholder="Search chats…"
-            className="h-7 w-full rounded-lg bg-[var(--panel)] border border-[var(--bd)] pl-8 pr-2 text-[13px] text-[var(--txt)] placeholder:text-[var(--txt-faint)] focus:outline-none focus:border-[var(--txt-faint)]"
+            className="h-7 w-full rounded-lg bg-[var(--panel)] border border-[var(--bd)] pl-8 pr-7 text-[13px] text-[var(--txt)] placeholder:text-[var(--txt-faint)] focus:outline-none focus:border-[var(--txt-faint)]"
           />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 px-1 text-[var(--txt-faint)] hover:text-[var(--txt)]"
+              title="Clear search"
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          )}
         </div>
       </div>
 
