@@ -44,8 +44,18 @@ export default function MicButton({ onInterim, onText, stopRef, onStart }: Props
   useEffect(() => {
     if (!menu) return;
     const close = () => setMenu(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setMenu(false);
+    };
     window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKey, true);
+    };
   }, [menu]);
 
   const commit = () => {
