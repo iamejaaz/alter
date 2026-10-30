@@ -55,6 +55,7 @@ function cleanResult(text: string) {
 
 export default function RunPanel({ runId, onClose, onStop }: { runId: string; onClose: () => void; onStop: (id: string) => void }) {
   const [run, setRun] = useState<Run | null>(null);
+  const [stopping, setStopping] = useState(false);
   const [gone, setGone] = useState(false);
   const [stepsOpen, setStepsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -119,8 +120,15 @@ export default function RunPanel({ runId, onClose, onStop }: { runId: string; on
             </span>
             <span className="flex-1" />
             {!run.done && (
-              <button onClick={() => onStop(run.runId)} className={btn}>
-                Stop
+              <button
+                onClick={() => {
+                  setStopping(true);
+                  onStop(run.runId);
+                }}
+                disabled={stopping}
+                className={`${btn} disabled:opacity-60`}
+              >
+                {stopping ? "Stopping…" : "Stop"}
               </button>
             )}
             {result && (
