@@ -2983,7 +2983,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 (queued[activeId] || []).map((q, k) => (
                   <div key={`q${k}`} className="flex justify-end animate-fade-up">
                     <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap text-[var(--txt-dim)] [transform:translateZ(0)]">
-                      <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
+                      <span className="mb-0.5 flex items-center justify-between gap-3 text-[11px] text-[var(--txt-faint)]">
                         Sending at the next step
                         <button
                           type="button"
@@ -3006,7 +3006,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 .map((item) => (
                   <div key={item.id} className="flex justify-end animate-fade-up">
                     <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap text-[var(--txt-dim)] [transform:translateZ(0)]">
-                      <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
+                      <span className="mb-0.5 flex items-center justify-between gap-3 text-[11px] text-[var(--txt-faint)]">
                         {item.at <= Date.now() ? "Sends when this turn finishes" : `Sends ${whenLabel(item.at)}`}
                         {item.peer && <span className="normal-case tracking-normal">→ {item.peer.name}</span>}
                         <span className="flex items-center gap-2.5 normal-case tracking-normal">

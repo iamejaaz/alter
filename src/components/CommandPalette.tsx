@@ -75,7 +75,7 @@ export default function CommandPalette({ commands, onClose }: Props) {
             return (
               <div key={c.id}>
                 {header && (
-                  <p className="px-4 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-[var(--txt-faint)]">
+                  <p className="px-4 pb-1 pt-2 text-[11px] font-medium text-[var(--txt-faint)]">
                     {header}
                   </p>
                 )}
