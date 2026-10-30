@@ -1734,6 +1734,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     if (m.role !== "user") return;
     setEditAt({ convId: active.id, idx });
     setInput(m.content);
+    setTimeout(() => composerRef.current?.focus(), 0);
     if (m.attachments) setAttachments(m.attachments);
   };
 
