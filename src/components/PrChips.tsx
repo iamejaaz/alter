@@ -79,6 +79,7 @@ export default function PrChips({
   const [expanded, setExpanded] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [watch, setWatch] = useState<Record<string, Watch>>(loadWatch);
+  const [mergeErr, setMergeErr] = useState<Record<string, string>>({});
   // The poll reads these, and a stale closure would re-fire a fix that already ran.
   const watchRef = useRef(watch);
   watchRef.current = watch;
@@ -236,14 +237,21 @@ export default function PrChips({
                         setFlag(p.key, { [flag]: e.target.checked });
                         // GitHub owns the merge queue: turning the toggle on hands
                         // it the PR, so Alter never polls to merge.
-                        if (flag === "autoMerge")
-                          void invoke("pr_auto_merge", { pr: p.key, on: e.target.checked }).catch(() => {});
+                        if (flag === "autoMerge") {
+                          const on = e.target.checked;
+                          setMergeErr((m) => ({ ...m, [p.key]: "" }));
+                          void invoke("pr_auto_merge", { pr: p.key, on }).catch((err) => {
+                            setFlag(p.key, { autoMerge: !on });
+                            setMergeErr((m) => ({ ...m, [p.key]: String(err).replace(/^\w*Error:\s*/, "") }));
+                          });
+                        }
                       }}
                       className="h-3.5 w-3.5 shrink-0 accent-indigo-500"
                     />
                     <span className="text-[var(--txt)]">{label}</span>
                   </label>
                 ))}
+                {mergeErr[p.key] && <p className="px-2 pb-1 text-[11px] text-red-400">Auto-merge: {mergeErr[p.key]}</p>}
               </div>
             )}
           </div>
