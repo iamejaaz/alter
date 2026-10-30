@@ -1072,6 +1072,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     updateConversation(convId, (c) => ({
       ...c,
       title: c.messages.length === 0 ? opts?.title ?? shown.slice(0, 40) : c.title,
+      plan: opts?.hidden ? c.plan : undefined,
       messages: [...(cut !== null ? c.messages.slice(0, cut) : c.messages), userMsg, { role: "assistant", content: "" }],
     }));
 
