@@ -21,7 +21,11 @@
     claude_models: () => ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
     claude_mcp_servers: () => [],
     peers_list: () => [],
-    review_runs: () => [],
+    review_runs: (a) => {
+      const runs = JSON.parse(localStorage.getItem("harness.reviews") || "[]");
+      return a.name ? runs.find((r) => r.name === a.name) ?? null : runs;
+    },
+    review_shots: () => [],
     bridge_runs: () => [],
     bridge_info: () => ({ token: "mock-token", port: 8765 }),
     cli_status: (a) => ({ kind: a.kind, installed: true, path: "/usr/local/bin/" + a.kind, signedIn: true, version: "2.1.0", account: "user@example.com" }),
