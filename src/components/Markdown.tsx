@@ -9,6 +9,7 @@ marked.setOptions({ breaks: true, gfm: true });
 
 export default function Markdown({ text }: { text: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const expanded = useRef<Set<number>>(new Set());
 
   const html = useMemo(() => {
     const raw = marked.parse(text, { async: false }) as string;
@@ -31,7 +32,7 @@ export default function Markdown({ text }: { text: string }) {
     } catch {
       /* ignore math errors */
     }
-    root.querySelectorAll("pre code").forEach((block) => {
+    root.querySelectorAll("pre code").forEach((block, idx) => {
       const el = block as HTMLElement;
       if (el.dataset.highlighted) return;
       const given = el.className.match(/language-(\S+)/)?.[1] ?? "";
@@ -55,21 +56,19 @@ export default function Markdown({ text }: { text: string }) {
       head.append(lang, btn);
       pre.replaceWith(box);
       box.append(head, pre);
-      pre.className = "!my-0 !rounded-none !bg-transparent !pt-1 whitespace-pre-wrap [overflow-wrap:anywhere] max-h-80 !overflow-hidden";
-      requestAnimationFrame(() => {
-        if (pre.scrollHeight <= pre.clientHeight + 4) {
-          pre.classList.remove("max-h-80");
-          return;
-        }
-        const more = document.createElement("button");
-        more.className = "w-full border-t border-[var(--bd)] py-1 text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]";
-        more.textContent = "Show more";
-        more.onclick = () => {
-          const open = pre.classList.toggle("max-h-80");
-          more.textContent = open ? "Show more" : "Show less";
-        };
-        box.append(more);
-      });
+      const isOpen = expanded.current.has(idx);
+      pre.className = `!my-0 !rounded-none !bg-transparent !pt-1 whitespace-pre-wrap [overflow-wrap:anywhere] !overflow-hidden ${isOpen ? "" : "max-h-80"}`;
+      const more = document.createElement("button");
+      more.className = "w-full border-t border-[var(--bd)] py-1 text-[11px] text-[var(--txt-dim)] hover:text-[var(--txt)]";
+      more.textContent = isOpen ? "Show less" : "Show more";
+      more.onclick = () => {
+        const collapsed = pre.classList.toggle("max-h-80");
+        if (collapsed) expanded.current.delete(idx);
+        else expanded.current.add(idx);
+        more.textContent = collapsed ? "Show more" : "Show less";
+      };
+      if (isOpen || pre.scrollHeight > pre.clientHeight + 4) box.append(more);
+      else pre.classList.remove("max-h-80");
     });
   }, [html]);
 
