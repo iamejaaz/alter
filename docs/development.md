@@ -73,6 +73,17 @@ npx vite build                     # when you touched Tailwind classes or import
 
 Then check the change itself in the running app when it is something a user sees or a regression someone reported. Say plainly what you did not check.
 
+### UI harness
+
+To see and click through a UI change without building the app, run the real front end in a browser with the Rust backend replaced by a stand-in (`scripts/ui-harness/mock.js`):
+
+```sh
+npm run ui-harness         # example chats and settings from scripts/ui-harness/sample
+npm run ui-harness:mine    # your own chats and settings, API keys replaced (exported to scripts/ui-harness/data, git ignored)
+```
+
+Open http://localhost:5174. Everything that renders from chats and settings works: the sidebar, messages, code blocks, the composer, Settings and its forms, dialogs and keyboard handling. Sending a message, streaming, and anything else that needs the backend does nothing. When a screen calls a command the stand-in doesn't know, it gets `null`; add an answer to `answers` in `mock.js` if the screen needs one. It runs in Chromium, so check WebKit-only behaviour (text selection painting, for example) in the real app.
+
 Testing the `claude` CLI from a shell inside the Claude desktop app is misleading: that shell carries the desktop app's own auth variables. Use a clean environment, the way Alter launches it:
 
 ```sh

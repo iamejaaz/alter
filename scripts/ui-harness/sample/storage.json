@@ -1,0 +1,6 @@
+{
+ "alter.settings": "{\"baseUrl\": \"https://api.example.com/v1\", \"apiKey\": \"sk-harness\", \"model\": \"example-model\", \"mode\": \"auto\", \"connections\": [{\"id\": \"conn-cc\", \"name\": \"Claude Code\", \"baseUrl\": \"claude-code://local\", \"apiKey\": \"\", \"model\": \"claude-code\"}, {\"id\": \"conn-api\", \"name\": \"Example API\", \"baseUrl\": \"https://api.example.com/v1\", \"apiKey\": \"sk-harness\", \"model\": \"example-model\"}], \"activeConnectionId\": \"conn-api\"}",
+ "alter.projects": "[{\"id\": \"proj-1\", \"name\": \"Demo\", \"folder\": \"/Users/example/projects/demo\"}]",
+ "alter.routines": "[]",
+ "alter.scheduled": "[]"
+}
