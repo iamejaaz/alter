@@ -103,6 +103,8 @@ Each of these comes from a bug that already happened.
 **Updates and restarts**
 - Never restart or relaunch the app while its window is open. Never bring the window to the front unless the user asked.
 - Compare versions against `installed-commit` on disk, not only the compile time stamp; a stale stamp once caused a restart every 10 minutes.
+- Working from a chat inside Alter: never quit, restart, rebuild into or swap `/Applications/Alter.app`, and never kill Alter processes. Your own turn runs inside that app, so stopping it kills you mid task and the user sees a loop. Commit, push, and tell the user to click Settings, General, Update.
+- Update in Settings installs right after the build, waiting only for running chats; the 10 minute check waits for the window to close.
 
 **Chats and storage**
 - Never save an empty chat list over real chats (a hot reload once did). Keep the "skip the first empty save" guard and the fallback to the legacy `conversations.json`.

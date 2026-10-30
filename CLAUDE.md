@@ -3,6 +3,7 @@
 Tauri 2 desktop chat app (Rust in `src-tauri/`, React in `src/`) with an MV3 extension in `extension/`. Read [docs/development.md](docs/development.md) before changing anything: repo map, how a chat turn flows, where state lives, how to run, check and ship, and the rules.
 
 The short version:
+- Working from a chat inside Alter: never quit, restart, rebuild into or swap `/Applications/Alter.app`, and never kill Alter processes. Your own turn runs inside that app, so stopping it kills you mid task and the user sees a loop. Commit, push, and tell the user to click Settings, General, Update.
 - Check with `npx tsc --noEmit -p .` and `(cd src-tauri && cargo check)` before committing.
 - Commit to `master` and push at once; every push is an update for the installed app. Conventional Commits, one line, no attribution, one fix per commit, never force push.
 - Every long lived process goes through `own_group` and `children::track`. Never restart the app under an open window.
