@@ -15,6 +15,7 @@ export default function BrowserPane({ onClose }: { onClose: () => void }) {
   const [shot, setShot] = useState<Shot | null>(null);
   const [state, setState] = useState<"loading" | "live" | "off" | "error">("loading");
   const [error, setError] = useState("");
+  const [actError, setActError] = useState("");
   const [address, setAddress] = useState("");
   const [editing, setEditing] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -55,8 +56,9 @@ export default function BrowserPane({ onClose }: { onClose: () => void }) {
   const act = async (cmd: string, args: Record<string, unknown> = {}) => {
     try {
       await invoke(cmd, args);
+      setActError("");
     } catch (e) {
-      setError(String(e));
+      setActError(String(e).replace(/^Error:\s*/, ""));
     }
     setTimeout(() => void refresh(), 150);
   };
@@ -173,8 +175,8 @@ export default function BrowserPane({ onClose }: { onClose: () => void }) {
         )}
         {state === "error" && <p className="p-6 text-center text-[13px] text-red-400">{error}</p>}
       </div>
-      <p className="shrink-0 border-t border-[var(--bd-soft)] px-3 py-1.5 text-[11px] text-[var(--txt-faint)]">
-        {state === "live" ? "Click to interact. Click the page first, then type. Sign in here yourself; agents never type passwords." : "Live view of the agent browser."}
+      <p className={`shrink-0 border-t border-[var(--bd-soft)] px-3 py-1.5 text-[11px] ${actError ? "text-red-400" : "text-[var(--txt-faint)]"}`}>
+        {actError || (state === "live" ? "Click to interact. Click the page first, then type. Sign in here yourself; agents never type passwords." : "Live view of the agent browser.")}
       </p>
     </aside>
   );
