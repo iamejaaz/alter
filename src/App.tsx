@@ -2872,14 +2872,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                       <div className="flex justify-end gap-3 select-none">
                         <button
                           onClick={() => branchFrom(i)}
-                          className="mt-1 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="mt-1 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                           title="Fork a new chat from here (keeps this one)"
                         >
                           Branch
                         </button>
                         <button
                           onClick={() => editMessage(i)}
-                          className="mt-1 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="mt-1 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                           title="Edit this message (replaces the rest of this chat)"
                         >
                           Edit
