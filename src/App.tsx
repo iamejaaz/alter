@@ -84,7 +84,7 @@ function groupMessages(messages: Message[], streaming = false): RenderItem[] {
       return;
     }
     if (m.role === "user") steps = [];
-    if (m.role === "assistant" && !m.content && !m.peer && !m.handoff && i < messages.length - 1) return;
+    if (m.role === "assistant" && !m.content && !m.peer && !m.handoff && i < messages.length - 1 && messages[i + 1]?.role !== "user") return;
     const last = items[items.length - 1];
     if (plainReply(m) && last && last.kind === "msg" && plainReply(last.m)) {
       last.m = { ...last.m, content: [last.m.content, m.content].filter(Boolean).join("\n\n") };
