@@ -1446,7 +1446,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   }, { once: true });
                 });
                 setConvInfo(convId, "");
-                if (controller.signal.aborted) throw e;
+                if (controller.signal.aborted) throw new DOMException("Stopped", "AbortError");
               }
             }
             lastFinish = result.finishReason;
