@@ -3524,7 +3524,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                       ? c.apiKey ? "Claude Code · API" : "Claude Code"
                       : isCodexUrl(c.baseUrl)
                         ? c.model && c.model !== "codex" ? `Codex · ${c.model}` : "Codex"
-                        : c.name === "Default"
+                        : c.name === "Default" || c.name === c.model || c.name.endsWith(`/${short}`)
                           ? short
                           : `${c.name} · ${short}`;
                     return { value: c.id, label: label ?? "" };
