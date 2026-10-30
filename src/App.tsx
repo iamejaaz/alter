@@ -3401,7 +3401,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     </button>
                   ))}
                   {!peerMatches.length && (
-                    <p className="px-3 py-2 text-[13px] text-[var(--txt-faint)]">No running Claude Code session matches.</p>
+                    <p className="px-3 py-2 text-[13px] text-[var(--txt-faint)]">
+                      {peers.length ? "No running Claude Code session matches that name." : "No Claude Code sessions are running. Start one in Claude Code, then pick it here."}
+                    </p>
                   )}
                 </div>
               )}
