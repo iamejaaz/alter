@@ -685,6 +685,26 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  const draftsRef = useRef<Record<string, { input: string; attachments: Attachment[]; quote: string | null }>>({});
+  const liveDraftRef = useRef({ input, attachments, quote });
+  liveDraftRef.current = { input, attachments, quote };
+  const shownChatRef = useRef(activeId);
+  useLayoutEffect(() => {
+    const prev = shownChatRef.current ?? "new";
+    const next = activeId ?? "new";
+    if (prev === next) return;
+    shownChatRef.current = activeId;
+    draftsRef.current[prev] = liveDraftRef.current;
+    const saved = draftsRef.current[next];
+    delete draftsRef.current[next];
+    setInput(saved?.input ?? "");
+    setAttachments(saved?.attachments ?? []);
+    setQuote(saved?.quote ?? null);
+    setSelMenu(null);
+    atBottomRef.current = true;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activeId]);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
@@ -1730,11 +1750,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       connectionId: active.connectionId,
       model: active.model,
       effort: active.effort,
+      projectId: active.projectId,
+      folder: active.folder,
     };
+    draftsRef.current[conv.id] = { input: m.content, attachments: m.attachments ?? [], quote: null };
     setConversations((prev) => [conv, ...prev]);
     setActiveId(conv.id);
-    setInput(m.content);
-    if (m.attachments) setAttachments(m.attachments);
   };
 
   const conversationMarkdown = (c: Conversation) =>
