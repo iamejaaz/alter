@@ -66,7 +66,7 @@ function ToolSteps({ lines, live }: { lines: string[]; live: boolean }) {
   );
 }
 
-type RenderItem = { kind: "tools"; lines: string[]; key: string } | { kind: "msg"; m: Message; i: number };
+type RenderItem = { kind: "tools"; lines: string[]; key: string } | { kind: "msg"; m: Message; i: number } | { kind: "stopped"; key: string };
 
 const plainReply = (m: Message) => m.role === "assistant" && !m.peer && !m.handoff && !m.summary && !m.needsClaudeCode && !m.sentTo;
 
@@ -76,7 +76,22 @@ function groupMessages(messages: Message[], streaming = false): RenderItem[] {
   const items: RenderItem[] = [];
   let steps: string[] = [];
   let stepsKey = "";
+  let waiting: number | null = null;
+  let worked = false;
+  const closeTurn = () => {
+    if (waiting !== null && worked) items.push({ kind: "stopped", key: `s${waiting}` });
+    waiting = null;
+    worked = false;
+  };
   messages.forEach((m, i) => {
+    if (m.role === "user" && !m.peer) {
+      closeTurn();
+      if (!m.hidden) waiting = i;
+    } else if (m.role === "assistant" && (m.content || m.peer || m.handoff)) {
+      waiting = null;
+    } else if (m.role === "tool" || m.role === "assistant") {
+      worked = true;
+    }
     if (m.hidden) return;
     if (m.role === "tool" && !m.handoff) {
       if (!steps.length) stepsKey = `t${i}`;
@@ -84,7 +99,7 @@ function groupMessages(messages: Message[], streaming = false): RenderItem[] {
       return;
     }
     if (m.role === "user") steps = [];
-    if (m.role === "assistant" && !m.content && !m.peer && !m.handoff && i < messages.length - 1 && messages[i + 1]?.role !== "user") return;
+    if (m.role === "assistant" && !m.content && !m.peer && !m.handoff && i < messages.length - 1) return;
     const last = items[items.length - 1];
     if (plainReply(m) && last && last.kind === "msg" && plainReply(last.m)) {
       last.m = { ...last.m, content: [last.m.content, m.content].filter(Boolean).join("\n\n") };
@@ -93,6 +108,7 @@ function groupMessages(messages: Message[], streaming = false): RenderItem[] {
     }
     items.push({ kind: "msg", m, i });
   });
+  if (!streaming) closeTurn();
   if (streaming && steps.length) items.push({ kind: "tools", lines: steps, key: stepsKey });
   return items;
 }
@@ -2897,6 +2913,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               {renderItems.map((item) =>
                 item.kind === "tools" ? (
                   <ToolSteps key={item.key} lines={item.lines} live />
+                ) : item.kind === "stopped" ? (
+                  <p key={item.key} className="text-xs text-[var(--txt-faint)]">No reply</p>
                 ) : ((m, i) =>
                   m.handoff ? (
                   <div key={i} className={`flex justify-center ${fadeIn(i)}`}>
@@ -2997,7 +3015,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                           )}
                         </div>
                       ) : (
-                        <span className="block py-1 text-xs text-[var(--txt-faint)]">Stopped</span>
+                        <span className="block py-1" />
                       )}
                       {m.content && (
                         <>
