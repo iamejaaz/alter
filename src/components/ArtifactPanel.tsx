@@ -6,6 +6,7 @@ export interface Artifact {
 }
 
 export default function ArtifactPanel({ artifact, onClose }: { artifact: Artifact; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
   const [view, setView] = useState<"preview" | "code">("preview");
 
   const srcDoc =
@@ -31,10 +32,15 @@ export default function ArtifactPanel({ artifact, onClose }: { artifact: Artifac
           ))}
         </div>
         <button
-          onClick={() => navigator.clipboard.writeText(artifact.code)}
+          onClick={() =>
+            navigator.clipboard.writeText(artifact.code).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            })
+          }
           className="rounded-lg hover:bg-[var(--panel-2)] px-2.5 py-1.5 text-xs text-[var(--txt-dim)] transition-colors"
         >
-          Copy
+          {copied ? "Copied" : "Copy"}
         </button>
         <button
           onClick={onClose}
