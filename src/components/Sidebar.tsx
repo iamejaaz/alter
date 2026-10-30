@@ -153,6 +153,14 @@ export default function Sidebar({
   const scoped = activeProjectId
     ? conversations.filter((c) => c.projectId === activeProjectId)
     : conversations;
+  const snippet = (c: Conversation) => {
+    for (const m of c.messages) {
+      const text = (m.content ?? "").replace(/\s+/g, " ");
+      const at = text.toLowerCase().indexOf(q);
+      if (at >= 0) return (at > 20 ? "…" : "") + text.slice(Math.max(0, at - 20), at + q.length + 60);
+    }
+    return "";
+  };
   const matched = q
     ? scoped.filter(
         (c) =>
@@ -286,6 +294,9 @@ export default function Sidebar({
               {c.pinned && <span className="mr-1.5 text-[var(--txt-faint)]">★</span>}
               {c.title}
             </span>
+            {q && !c.title.toLowerCase().includes(q) && (
+              <span className="block truncate pb-0.5 text-[11px] leading-tight text-[var(--txt-faint)]">{snippet(c)}</span>
+            )}
             {longJob(c.id) && (
               <span className="block truncate pb-0.5 text-[11px] leading-tight text-[var(--txt-faint)]" title={jobs[c.id].step}>
                 {jobs[c.id].step || "Thinking"} · {since(jobs[c.id].since)}
