@@ -125,6 +125,17 @@ export default function Sidebar({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; up: boolean; moving: boolean } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setMenu(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [menu]);
   const menuItem =
     "flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--panel-2)]";
   const startRename = (c: Conversation) => {
