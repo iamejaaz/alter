@@ -2884,7 +2884,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                         </div>
                       )}
                       {m.content && (
-                        <div className="rounded-xl bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap">
+                        <div className="rounded-xl bg-[var(--user-bubble)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap [overflow-wrap:anywhere]">
                           {m.quote && (
                             <div className="mb-2 line-clamp-3 border-l-2 border-[var(--bd)] pl-2.5 text-[12px] text-[var(--txt-dim)]">{m.quote}</div>
                           )}
@@ -3064,7 +3064,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             )}
             {((activeId && convErrors[activeId]) || error) && (
               <div className="mb-2 flex items-center gap-2 rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-xs text-red-300">
-                <span className="min-w-0 flex-1">{(activeId && convErrors[activeId]) || error}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{(activeId && convErrors[activeId]) || error}</span>
                 {activeId && (
                   <ResumeButton
                     convId={activeId}
