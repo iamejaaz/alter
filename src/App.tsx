@@ -3387,18 +3387,21 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </div>
               )}
               {slashMatches.length > 0 && (
-                <div className="mx-2 mt-2 rounded-xl border border-[var(--bd)] bg-[var(--modal)] shadow-xl overflow-hidden">
+                <div className="mx-2 mt-2 max-h-72 overflow-y-auto rounded-xl border border-[var(--bd)] bg-[var(--modal)] shadow-xl">
                   {slashMatches.map((c, k) => (
                     <button
                       key={c.cmd}
+                      ref={(el) => {
+                        if (el && k === slashIdx % slashMatches.length) el.scrollIntoView({ block: "nearest" });
+                      }}
                       onMouseEnter={() => setSlashIdx(k)}
                       onClick={() => runSlash(c)}
                       className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
                         k === slashIdx % slashMatches.length ? "bg-[var(--panel-2)]" : "hover:bg-[var(--panel)]"
                       }`}
                     >
-                      <span className="text-sm font-medium text-[var(--txt)] w-24">{c.cmd}</span>
-                      <span className="text-xs text-[var(--txt-dim)]">{c.desc}</span>
+                      <span className="min-w-24 shrink-0 whitespace-nowrap text-sm font-medium text-[var(--txt)]">{c.cmd}</span>
+                      <span className="min-w-0 truncate text-xs text-[var(--txt-dim)]" title={c.desc}>{c.desc}</span>
                     </button>
                   ))}
                 </div>
