@@ -252,6 +252,11 @@ export default function Sidebar({
           ? "bg-[var(--panel-2)] text-[var(--txt)]"
           : "text-[var(--txt-dim)] hover:bg-[var(--panel)] hover:text-[var(--txt)]"
       }`}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && editingId !== c.id && e.target === e.currentTarget) onSelect(c.id);
+      }}
       onClick={() => editingId !== c.id && onSelect(c.id)}
       onDoubleClick={() => startRename(c)}
     >
@@ -433,7 +438,7 @@ export default function Sidebar({
                 {backgroundRuns.some((r) => !r.done) ? `Running now · ${backgroundRuns.filter((r) => !r.done).length}` : "Recent runs"}
               </span>
               {backgroundRuns.some((r) => r.done) && (
-                <button onClick={() => onDismissRun?.()} className="hidden hover:text-[var(--txt)] group-hover:block">
+                <button onClick={() => onDismissRun?.()} className="opacity-0 hover:text-[var(--txt)] group-hover:opacity-100 focus-visible:opacity-100">
                   Clear
                 </button>
               )}
@@ -464,7 +469,7 @@ export default function Sidebar({
                       if (r.done) onDismissRun?.(r.runId);
                       else onStopRun?.(r.runId);
                     }}
-                    className="hidden shrink-0 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] group-hover:block"
+                    className="shrink-0 text-[11px] text-[var(--txt-faint)] opacity-0 hover:text-[var(--txt)] group-hover:opacity-100 focus-visible:opacity-100"
                   >
                     {r.done ? "Remove" : "Stop"}
                   </button>
@@ -544,7 +549,7 @@ export default function Sidebar({
                         e.stopPropagation();
                         onHideReview(r.name);
                       }}
-                      className="ml-1.5 hidden shrink-0 text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] group-hover:block"
+                      className="ml-1.5 shrink-0 text-[11px] text-[var(--txt-faint)] opacity-0 hover:text-[var(--txt)] group-hover:opacity-100 focus-visible:opacity-100"
                       title="Remove from the list"
                     >
                       Remove
