@@ -73,14 +73,17 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
   const [ask, setAsk] = useState("");
   const [asking, setAsking] = useState(false);
   const [askNote, setAskNote] = useState<string | null>(null);
+  const [askFailed, setAskFailed] = useState(false);
   const request = async () => {
     if (!ask.trim() || asking) return;
     setAsking(true);
     setAskNote(null);
+    setAskFailed(false);
     try {
       setAskNote(await onRequest(ask));
       setAsk("");
     } catch (e) {
+      setAskFailed(true);
       setAskNote(e instanceof Error ? e.message : String(e));
     } finally {
       setAsking(false);
@@ -150,7 +153,7 @@ export default function ReviewPanel({ runs, selected, detail, error, onSelect, o
                 {asking ? "Asking…" : "Review"}
               </button>
             </div>
-            <p className="mt-1 text-[11px] text-[var(--txt-faint)]">{askNote || "The server runs a deep review of that PR next, ahead of the automatic ones. Also /review 43513 in any chat."}</p>
+            <p className={`mt-1 text-[11px] ${askFailed ? "text-red-400" : "text-[var(--txt-faint)]"}`}>{askNote || "The server runs a deep review of that PR next, ahead of the automatic ones. Also /review 43513 in any chat."}</p>
           </div>
         )}
 
