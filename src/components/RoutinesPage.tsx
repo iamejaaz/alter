@@ -233,8 +233,9 @@ export default function RoutinesPage({
               <input
                 type="number"
                 min={1}
-                value={draft.everyMinutes}
-                onChange={(e) => setDraft({ ...draft, everyMinutes: Math.max(1, Number(e.target.value)) })}
+                value={draft.everyMinutes || ""}
+                onChange={(e) => setDraft({ ...draft, everyMinutes: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+                onBlur={() => draft.everyMinutes < 1 && setDraft({ ...draft, everyMinutes: 1 })}
                 className={`${field} w-20`}
               />
               <span>minutes</span>
