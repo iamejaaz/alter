@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const PROMPT = `I am moving to another assistant and want to take my context with me. List everything you have stored or learned about me from our past conversations.
 
@@ -43,6 +43,16 @@ interface Props {
 
 export default function MemoryImport({ existing, onImport, onClose }: Props) {
   const [raw, setRaw] = useState("");
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
   const [copied, setCopied] = useState(false);
   const [dropped, setDropped] = useState<string[]>([]);
   const found = useMemo(() => parseMemories(raw, existing), [raw, existing]);
@@ -50,7 +60,7 @@ export default function MemoryImport({ existing, onImport, onClose }: Props) {
   const btn = "rounded-lg border border-[var(--bd)] px-3 py-1.5 text-[13px] text-[var(--txt)] hover:bg-[var(--panel-2)] disabled:opacity-40 transition-colors";
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60" onClick={() => !raw.trim() && onClose()}>
       <div
         className="flex max-h-[85vh] w-[560px] max-w-[92vw] flex-col rounded-xl border border-[var(--bd)] bg-[var(--modal)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
