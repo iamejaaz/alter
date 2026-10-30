@@ -3621,7 +3621,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 )}
                 <SendLater
                   disabled={!input.trim() || attachments.length > 0}
-                  title={attachments.length ? "Attachments cannot be scheduled" : "Send later"}
+                  title={attachments.length ? "Attachments cannot be scheduled" : !input.trim() ? "Type a message, then pick when to send it" : "Send later"}
                   onPick={scheduleSend}
                 />
                 {activeStreaming ? (
