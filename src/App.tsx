@@ -2997,7 +2997,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                           )}
                         </div>
                       ) : (
-                        <span className="block py-1" />
+                        <span className="block py-1 text-xs text-[var(--txt-faint)]">Stopped</span>
                       )}
                       {m.content && (
                         <>
