@@ -315,6 +315,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       return next;
     });
   const [info, setInfo] = useState<string | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   useEffect(() => {
     if (!info) return;
     const t = setTimeout(() => setInfo((cur) => (cur === info ? null : cur)), 6000);
@@ -2926,10 +2927,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                         )}
                         <div className="mt-1.5 flex items-center gap-3 select-none">
                           <button
-                            onClick={() => navigator.clipboard.writeText(m.content)}
-                            className="text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(m.content);
+                              setCopiedIdx(i);
+                              setTimeout(() => setCopiedIdx((cur) => (cur === i ? null : cur)), 1500);
+                            }}
+                            className={`text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] group-hover:opacity-100 focus-visible:opacity-100 transition-opacity ${copiedIdx === i ? "opacity-100" : "opacity-0"}`}
                           >
-                            Copy
+                            {copiedIdx === i ? "Copied" : "Copy"}
                           </button>
                           {extractArtifacts(m.content).map((a, k) => (
                             <button
