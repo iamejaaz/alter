@@ -16,7 +16,7 @@ import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPa
 import RunsPanel from "./components/RunsPanel";
 import ReviewPanel, { live as reviewLive } from "./components/ReviewPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
-import { IconArrowUp, IconChevronRight, IconFolder, IconPaperclip, IconGlobe } from "./components/Icons";
+import { Chevron, IconArrowUp, IconChevronRight, IconFolder, IconPaperclip, IconGlobe } from "./components/Icons";
 
 function extractArtifacts(content: string): ArtifactType[] {
   const arts: ArtifactType[] = [];
@@ -2725,6 +2725,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               row menu or switching the sidebar first. */}
           {active && (
             <div className="relative min-w-0">
+              <span className="invisible block h-[22px] truncate whitespace-nowrap pl-2 pr-5 text-xs leading-[22px]">
+                {projects.find((p) => p.id === active.projectId)?.name ?? "Add to project"}
+              </span>
               <select
                 value={active.projectId ?? ""}
                 onChange={(e) => {
@@ -2732,7 +2735,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   if (v === "__new__") return newProject(active.id);
                   updateConversation(active.id, (c) => ({ ...c, projectId: v || undefined }));
                 }}
-                className="h-[22px] w-full max-w-full cursor-pointer appearance-none truncate rounded-lg bg-transparent hover:bg-[var(--panel-2)] pl-2 pr-5 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)] focus:outline-none transition-colors"
+                className="absolute inset-0 h-[22px] w-full cursor-pointer appearance-none truncate rounded-lg bg-transparent hover:bg-[var(--panel-2)] pl-2 pr-5 text-xs text-[var(--txt-faint)] hover:text-[var(--txt)] focus:outline-none transition-colors"
                 title="Project for this chat"
               >
                 <option value="" className="bg-[var(--modal)]">
@@ -2745,7 +2748,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 ))}
                 <option value="__new__" className="bg-[var(--modal)]">＋ New project…</option>
               </select>
-              <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-[var(--txt-faint)]">▾</span>
+              <Chevron />
             </div>
           )}
           <div className="flex-1" />

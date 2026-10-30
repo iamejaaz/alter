@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Conversation, Project, ReviewRun, Routine } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import Logo from "./Logo";
-import { IconChevronRight, IconClock, IconPlus, IconSearch, IconSettings } from "./Icons";
+import { Chevron, IconChevronRight, IconClock, IconPlus, IconSearch, IconSettings } from "./Icons";
 
 export interface BackgroundRun {
   runId: string;
@@ -407,7 +407,7 @@ export default function Sidebar({
               ))}
               <option value="__new__" className="bg-[var(--modal)]">＋ New project…</option>
             </select>
-            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--txt-faint)]">▾</span>
+            <Chevron />
           </div>
         </div>
         <button
