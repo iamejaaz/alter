@@ -140,7 +140,7 @@ export default function ConnectorsPage({ connectors, onChange, browserOn, onBrow
         <div key={c.id} className="flex items-center gap-4 border-b border-[var(--bd-soft)] py-3.5">
           <button onClick={() => setEditing(c)} className="min-w-0 flex-1 text-left">
             <span className={`block truncate text-[14px] ${c.enabled ? "text-[var(--txt)]" : "text-[var(--txt-dim)]"}`}>{c.name}</span>
-            <span className="mt-0.5 block truncate font-mono text-[12px] text-[var(--txt-faint)]">{what(c)}</span>
+            <span className="mt-0.5 block truncate font-mono text-[12px] text-[var(--txt-faint)]" title={what(c)}>{what(c)}</span>
           </button>
           <Switch on={c.enabled} onChange={() => onChange(connectors.map((x) => (x.id === c.id ? { ...x, enabled: !x.enabled } : x)))} />
         </div>

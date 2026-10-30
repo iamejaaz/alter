@@ -205,7 +205,7 @@ export default function RoutinesPage({
         control={<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Daily ticket digest" className={`${field} w-72`} />}
       />
       <Row title="Instructions" desc="What Alter should do on each run.">
-        <textarea value={draft.prompt} onChange={(e) => setDraft({ ...draft, prompt: e.target.value })} rows={5} className={`${field} resize-none leading-[1.5]`} />
+        <textarea value={draft.prompt} onChange={(e) => setDraft({ ...draft, prompt: e.target.value })} rows={5} placeholder="Summarize my open support tickets and flag anything waiting on me." className={`${field} resize-none leading-[1.5]`} />
       </Row>
       <Row
         title="Schedule"

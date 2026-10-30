@@ -651,7 +651,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                                 <span className="truncate text-[14px] text-[var(--txt)]">{c.name}</span>
                                 {on && <span className="shrink-0 rounded-md bg-[var(--panel-2)] px-1.5 py-px text-[11px] text-[var(--txt-dim)]">Default</span>}
                               </span>
-                              <span className="mt-0.5 block truncate text-[12px] text-[var(--txt-faint)]">
+                              <span className="mt-0.5 block truncate text-[12px] text-[var(--txt-faint)]" title={isLocalAgentUrl(c.baseUrl) ? undefined : `${c.model} · ${c.baseUrl}`}>
                                 {isLocalAgentUrl(c.baseUrl) ? "Runs on this Mac with your plan" : `${c.model || "no model"} · ${c.baseUrl.replace(/^https?:\/\//, "") || "no URL"}`}
                               </span>
                             </span>
@@ -737,6 +737,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                             <input
                               value={editing.model}
                               onChange={(e) => setForm({ ...editing, model: e.target.value })}
+                              placeholder="model name, e.g. openai/gpt-6-luna"
                               list="model-suggestions"
                               className={`${field} w-72 font-mono`}
                             />
@@ -859,7 +860,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   return (
                     <div key={ver} className="flex items-center gap-2">
                       <span className="w-20 shrink-0 text-xs text-[var(--txt-dim)]">{ver}</span>
-                      <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-xs text-[var(--txt-dim)]">
+                      <code className="flex-1 truncate rounded-md bg-[var(--input)] px-2 py-1.5 font-mono text-xs text-[var(--txt-dim)]" title={path || undefined}>
                         {path || "not set"}
                       </code>
                       <button

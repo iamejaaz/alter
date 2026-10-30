@@ -46,7 +46,7 @@ export default function ProjectsEditor({ projects, onChange, initialSelectedId }
           >
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[14px] text-[var(--txt)]">{p.name}</span>
-              <span className="mt-0.5 block truncate font-mono text-[12px] text-[var(--txt-faint)]">
+              <span className="mt-0.5 block truncate font-mono text-[12px] text-[var(--txt-faint)]" title={p.folder}>
                 {p.folder ?? "No folder"}
               </span>
             </span>
