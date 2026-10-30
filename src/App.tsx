@@ -1331,12 +1331,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
         if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
           setConvError(convId, humanizeError(msg));
-          updateConversation(convId, (c) => ({
-            ...c,
-            messages: c.messages.filter(
-              (m, i) => !(i === c.messages.length - 1 && m.role === "assistant" && !m.content)
-            ),
-          }));
+          markFailed(convId, humanizeError(msg));
         }
       } finally {
         setAsks((a) => ({ ...a, [convId!]: [] }));
@@ -1442,7 +1437,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               } catch (e) {
                 const m = e instanceof Error ? e.message : String(e);
                 if (controller.signal.aborted || roundPartial || !isRetryable(m) || attempt >= 4) throw e;
-                setConvInfo(convId, `${connLabel(activeSettings)} hiccuped, retrying (${attempt + 1}/4)…`);
+                setConvInfo(convId, `${connLabel(activeSettings)} didn't answer${m.match(/\b[45]\d\d\b/) ? ` (${m.match(/\b[45]\d\d\b/)![0]})` : ""}. Trying again in ${[2, 5, 15, 30][attempt]}s, attempt ${attempt + 2} of 5…`);
                 await new Promise((r) => setTimeout(r, [2000, 5000, 15000, 30000][attempt]));
                 setConvInfo(convId, "");
               }
@@ -1647,10 +1642,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
       if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
         setError(humanizeError(msg));
-        updateConversation(convId, (c) => ({
-          ...c,
-          messages: c.messages.filter((m, i) => !(i === c.messages.length - 1 && m.role === "assistant" && !m.content)),
-        }));
+        markFailed(convId, humanizeError(msg));
       }
     } finally {
       endStream();
@@ -1784,6 +1776,22 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
 
 
 
+  const markFailed = (cid: string, why: string) =>
+    updateConversation(cid, (c) => {
+      const msgs = c.messages.filter((m, i) => !(i === c.messages.length - 1 && m.role === "assistant" && !m.content));
+      let last = -1;
+      msgs.forEach((m, i) => {
+        if (m.role === "user" && !m.hidden) last = i;
+      });
+      return { ...c, messages: msgs.map((m, i) => (i === last ? { ...m, failed: why } : m)) };
+    });
+  const retryFailed = (idx: number) => {
+    if (!active || activeStreaming) return;
+    const m = active.messages[idx];
+    const before = active.messages.slice(0, idx);
+    updateConversation(active.id, (c) => ({ ...c, messages: c.messages.slice(0, idx) }));
+    void send({ text: m.content, attachments: m.attachments, targetConvId: active.id, historyOverride: before });
+  };
   const editMessage = (idx: number) => {
     if (!active || activeStreaming) return;
     const m = active.messages[idx];
@@ -2964,6 +2972,16 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                       {m.peer && (
                         <p className="mt-1 text-right text-[11px] text-[var(--txt-faint)]">
                           → {m.peer.name}{m.peer.status ? ` · ${m.peer.status}` : ""}
+                        </p>
+                      )}
+                      {m.failed && (
+                        <p className="mt-1 flex justify-end gap-2 text-right text-[11px] text-red-400">
+                          <span className="min-w-0">Failed · {m.failed}</span>
+                          {!activeStreaming && i === active.messages.map((x) => x.role === "user" && !x.hidden).lastIndexOf(true) && (
+                            <button onClick={() => retryFailed(i)} className="shrink-0 underline hover:text-red-300">
+                              Retry
+                            </button>
+                          )}
                         </p>
                       )}
                       <div className="flex justify-end gap-3 select-none">
