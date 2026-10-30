@@ -377,6 +377,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
+  const cwd = active ? active.folder || null : folder;
   const activeStreaming = !!activeId && streamingIds.includes(activeId);
   const renderItems = active ? groupMessages(active.messages, activeStreaming) : [];
   let liveSteps: string[] | null = null;
@@ -455,14 +456,20 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   }, [activeId]);
   // Surface the open PR for the working folder's branch (like Claude Code shows above the input).
   useEffect(() => {
-    if (!folder) {
+    if (!cwd) {
       setPr(null);
       return;
     }
-    void invoke<string>("git_pr", { cwd: folder })
+    void invoke<string>("git_pr", { cwd })
       .then((raw) => setPr(raw ? JSON.parse(raw) : null))
       .catch(() => setPr(null));
-  }, [folder]);
+  }, [cwd]);
+  useEffect(() => {
+    if (!active?.folder) return;
+    setFolder(active.folder);
+    localStorage.setItem("alter.folder", active.folder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
   // Open http(s) links in the default browser, never inside the app webview.
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -967,6 +974,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     title?: string;
     historyOverride?: Message[];
     targetConvId?: string; // internal: drain a queued message into this conversation
+    folder?: string;
     routineId?: string; // a manual "Run now": file the chat under that routine
     background?: boolean;
     parentId?: string;
@@ -1125,6 +1133,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       setConversations((prev) => [conv, ...prev]);
       if (!opts?.background) setActiveId(convId);
     }
+    const workDir = freshConv ? folder : opts?.folder ?? (conversations.find((c) => c.id === convId)?.folder || null);
 
     const cut = !opts?.text && editAt && editAt.convId === convId ? editAt.idx : null;
     if (cut !== null) setEditAt(null);
@@ -1157,8 +1166,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       (projectInstructions
         ? `\n\nProject "${proj!.name}" instructions (treat as authoritative):\n${projectInstructions}`
         : "") +
-      (folder
-        ? `\n\nThe user's attached working folder is: ${folder}\nThis is "this folder" / "this project" / "here". When asked about it, immediately call list_tree on it and read key files (README, package.json, main source) to answer — do not ask the user to confirm the path.`
+      (workDir
+        ? `\n\nThe user's attached working folder is: ${workDir}\nThis is "this folder" / "this project" / "here". When asked about it, immediately call list_tree on it and read key files (README, package.json, main source) to answer — do not ask the user to confirm the path.`
         : "") +
       (sharedMemory
         ? `\n\nShared memory (from the user's ~/.claude/CLAUDE.md — the same facts Claude Code uses; treat as authoritative background):\n${sharedMemory}`
@@ -1310,7 +1319,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           const r = await codexChat(
             ccPrompt,
             ccImages,
-            folder,
+            workDir,
             convId,
             prior,
             settings.model,
@@ -1334,7 +1343,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         const { content, sessionId, costUsd, tokens } = await claudeCodeChat(
           ccPrompt,
           ccImages,
-          folder,
+          workDir,
           convId,
           prior,
           settings.model,
@@ -1584,7 +1593,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             });
           } else if (tc.function.name === "run_command") {
             const here = convsRef.current.find((x) => x.id === convId);
-            if (!args.cwd) args.cwd = here?.folder ?? folder ?? undefined;
+            if (!args.cwd) args.cwd = (here ? here.folder : workDir) || undefined;
             output = await executeTool(tc.function.name, args, mode, approveHere);
           } else if (tc.function.name === "use_skill") {
             const wanted = String(args.name ?? "").toLowerCase();
@@ -1915,6 +1924,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       if (dir) {
         setFolder(dir);
         localStorage.setItem("alter.folder", dir);
+        if (active) updateConversation(active.id, (c) => ({ ...c, folder: dir }));
       }
     } catch {
       setError("Folder picker is only available in the desktop app (npm run dev).");
@@ -1922,6 +1932,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   };
 
   const clearFolder = () => {
+    if (active) return updateConversation(active.id, (c) => ({ ...c, folder: undefined }));
     setFolder(null);
     localStorage.removeItem("alter.folder");
   };
@@ -2115,10 +2126,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const claudeCodeActive = isClaudeCodeUrl(settings.baseUrl);
   const [claudeSkills, setClaudeSkills] = useState<{ name: string; description: string }[]>([]);
   useEffect(() => {
-    invoke<{ name: string; description: string }[]>("list_claude_skills", { cwd: folder })
+    invoke<{ name: string; description: string }[]>("list_claude_skills", { cwd })
       .then(setClaudeSkills)
       .catch(() => setClaudeSkills([]));
-  }, [folder]);
+  }, [cwd]);
   const setEffort = (effort: string) => {
     const e = effort ? (effort as NonNullable<Settings["effort"]>) : undefined;
     const s = { ...settings, effort: e };
@@ -2418,10 +2429,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       },
       ...prev,
     ]);
-    if (bench) {
-      setFolder(bench);
-      localStorage.setItem("alter.folder", bench);
-    }
     openChat(id);
     void send({
       text: `Above is the PR review server's review of ${r.repo}#${r.pr}, and the attached file has all of it: verdict, findings, the comments, and the steps it ran. When I question a finding, check it against the code on the local bench. Do not post anything to GitHub. Start with your short take: is the verdict right, and what would you check first.`,
@@ -2430,6 +2437,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         ...(reviewShots[r.name] ?? []).map((sh) => ({ id: newId(), kind: "image" as const, name: sh.name, dataUrl: sh.dataUrl })),
       ],
       targetConvId: id,
+      folder: bench,
       hidden: true,
     });
   };
@@ -2819,10 +2827,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
             {active && active.messages.length > 0 ? active.title : ""}
           </span>
           {/* Working folder lives here (like Claude Code shows the cwd after the title). */}
-          {folder ? (
+          {cwd ? (
             <div className="flex h-[22px] min-w-0 max-w-[160px] shrink-0 items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 text-xs text-[var(--txt-dim)]">
               <IconFolder />
-              <span className="font-mono truncate" title={folder}>{folder.split("/").pop()}</span>
+              <span className="font-mono truncate" title={cwd}>{cwd.split("/").pop()}</span>
               <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)] px-0.5" title="Detach folder">
                 ×
               </button>
@@ -3060,7 +3068,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                         <>
                           <Markdown text={m.content} />
                           {!(activeStreaming && i === active.messages.length - 1) && (
-                            <MediaStrip text={m.content} base={active.folder ?? folder} onPreview={setPreview} />
+                            <MediaStrip text={m.content} base={active.folder || undefined} onPreview={setPreview} />
                           )}
                           {m.sentTo && (
                             <p className="mt-1 text-[11px] text-[var(--txt-faint)]">
