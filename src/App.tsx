@@ -2955,7 +2955,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               {activeId &&
                 (queued[activeId] || []).map((q, k) => (
                   <div key={`q${k}`} className="flex justify-end animate-fade-up">
-                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--txt-dim)]">
+                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap text-[var(--txt-dim)]">
                       <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
                         Sending at the next step
                         <button
@@ -2978,7 +2978,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 .filter((x) => x.convId === activeId)
                 .map((item) => (
                   <div key={item.id} className="flex justify-end animate-fade-up">
-                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--txt-dim)]">
+                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap text-[var(--txt-dim)]">
                       <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
                         {item.at <= Date.now() ? "Sends when this turn finishes" : `Sends ${whenLabel(item.at)}`}
                         {item.peer && <span className="normal-case tracking-normal">→ {item.peer.name}</span>}
