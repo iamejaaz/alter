@@ -342,22 +342,22 @@ export function describeToolCall(name: string, argsJson: string): string {
     const where = a.path && a.path !== "." ? a.path : "the folder";
     const cut = (t = "", n = 80) => (t.length > n ? t.slice(0, n) + "…" : t);
     switch (name) {
-      case "update_plan": return "Updated the plan";
-      case "ask_user": return "Asked you a question";
-      case "use_skill": return `Used the ${a.name ?? ""} skill`;
-      case "list_dir": return `Listed ${where}`;
-      case "list_tree": return `Looked through ${where}`;
-      case "search_files": return `Searched ${where} for "${cut(a.query ?? a.pattern)}"`;
-      case "web_search": return `Searched the web for "${cut(a.query)}"`;
-      case "fetch_url": return `Read ${cut(a.url)}`;
-      case "browser_open": return `Opened ${cut(a.url)}`;
-      case "browser_click": return `Clicked ${cut(a.text ?? a.selector)}`;
-      case "browser_type": return `Typed into ${cut(a.selector ?? "the page")}`;
-      case "run_command": return `Ran ${cut(a.command)}`;
-      case "which_command": return `Checked for ${a.name ?? a.command ?? "a program"}`;
-      case "read_file": return `Read ${a.path ?? ""}`;
-      case "edit_file": return `Edited ${a.path ?? ""}`;
-      case "write_file": return `Wrote ${a.path ?? ""}`;
+      case "update_plan": return "Updating the plan";
+      case "ask_user": return "Asking you a question";
+      case "use_skill": return `Using the ${a.name ?? ""} skill`;
+      case "list_dir": return `Listing ${where}`;
+      case "list_tree": return `Looking through ${where}`;
+      case "search_files": return `Searching ${where} for "${cut(a.query ?? a.pattern)}"`;
+      case "web_search": return `Searching the web for "${cut(a.query)}"`;
+      case "fetch_url": return `Reading ${cut(a.url)}`;
+      case "browser_open": return `Opening ${cut(a.url)}`;
+      case "browser_click": return `Clicking ${cut(a.text ?? a.selector)}`;
+      case "browser_type": return `Typing into ${cut(a.selector ?? "the page")}`;
+      case "run_command": return `Running ${cut(a.command)}`;
+      case "which_command": return `Checking for ${a.name ?? a.command ?? "a program"}`;
+      case "read_file": return `Reading ${a.path ?? ""}`;
+      case "edit_file": return `Editing ${a.path ?? ""}`;
+      case "write_file": return `Writing ${a.path ?? ""}`;
       default: return a.query ? `${name}("${cut(a.query)}")` : a.url ? `${name}(${a.url})` : `${name}(${a.path ?? ""})`;
     }
   } catch {
