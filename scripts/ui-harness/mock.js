@@ -34,7 +34,89 @@
     pane_snapshot: () => {
       throw "not_running";
     },
+    stream_chat: (a) => fakeModel(a),
+    cancel_chat: (a) => {
+      cancelled.add(a.id);
+      return null;
+    },
+    run_command: (a) => `$ ${a.command}\nok (harness)`,
+    read_file: (a) => `contents of ${a.path} (harness)`,
+    list_dir: () => ["README.md", "src", "package.json"],
+    list_tree: () => "src/\n  App.tsx\n  main.tsx",
+    search_files: () => "src/App.tsx:12: example match",
+    which_command: (a) => `/usr/local/bin/${a.name ?? "tool"}`,
+    write_file: (a) => `wrote ${a.path}`,
   };
+
+  // A scripted model for stream_chat. The last user message picks the scenario:
+  // "demo stream", "demo plan", "demo ask", "demo risky", "demo tools", "demo error", "demo empty".
+  const cancelled = new Set();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const chunk = (delta, finish) => "data: " + JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish ?? null }] });
+  const LONG = [
+    "Here is a longer answer, streamed slowly so the running state can be checked.\n\n",
+    "## What changed\n\n",
+    "- The export button now saves to the folder you picked.\n",
+    "- Long links like https://example.com/a/really/long/path/that/keeps/going/without/spaces wrap.\n\n",
+    "```python\n",
+    ...Array.from({ length: 30 }, (_, i) => `print("line ${i + 1}")\n`),
+    "```\n\n",
+    "| Step | Result |\n| --- | --- |\n| build | passed |\n| tests | passed |\n\n",
+    "**Checked:** the build passes. **Not checked:** the mobile layout.",
+  ];
+  const toolCall = (name, args) => chunk({ tool_calls: [{ index: 0, id: "call_" + name + "_" + Date.now(), type: "function", function: { name, arguments: JSON.stringify(args) } }] });
+  const SCENARIOS = {
+    plan: [
+      { tool: ["update_plan", { items: [{ text: "Read the failing test", status: "done" }, { text: "Fix the date parser", status: "in_progress" }, { text: "Run the tests", status: "pending" }] }] },
+      { tool: ["update_plan", { items: [{ text: "Read the failing test", status: "done" }, { text: "Fix the date parser", status: "done" }, { text: "Run the tests", status: "done" }] }] },
+      { text: ["All three steps are done. The date parser now handles ISO weeks."] },
+    ],
+    ask: [{ tool: ["ask_user", { question: "Which branch should I base the fix on?", options: ["develop", "version-16-hotfix", "version-15-hotfix"] }] }, { text: ["Got it, using that branch."] }],
+    risky: [{ tool: ["run_command", { command: "rm -rf build && git push --force origin main" }] }, { text: ["Done."] }],
+    tools: [
+      { tool: ["list_dir", { path: "." }] },
+      { tool: ["read_file", { path: "README.md" }] },
+      { tool: ["search_files", { pattern: "export", path: "src" }] },
+      { tool: ["run_command", { command: "npm test" }] },
+      { text: ["I listed the folder, read the README, searched for exports and ran the tests. Everything passes."] },
+    ],
+    stream: [{ text: LONG, delay: 180 }],
+    error: "error",
+    empty: [{ text: [] }],
+  };
+  async function fakeModel(a) {
+    const body = JSON.parse(a.body || "{}");
+    const msgs = body.messages || [];
+    const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+    const said = typeof lastUser?.content === "string" ? lastUser.content : (lastUser?.content || []).map((c) => c.text || "").join(" ");
+    const key = (said.match(/demo (\w+)/i) || [])[1]?.toLowerCase();
+    const script = SCENARIOS[key] ?? [{ text: ["This is the UI harness. Type demo stream, demo plan, demo ask, demo risky, demo tools, demo error or demo empty to see a scenario."] }];
+    if (script === "error") {
+      await sleep(600);
+      throw "HTTP 502 — " + JSON.stringify({ error: { message: "upstream unavailable", type: "api_error" } });
+    }
+    const since = msgs.length - 1 - [...msgs].reverse().findIndex((m) => m.role === "user");
+    const step = msgs.slice(since).filter((m) => m.role === "tool").length;
+    const at = script[Math.min(step, script.length - 1)];
+    const ch = callbacks.get(a.onChunk?.id);
+    let index = 0;
+    const send = (line) => ch && ch({ message: line, index: index++ });
+    cancelled.delete(a.id);
+    await sleep(400);
+    if (at.tool) {
+      send(toolCall(at.tool[0], at.tool[1]));
+      send(chunk({}, "tool_calls"));
+    } else {
+      for (const piece of at.text) {
+        if (cancelled.has(a.id)) break;
+        send(chunk({ content: piece }));
+        await sleep(at.delay ?? 60);
+      }
+      send(chunk({}, "stop"));
+    }
+    send("data: [DONE]");
+    return null;
+  }
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
     transformCallback(cb, once) {

@@ -360,6 +360,16 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const activeStreaming = !!activeId && streamingIds.includes(activeId);
+  const renderItems = active ? groupMessages(active.messages, activeStreaming) : [];
+  let liveSteps: string[] | null = null;
+  {
+    const tail = renderItems[renderItems.length - 1];
+    const before = renderItems[renderItems.length - 2];
+    if (tail?.kind === "tools" && before?.kind === "msg" && before.m.role === "assistant" && !before.m.content && before.i === (active?.messages.length ?? 0) - 1) {
+      liveSteps = tail.lines;
+      renderItems.pop();
+    }
+  }
   // The bar above the composer: PRs this chat opened, plus the working folder's
   // own open PR, minus the ones dismissed here. Oldest first, newest by the input.
   const prKeys = (() => {
@@ -2881,7 +2891,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </div>
               )}
             <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
-              {groupMessages(active.messages, activeStreaming).map((item) =>
+              {renderItems.map((item) =>
                 item.kind === "tools" ? (
                   <ToolSteps key={item.key} lines={item.lines} live />
                 ) : ((m, i) =>
@@ -2975,7 +2985,14 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                           )}
                         </>
                       ) : activeStreaming && i === active.messages.length - 1 ? (
-                        <Logo size={16} busy />
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Logo size={16} busy />
+                          {liveSteps && (
+                            <span className="min-w-0 truncate text-xs text-[var(--txt-faint)]">
+                              Step {liveSteps.length} · {liveSteps[liveSteps.length - 1]}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="block py-1" />
                       )}
