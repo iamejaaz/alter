@@ -652,7 +652,9 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                                 {on && <span className="shrink-0 rounded-md bg-[var(--panel-2)] px-1.5 py-px text-[11px] text-[var(--txt-dim)]">Default</span>}
                               </span>
                               <span className="mt-0.5 block truncate text-[12px] text-[var(--txt-faint)]" title={isLocalAgentUrl(c.baseUrl) ? undefined : `${c.model} · ${c.baseUrl}`}>
-                                {isLocalAgentUrl(c.baseUrl) ? "Runs on this Mac with your plan" : `${c.model || "no model"} · ${c.baseUrl.replace(/^https?:\/\//, "") || "no URL"}`}
+                                {isLocalAgentUrl(c.baseUrl)
+                                  ? c.apiKey ? "Runs on this Mac with your API key" : "Runs on this Mac with your plan"
+                                  : [c.name === c.model ? "" : c.model || "no model", c.baseUrl.replace(/^https?:\/\//, "") || "no URL"].filter(Boolean).join(" · ")}
                               </span>
                             </span>
                           </button>
@@ -670,7 +672,17 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     })}
                     <Row title="Add a connection" desc="Start from a provider, or add your own OpenAI compatible endpoint.">
                       <div className="flex flex-wrap gap-2">
-                        {Object.keys(PROVIDER_PRESETS).filter((name) => !QUICK_ADD_HIDDEN.includes(name)).map((name) => (
+                        {Object.keys(PROVIDER_PRESETS)
+                          .filter((name) => !QUICK_ADD_HIDDEN.includes(name))
+                          .filter((name) => {
+                            const have = (c: { baseUrl: string; apiKey: string }) =>
+                              name === "Claude Code (local)" ? isClaudeCodeUrl(c.baseUrl) && !c.apiKey
+                              : name === "Claude Code (API)" ? isClaudeCodeUrl(c.baseUrl) && !!c.apiKey
+                              : name === "Codex (local)" ? isCodexUrl(c.baseUrl)
+                              : false;
+                            return !conns.some(have);
+                          })
+                          .map((name) => (
                           <button key={name} onClick={() => applyPreset(name)} className={action}>
                             {name.replace(/ \(local\)$/, "")}
                           </button>
