@@ -3144,7 +3144,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </div>
               );
             })()}
-            {!!active?.plan?.length && (() => {
+            {!!active?.plan?.length && (streamingIds.includes(active.id) || active.plan.some((p) => p.status !== "done")) && (() => {
               const plan = active.plan;
               const done = plan.filter((p) => p.status === "done").length;
               const now = plan.find((p) => p.status === "in_progress") ?? plan.find((p) => p.status === "pending");
