@@ -1438,8 +1438,15 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 const m = e instanceof Error ? e.message : String(e);
                 if (controller.signal.aborted || roundPartial || !isRetryable(m) || attempt >= 4) throw e;
                 setConvInfo(convId, `${connLabel(activeSettings)} didn't answer${m.match(/\b[45]\d\d\b/) ? ` (${m.match(/\b[45]\d\d\b/)![0]})` : ""}. Trying again in ${[2, 5, 15, 30][attempt]}s, attempt ${attempt + 2} of 5…`);
-                await new Promise((r) => setTimeout(r, [2000, 5000, 15000, 30000][attempt]));
+                await new Promise<void>((r) => {
+                  const t = setTimeout(r, [2000, 5000, 15000, 30000][attempt]);
+                  controller.signal.addEventListener("abort", () => {
+                    clearTimeout(t);
+                    r();
+                  }, { once: true });
+                });
                 setConvInfo(convId, "");
+                if (controller.signal.aborted) throw e;
               }
             }
             lastFinish = result.finishReason;
