@@ -93,6 +93,7 @@ Sending a message on an API connection talks to a scripted model in `mock.js`. T
 | `demo ask` | A question card with options |
 | `demo risky` | A permission card for a risky command (Auto mode still asks) |
 | `demo tools` | Four tool steps, then a reply |
+| `demo offer` | A reply that offers a next step, so a suggested next message shows in the box (Tab accepts it) |
 | `demo error` | A provider outage (HTTP 502) |
 | `demo empty` | An empty model reply |
 
