@@ -708,7 +708,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                   </button>
                   <Row
                     title="Name"
-                    control={<input value={editing.name} placeholder={editing.model || "My connection"} onChange={(e) => setForm({ ...editing, name: e.target.value })} className={`${field} w-72`} />}
+                    control={<input value={editing.name} placeholder={editing.model || "My connection"} onChange={(e) => setForm({ ...editing, name: e.target.value })} className={`${field} w-[26rem] max-w-[50vw]`} />}
                   />
                   {isLocalAgentUrl(editing.baseUrl) ? (
                     <>
@@ -723,7 +723,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                               value={editing.apiKey}
                               onChange={(e) => setForm({ ...editing, apiKey: e.target.value })}
                               placeholder="sk-ant-..."
-                              className={`${field} w-72 font-mono`}
+                              className={`${field} w-[26rem] max-w-[50vw] font-mono`}
                             />
                           }
                         />
@@ -738,7 +738,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                             value={editing.baseUrl}
                             onChange={(e) => setForm({ ...editing, baseUrl: e.target.value })}
                             placeholder="https://api.example.com/v1"
-                            className={`${field} w-72 font-mono`}
+                            className={`${field} w-[26rem] max-w-[50vw] font-mono`}
                           />
                         }
                       />
@@ -751,7 +751,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                               onChange={(e) => setForm({ ...editing, model: e.target.value })}
                               placeholder="model name, e.g. openai/gpt-6-luna"
                               list="model-suggestions"
-                              className={`${field} w-72 font-mono`}
+                              className={`${field} w-[26rem] max-w-[50vw] font-mono`}
                             />
                             <datalist id="model-suggestions">
                               {Object.values(PROVIDER_PRESETS)
@@ -772,7 +772,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                             value={editing.apiKey}
                             onChange={(e) => setForm({ ...editing, apiKey: e.target.value })}
                             placeholder="sk-..."
-                            className={`${field} w-72 font-mono`}
+                            className={`${field} w-[26rem] max-w-[50vw] font-mono`}
                           />
                         }
                       />
