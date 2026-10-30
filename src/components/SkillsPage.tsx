@@ -87,7 +87,7 @@ export default function SkillsPage({ skills, onChange, onBack, embedded }: Props
       add([skill]);
       setNote(`Imported "${skill.name}".`);
     } catch (e) {
-      setNote(`Could not read that file: ${String(e)}`);
+      setNote(`Could not read that file: ${String(e).replace(/^\w*Error:\s*/, "")}`);
     }
   };
 
@@ -140,7 +140,7 @@ export default function SkillsPage({ skills, onChange, onBack, embedded }: Props
           <p className="mt-0.5 text-[13px] leading-snug text-[var(--txt-faint)]">
             Copy the skills Claude Code has on this Mac, or pick a SKILL.md file.
           </p>
-          {note && <p className="mt-1 text-[12px] text-[var(--txt-dim)]">{note}</p>}
+          {note && <p className={`mt-1 text-[12px] ${/^(Imported|Found)/.test(note) ? "text-[var(--txt-dim)]" : "text-red-400"}`}>{note}</p>}
         </div>
         <div className="flex shrink-0 gap-2">
           <button onClick={() => void scanClaudeCode()} className={action}>
