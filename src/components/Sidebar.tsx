@@ -153,9 +153,11 @@ export default function Sidebar({
   const scoped = activeProjectId
     ? conversations.filter((c) => c.projectId === activeProjectId)
     : conversations;
+  const visibleText = (m: Conversation["messages"][number]) =>
+    m.hidden ? "" : (m.content ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
   const snippet = (c: Conversation) => {
     for (const m of c.messages) {
-      const text = (m.content ?? "").replace(/\s+/g, " ");
+      const text = visibleText(m);
       const at = text.toLowerCase().indexOf(q);
       if (at >= 0) return (at > 20 ? "…" : "") + text.slice(Math.max(0, at - 20), at + q.length + 60);
     }
@@ -165,7 +167,7 @@ export default function Sidebar({
     ? scoped.filter(
         (c) =>
           c.title.toLowerCase().includes(q) ||
-          c.messages.some((m) => m.content?.toLowerCase().includes(q))
+          c.messages.some((m) => visibleText(m).toLowerCase().includes(q))
       )
     : scoped;
   const filtered = [...matched].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
