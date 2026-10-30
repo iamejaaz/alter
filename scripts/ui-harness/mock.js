@@ -46,10 +46,11 @@
     search_files: () => "src/App.tsx:12: example match",
     which_command: (a) => `/usr/local/bin/${a.name ?? "tool"}`,
     write_file: (a) => `wrote ${a.path}`,
+    complete_once: (a) => (/\?\s*$/.test(String(a.prompt || "").trim()) ? "Yes, go ahead" : "NONE"),
   };
 
   // A scripted model for stream_chat. The last user message picks the scenario:
-  // "demo stream", "demo plan", "demo ask", "demo risky", "demo tools", "demo error", "demo empty".
+  // "demo stream", "demo plan", "demo ask", "demo risky", "demo tools", "demo offer", "demo error", "demo empty".
   const cancelled = new Set();
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const chunk = (delta, finish) => "data: " + JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish ?? null }] });
@@ -81,6 +82,7 @@
       { text: ["I listed the folder, read the README, searched for exports and ran the tests. Everything passes."] },
     ],
     stream: [{ text: LONG, delay: 180 }],
+    offer: [{ text: ["The login redirect is fixed. I can also add a test for it. Should I add it?"] }],
     error: "error",
     empty: [{ text: [] }],
   };
