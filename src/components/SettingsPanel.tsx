@@ -1071,8 +1071,10 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                       className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--txt)] focus:outline-none"
                     />
                     <button
-                      onClick={() => onDeleteMemory(m.id)}
-                      className="shrink-0 rounded-md px-2 py-0.5 text-[12px] text-[var(--txt-faint)] opacity-0 hover:bg-[var(--panel-2)] hover:text-[var(--txt)] group-hover:opacity-100"
+                      onClick={async () => {
+                        if (await confirmDialog(`Forget "${m.text.length > 80 ? m.text.slice(0, 80) + "…" : m.text}"?`)) onDeleteMemory(m.id);
+                      }}
+                      className="shrink-0 rounded-md px-2 py-0.5 text-[12px] text-[var(--txt-faint)] opacity-0 hover:bg-[var(--panel-2)] hover:text-[var(--txt)] group-hover:opacity-100 focus-visible:opacity-100"
                     >
                       Forget
                     </button>
