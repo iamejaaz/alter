@@ -315,6 +315,11 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       return next;
     });
   const [info, setInfo] = useState<string | null>(null);
+  useEffect(() => {
+    if (!info) return;
+    const t = setTimeout(() => setInfo((cur) => (cur === info ? null : cur)), 6000);
+    return () => clearTimeout(t);
+  }, [info]);
   const [sharedMemory, setSharedMemory] = useState(""); // ~/.claude/CLAUDE.md — shared with Claude Code
   const [pr, setPr] = useState<{ number: number; title: string; url: string } | null>(null);
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem("alter.folder"));
@@ -3086,8 +3091,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 <span className="min-w-0 flex-1">{(activeId && convInfos[activeId]) || info}</span>
                 <button
                   onClick={() => {
-                    if (activeId && convInfos[activeId]) setConvInfo(activeId, null);
-                    else setInfo(null);
+                    if (activeId) setConvInfo(activeId, null);
+                    setInfo(null);
                   }}
                   className="shrink-0 text-[var(--txt-faint)] hover:text-[var(--txt)]"
                   title="Dismiss"
