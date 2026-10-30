@@ -3075,10 +3075,19 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               </div>
             )}
             {((activeId && convInfos[activeId]) || info) && (
-              <p className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-2 text-xs text-[var(--txt-dim)]">
-                <span className="text-indigo-400">↻</span>
-                {(activeId && convInfos[activeId]) || info}
-              </p>
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--bd)] bg-[var(--panel)] px-3 py-2 text-xs text-[var(--txt-dim)]">
+                <span className="min-w-0 flex-1">{(activeId && convInfos[activeId]) || info}</span>
+                <button
+                  onClick={() => {
+                    if (activeId && convInfos[activeId]) setConvInfo(activeId, null);
+                    else setInfo(null);
+                  }}
+                  className="shrink-0 text-[var(--txt-faint)] hover:text-[var(--txt)]"
+                  title="Dismiss"
+                >
+                  ×
+                </button>
+              </div>
             )}
             {quote && (
               <div className="mb-2 flex items-start gap-2 rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-2.5 py-1.5 text-[12px] text-[var(--txt-dim)]">
