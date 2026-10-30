@@ -2719,7 +2719,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           </span>
           {/* Working folder lives here (like Claude Code shows the cwd after the title). */}
           {folder ? (
-            <div className="flex h-[22px] min-w-0 items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 text-xs text-[var(--txt-dim)] max-w-[240px]">
+            <div className="flex h-[22px] min-w-0 max-w-[160px] shrink-0 items-center gap-1.5 rounded-lg bg-[var(--panel)] pl-2 pr-1 text-xs text-[var(--txt-dim)]">
               <IconFolder />
               <span className="font-mono truncate" title={folder}>{folder.split("/").pop()}</span>
               <button onClick={clearFolder} className="text-[var(--txt-faint)] hover:text-[var(--txt)] px-0.5" title="Detach folder">
@@ -2739,7 +2739,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           {/* The chat's own project, so it can be filed without hunting for the
               row menu or switching the sidebar first. */}
           {active && (
-            <div className="relative min-w-0">
+            <div className="relative min-w-0 shrink-0">
               <span className="invisible block h-[22px] truncate whitespace-nowrap pl-2 pr-5 text-xs leading-[22px]">
                 {projects.find((p) => p.id === active.projectId)?.name ?? "Add to project"}
               </span>
