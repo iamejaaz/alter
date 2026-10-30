@@ -22,6 +22,15 @@
    {
     "role": "assistant",
     "content": "A tall block to test collapsing:\n\n```\nline 1: print('hello 1')\nline 2: print('hello 2')\nline 3: print('hello 3')\nline 4: print('hello 4')\nline 5: print('hello 5')\nline 6: print('hello 6')\nline 7: print('hello 7')\nline 8: print('hello 8')\nline 9: print('hello 9')\nline 10: print('hello 10')\nline 11: print('hello 11')\nline 12: print('hello 12')\nline 13: print('hello 13')\nline 14: print('hello 14')\nline 15: print('hello 15')\nline 16: print('hello 16')\nline 17: print('hello 17')\nline 18: print('hello 18')\nline 19: print('hello 19')\nline 20: print('hello 20')\nline 21: print('hello 21')\nline 22: print('hello 22')\nline 23: print('hello 23')\nline 24: print('hello 24')\nline 25: print('hello 25')\nline 26: print('hello 26')\nline 27: print('hello 27')\nline 28: print('hello 28')\nline 29: print('hello 29')\nline 30: print('hello 30')\nline 31: print('hello 31')\nline 32: print('hello 32')\nline 33: print('hello 33')\nline 34: print('hello 34')\nline 35: print('hello 35')\nline 36: print('hello 36')\nline 37: print('hello 37')\nline 38: print('hello 38')\nline 39: print('hello 39')\nline 40: print('hello 40')\n```\n\n| Column | Value |\n| --- | --- |\n| a | 1 |\n| b | 2 |"
+   },
+   {
+    "role": "tool",
+    "content": "",
+    "handoff": {
+     "id": "chat-2",
+     "title": "Weekly report draft",
+     "summary": "Drafted the report with three bullets."
+    }
    }
   ]
  },
@@ -39,6 +48,38 @@
    {
     "role": "assistant",
     "content": "Here is a first draft:\n\n- Shipped the export button\n- Fixed two layout bugs\n- Next: the settings search"
+   }
+  ]
+ },
+ {
+  "id": "chat-peer",
+  "title": "Photos session",
+  "createdAt": 1793335112333,
+  "connectionId": "conn-api",
+  "model": "example-model",
+  "peer": {
+   "pid": 4242,
+   "name": "Photos session"
+  },
+  "messages": [
+   {
+    "role": "user",
+    "content": "Run the audit again after the limit resets.",
+    "peer": {
+     "name": "Photos session",
+     "dir": "out",
+     "status": "sent",
+     "msgId": "m1"
+    }
+   },
+   {
+    "role": "assistant",
+    "content": "The audit restarted at 12:11 AM. 87 tasks are done, 94 left.",
+    "peer": {
+     "name": "Photos session",
+     "dir": "in",
+     "msgId": "m2"
+    }
    }
   ]
  }

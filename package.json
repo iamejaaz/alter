@@ -10,7 +10,7 @@
     "vite": "vite",
     "tauri": "tauri",
     "ui-harness": "vite --config scripts/ui-harness/vite.config.mjs",
-    "ui-harness:mine": "python3 scripts/ui-harness/export.py && vite --config scripts/ui-harness/vite.config.mjs"
+    "ui-harness:mine": "python3 scripts/ui-harness/export.py && ALTER_HARNESS=mine vite --config scripts/ui-harness/vite.config.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

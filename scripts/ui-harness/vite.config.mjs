@@ -5,10 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const read = (name) => {
-  const own = path.join(here, "data", name);
-  return fs.readFileSync(fs.existsSync(own) ? own : path.join(here, "sample", name), "utf8");
-};
+const source = process.env.ALTER_HARNESS === "mine" ? "data" : "sample";
+const read = (name) => fs.readFileSync(path.join(here, source, name), "utf8");
 
 export default defineConfig({
   root: path.resolve(here, "../.."),

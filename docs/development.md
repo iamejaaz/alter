@@ -82,7 +82,21 @@ npm run ui-harness         # example chats and settings from scripts/ui-harness/
 npm run ui-harness:mine    # your own chats and settings, API keys replaced (exported to scripts/ui-harness/data, git ignored)
 ```
 
-Open http://localhost:5174. Everything that renders from chats and settings works: the sidebar, messages, code blocks, the composer, Settings and its forms, dialogs and keyboard handling. Sending a message, streaming, and anything else that needs the backend does nothing. When a screen calls a command the stand-in doesn't know, it gets `null`; add an answer to `answers` in `mock.js` if the screen needs one. It runs in Chromium, so check WebKit-only behaviour (text selection painting, for example) in the real app.
+Open http://localhost:5174. Everything that renders from chats and settings works: the sidebar, messages, code blocks, the composer, Settings and its forms, dialogs and keyboard handling. The sample data also has a chat with a Claude Code session (peer messages, a scheduled message, auto reply) and a finished handoff.
+
+Sending a message on an API connection talks to a scripted model in `mock.js`. Type one of these to play a scenario through Alter's real code:
+
+| Message | What you see |
+| --- | --- |
+| `demo stream` | A long reply streamed slowly: the running state, Stop, code block, table |
+| `demo plan` | The plan banner updating, then a reply |
+| `demo ask` | A question card with options |
+| `demo risky` | A permission card for a risky command (Auto mode still asks) |
+| `demo tools` | Four tool steps, then a reply |
+| `demo error` | A provider outage (HTTP 502) |
+| `demo empty` | An empty model reply |
+
+Claude Code and Codex connections don't go through the scripted model. Editing code while a question or permission card is open hot reloads the page and drops the pending answer, so the turn hangs; reload and start again. When a screen calls a command the stand-in doesn't know, it gets `null`; add an answer to `answers` in `mock.js` if the screen needs one. It runs in Chromium, so check WebKit-only behaviour (text selection painting, for example) in the real app.
 
 Testing the `claude` CLI from a shell inside the Claude desktop app is misleading: that shell carries the desktop app's own auth variables. Use a clean environment, the way Alter launches it:
 
