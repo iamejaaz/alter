@@ -2834,7 +2834,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   </div>
                   ) : m.role === "user" ? (
                   <div key={i} className="group flex justify-end animate-fade-up">
-                    <div className="max-w-[80%]">
+                    <div className="max-w-[80%] [transform:translateZ(0)]">
                       {m.attachments && m.attachments.length > 0 && (
                         <div className="flex flex-wrap justify-end gap-2 mb-2">
                           {m.attachments.map((a) =>
@@ -2889,7 +2889,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     </div>
                   </div>
                 ) : (
-                  <div key={i} className="group animate-fade-up w-fit max-w-full" data-role="assistant">
+                  <div key={i} className="group animate-fade-up [transform:translateZ(0)]" data-role="assistant">
                     <div className="min-w-0">
                       {m.peer && <p className="mb-1 text-[11px] text-[var(--txt-faint)]">From {m.peer.name}</p>}
                       {m.peer && i === active.messages.length - 1 && (
@@ -2956,7 +2956,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
               {activeId &&
                 (queued[activeId] || []).map((q, k) => (
                   <div key={`q${k}`} className="flex justify-end animate-fade-up">
-                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap text-[var(--txt-dim)]">
+                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap text-[var(--txt-dim)] [transform:translateZ(0)]">
                       <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
                         Sending at the next step
                         <button
@@ -2979,7 +2979,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 .filter((x) => x.convId === activeId)
                 .map((item) => (
                   <div key={item.id} className="flex justify-end animate-fade-up">
-                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap text-[var(--txt-dim)]">
+                    <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-sm leading-[1.5] whitespace-pre-wrap text-[var(--txt-dim)] [transform:translateZ(0)]">
                       <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
                         {item.at <= Date.now() ? "Sends when this turn finishes" : `Sends ${whenLabel(item.at)}`}
                         {item.peer && <span className="normal-case tracking-normal">→ {item.peer.name}</span>}
