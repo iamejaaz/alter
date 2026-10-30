@@ -985,7 +985,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     className={`${field} mt-1 font-mono`}
                   />
                   <div className="mt-3 flex items-center gap-3">
-                    <p className="min-w-0 flex-1 text-[13px] text-[var(--txt-dim)]">
+                    <p className={`min-w-0 flex-1 text-[13px] ${!reviewMatch && !reviewWaiting && reviewNote ? "text-red-400" : "text-[var(--txt-dim)]"}`}>
                       {reviewMatch
                         ? `Connected as profile ${reviewMatch.profile}${reviewMatch.read_only ? ", read only" : ""}.`
                         : reviewWaiting
@@ -995,14 +995,22 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     <button
                       onClick={async () => {
                         setReviewNote(null);
+                        let host = "";
                         try {
-                          await invoke("fr_login_terminal", { site: reviewSite, name: new URL(reviewSite).hostname.split(".")[0] });
+                          host = new URL(reviewSite).hostname;
+                        } catch {
+                          setReviewNote("That site URL isn't valid. It should look like https://example.com.");
+                          return;
+                        }
+                        try {
+                          await invoke("fr_login_terminal", { site: reviewSite, name: host.split(".")[0] });
                           setReviewWaiting(true);
                         } catch (e) {
-                          setReviewNote(String(e));
+                          setReviewNote(String(e).replace(/^\w*Error:\s*/, ""));
                         }
                       }}
-                      className={action}
+                      disabled={reviewWaiting}
+                      className={`${action} disabled:opacity-60`}
                     >
                       {reviewMatch ? "Reconnect" : "Connect"}
                     </button>
