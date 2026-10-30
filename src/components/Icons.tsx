@@ -127,6 +127,13 @@ export const IconBlocks = () => (
   </svg>
 );
 
+export const IconSidebar = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" {...s} strokeWidth={1.8}>
+    <rect x="3" y="4" width="18" height="16" rx="3" />
+    <path d="M9 4v16" />
+  </svg>
+);
+
 export const IconGlobe = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4" {...s} strokeWidth={1.8}>
     <circle cx="12" cy="12" r="9" />

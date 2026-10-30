@@ -16,7 +16,7 @@ import ArtifactPanel, { Artifact as ArtifactType } from "./components/ArtifactPa
 import RunsPanel from "./components/RunsPanel";
 import ReviewPanel, { live as reviewLive } from "./components/ReviewPanel";
 import CommandPalette, { Command } from "./components/CommandPalette";
-import { Chevron, IconArrowUp, IconChevronRight, IconFolder, IconPaperclip, IconGlobe } from "./components/Icons";
+import { Chevron, IconArrowUp, IconChevronRight, IconFolder, IconPaperclip, IconGlobe, IconSidebar } from "./components/Icons";
 
 function extractArtifacts(content: string): ArtifactType[] {
   const arts: ArtifactType[] = [];
@@ -235,6 +235,12 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     setView("chat");
   };
   const [input, setInput] = useState("");
+  const [sidebarHidden, setSidebarHidden] = useState(() => localStorage.getItem("alter.sidebarHidden") === "1");
+  const toggleSidebar = () =>
+    setSidebarHidden((v) => {
+      localStorage.setItem("alter.sidebarHidden", v ? "0" : "1");
+      return !v;
+    });
   const [planOpen, setPlanOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [agents, setAgents] = useState<Record<string, AgentRun[]>>({});
@@ -671,6 +677,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
         e.preventDefault();
         setActiveId(null);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        toggleSidebar();
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
@@ -2507,6 +2517,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const paletteCommands: Command[] = [
     { id: "new", label: "New chat", hint: "⌘N", section: "Actions", run: () => openChat(null) },
     { id: "settings", label: "Open settings", section: "Actions", run: () => setShowSettings(true) },
+    { id: "sidebar", label: sidebarHidden ? "Show sidebar" : "Hide sidebar", hint: "⌘\\", section: "Actions", run: toggleSidebar },
     { id: "extension", label: "Browser extension", section: "Actions", run: () => setShowSettings(true, "extension") },
     { id: "routines", label: "Open routines", section: "Actions", run: () => setShowSettings(true, "routines") },
     { id: "skills", label: "Open skills", section: "Actions", run: () => setShowSettings(true, "skills") },
@@ -2565,7 +2576,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
 
   return (
     <div className="flex h-full bg-[var(--bg)] text-[var(--txt)]">
-      <Sidebar
+      {!sidebarHidden && <Sidebar
         conversations={conversations}
         activeId={view === "review" ? null : activeId}
         routines={routines}
@@ -2626,7 +2637,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           setView("review");
           setReviewSel(name);
         }}
-      />
+      />}
 
       <main
         className="relative flex-1 flex flex-col min-w-0"
@@ -2712,9 +2723,17 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         )}
         <header
           data-tauri-drag-region
-          className="flex items-center gap-2 h-12 px-5 shrink-0 overflow-hidden border-b border-[var(--bd-soft)]"
+          className={`flex items-center gap-2 h-12 pr-5 shrink-0 overflow-hidden border-b border-[var(--bd-soft)] ${sidebarHidden ? "pl-20" : "pl-3"}`}
         >
-          <span className="min-w-0 truncate text-sm font-medium text-[var(--txt)] pointer-events-none max-w-[40%]">
+          <button
+            onClick={toggleSidebar}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--txt-dim)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--txt)]"
+            title={`${sidebarHidden ? "Show" : "Hide"} sidebar (⌘\\)`}
+            aria-label={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
+          >
+            <IconSidebar />
+          </button>
+          <span className="min-w-0 truncate text-sm font-medium text-[var(--txt)] pointer-events-none">
             {active && active.messages.length > 0 ? active.title : ""}
           </span>
           {/* Working folder lives here (like Claude Code shows the cwd after the title). */}
