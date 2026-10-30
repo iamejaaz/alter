@@ -338,11 +338,28 @@ export async function executeTool(
 
 export function describeToolCall(name: string, argsJson: string): string {
   try {
-    if (name === "update_plan") return "Updated the plan";
-    const args = JSON.parse(argsJson) as { path?: string; query?: string; url?: string };
-    if (args.query) return `${name}("${args.query}")`;
-    if (args.url) return `${name}(${args.url})`;
-    return `${name}(${args.path ?? ""})`;
+    const a = JSON.parse(argsJson || "{}") as Record<string, string | undefined>;
+    const where = a.path && a.path !== "." ? a.path : "the folder";
+    const cut = (t = "", n = 80) => (t.length > n ? t.slice(0, n) + "…" : t);
+    switch (name) {
+      case "update_plan": return "Updated the plan";
+      case "ask_user": return "Asked you a question";
+      case "use_skill": return `Used the ${a.name ?? ""} skill`;
+      case "list_dir": return `Listed ${where}`;
+      case "list_tree": return `Looked through ${where}`;
+      case "search_files": return `Searched ${where} for "${cut(a.query ?? a.pattern)}"`;
+      case "web_search": return `Searched the web for "${cut(a.query)}"`;
+      case "fetch_url": return `Read ${cut(a.url)}`;
+      case "browser_open": return `Opened ${cut(a.url)}`;
+      case "browser_click": return `Clicked ${cut(a.text ?? a.selector)}`;
+      case "browser_type": return `Typed into ${cut(a.selector ?? "the page")}`;
+      case "run_command": return `Ran ${cut(a.command)}`;
+      case "which_command": return `Checked for ${a.name ?? a.command ?? "a program"}`;
+      case "read_file": return `Read ${a.path ?? ""}`;
+      case "edit_file": return `Edited ${a.path ?? ""}`;
+      case "write_file": return `Wrote ${a.path ?? ""}`;
+      default: return a.query ? `${name}("${cut(a.query)}")` : a.url ? `${name}(${a.url})` : `${name}(${a.path ?? ""})`;
+    }
   } catch {
     return name;
   }
