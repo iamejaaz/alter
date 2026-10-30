@@ -8,6 +8,7 @@ pub static BUSY: AtomicBool = AtomicBool::new(false);
 static READY: Mutex<Option<(String, PathBuf)>> = Mutex::new(None);
 static BUILDING: AtomicBool = AtomicBool::new(false);
 static SWAPPING: AtomicBool = AtomicBool::new(false);
+static WANTED: AtomicBool = AtomicBool::new(false);
 
 const REPO: &str = "https://github.com/iamejaaz/alter.git";
 
@@ -52,6 +53,9 @@ pub fn busy(app: &AppHandle) -> bool {
 
 fn check(app: &AppHandle) {
     if BUILDING.load(Ordering::SeqCst) {
+        if WANTED.load(Ordering::SeqCst) {
+            status(app, "Building the new version of Alter. It installs as soon as the build is done.");
+        }
         return;
     }
     let root = crate::bridge::repo_root();
@@ -64,6 +68,9 @@ fn check(app: &AppHandle) {
     let Some(remote) = git(&root, &["rev-parse", "FETCH_HEAD"]) else { return };
     let installed = installed_commit();
     if remote == installed {
+        if WANTED.swap(false, Ordering::SeqCst) {
+            status(app, &format!("Alter is up to date ({}).", &remote[..7.min(remote.len())]));
+        }
         return;
     }
     if let Some(files) = git(&root, &["diff", "--name-only", &installed, &remote]) {
@@ -104,7 +111,11 @@ fn check(app: &AppHandle) {
     let built = root.join("src-tauri/target/release/bundle/macos/Alter.app");
     if ok && built.is_dir() {
         *READY.lock().unwrap_or_else(|e| e.into_inner()) = Some((head, built));
-        status(app, "A new version of Alter is ready. It installs when you quit Alter or close its window. Settings, Update installs it now.");
+        if WANTED.load(Ordering::SeqCst) {
+            status(app, "The new version is built. Alter restarts into it as soon as no chat is running.");
+        } else {
+            status(app, "A new version of Alter is ready. It installs when you quit Alter or close its window. Settings, Update installs it now.");
+        }
     } else {
         status(app, "Building the update failed. Details are in update.log in Alter's data folder.");
     }
@@ -175,7 +186,7 @@ pub fn start(app: AppHandle) {
         std::thread::sleep(Duration::from_secs(20));
         let ready = READY.lock().unwrap_or_else(|e| e.into_inner()).clone();
         if let Some((head, path)) = ready {
-            if !busy(&app) && !window_shown(&app) {
+            if !busy(&app) && (!window_shown(&app) || WANTED.load(Ordering::SeqCst)) {
                 swap(&app, &path, &head);
             }
         }
@@ -188,7 +199,11 @@ pub fn update_now(app: AppHandle, _s: State<'_, crate::bridge::BridgeState>) -> 
         return "Auto update works in the installed app, not in npm run dev.".into();
     }
     let ready = READY.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    WANTED.store(true, Ordering::SeqCst);
     if let Some((head, path)) = ready {
+        if busy(&app) {
+            return "The new version is ready. Alter restarts into it as soon as no chat is running.".into();
+        }
         swap(&app, &path, &head);
         return "Restarting into the new version.".into();
     }

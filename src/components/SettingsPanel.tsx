@@ -287,7 +287,7 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     try {
       const installed = await invoke<string>("update_now");
       if (!installed.startsWith("Auto update works")) {
-        setUpdateNote({ ok: true, text: `${installed} The installed app also checks every 10 minutes and restarts into a new version only when no chat is running.` });
+        setUpdateNote({ ok: true, text: installed === "Checking for a new version." ? "Checking for a new version. If there is one, Alter builds it (a few minutes) and restarts into it when no chat is running." : installed });
         return;
       }
       const u = await invoke<{ ok: boolean; error?: string; updated?: boolean; head?: string; commits?: string[]; backend?: boolean; extension?: boolean; skills?: boolean; switchedFrom?: string }>("app_update");
@@ -524,8 +524,8 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     </>
                   }
                   control={
-                    <button onClick={() => void runUpdate()} disabled={updating} className={action}>
-                      {updating ? "Updating…" : "Update"}
+                    <button onClick={() => void runUpdate()} disabled={updating} className={`${action} disabled:opacity-60`}>
+                      {updating ? "Checking…" : "Update"}
                     </button>
                   }
                 />
