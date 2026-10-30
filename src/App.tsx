@@ -815,7 +815,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     if (c && isClaudeCodeUrl(c.baseUrl)) return c.apiKey ? "Claude Code (API)" : "Claude Code";
     if (c && isCodexUrl(c.baseUrl)) return "Codex";
     const model = s.model.includes("/") ? s.model.split("/").pop() : s.model;
-    return c && c.name !== "Default" ? `${c.name} · ${model}` : model || "model";
+    return c && c.name !== "Default" && c.name !== s.model && !c.name.endsWith(`/${model}`) ? `${c.name} · ${model}` : model || "model";
   };
   // Turn raw provider errors into plain-English guidance.
   const errText = (e: unknown) => humanizeError(e instanceof Error ? e.message : String(e).replace(/^Error:\s*/, ""));
