@@ -46,6 +46,7 @@ The agent browser is started only when a chat's MCP config includes it (`needs_b
 | --- | --- |
 | Chats | One file per chat in `~/Library/Application Support/com.ejaaz.alter/chats/<id>.json`, plus `_order.json`. Written by `save_conversations` (only the chats that changed). |
 | Settings, connections, projects, routines, skills, memories | WebKit local storage, keys starting with `alter.` (`alter.settings`, ...). |
+| Working folder | Each chat's own `folder`. It is the cwd for its tools, Claude Code and Codex, and the header chip shows it. `alter.folder` is only the default for the next new chat, and follows the last chat opened. |
 | Bridge token, update log, installed version, tracked processes | `bridge.token`, `update.log`, `installed-commit`, `children.txt` in the same app data folder. |
 | Agent browser profile and media | `browser-profile/` and `media/` in the app data folder. |
 
