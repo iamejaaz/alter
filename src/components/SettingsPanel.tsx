@@ -414,7 +414,9 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const [autostartError, setAutostartError] = useState<string | null>(null);
   const toggleAutostart = async () => {
+    setAutostartError(null);
     try {
       if (autostart) {
         await disable();
@@ -423,8 +425,8 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
         await enable();
         setAutostart(true);
       }
-    } catch {
-      setAutostart(null);
+    } catch (e) {
+      setAutostartError(`Couldn't change this: ${String(e).replace(/^\w*Error:\s*/, "")}`);
     }
   };
 
@@ -558,7 +560,12 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                 {autostart !== null && (
                   <Row
                     title="Launch at login"
-                    desc="Start Alter in the background so routines and scheduled messages keep running."
+                    desc={
+                      <>
+                        Start Alter in the background so routines and scheduled messages keep running.
+                        {autostartError && <span className="mt-1 block text-red-400">{autostartError}</span>}
+                      </>
+                    }
                     control={<Switch on={!!autostart} onChange={() => void toggleAutostart()} />}
                   />
                 )}
