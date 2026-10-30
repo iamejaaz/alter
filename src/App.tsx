@@ -2094,7 +2094,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       cmd: "/clear",
       desc: "Delete this conversation",
       run: async () => {
-        if (active && (await confirmDialog(`Delete "${active.title}"?`))) deleteConversation(active.id);
+        if (active && (await confirmDialog(`Delete "${active.title}"? This can't be undone.`))) deleteConversation(active.id);
       },
     },
     { cmd: "/review", desc: "Ask the PR review server to review a PR (number or link)", run: () => setInput("/review ") },

@@ -42,7 +42,7 @@ export default function AttachmentImage({
       className={`${className} flex items-center justify-center bg-[var(--panel)] text-[10px] text-[var(--txt-faint)] text-center px-1 cursor-default`}
       title={a.name}
     >
-      {failed ? "image unavailable" : "…"}
+      {failed ? "Image unavailable" : "…"}
     </div>
   );
 }
