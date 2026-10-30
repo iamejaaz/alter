@@ -689,6 +689,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const liveDraftRef = useRef({ input, attachments, quote });
   liveDraftRef.current = { input, attachments, quote };
   const shownChatRef = useRef(activeId);
+  const settledRef = useRef(active?.messages.length ?? 0);
+  const settledFor = useRef(activeId);
+  if (settledFor.current !== activeId) {
+    settledFor.current = activeId;
+    settledRef.current = active?.messages.length ?? 0;
+  }
+  const fadeIn = (i: number) => (i >= settledRef.current ? "animate-fade-up" : "");
   useLayoutEffect(() => {
     const prev = shownChatRef.current ?? "new";
     const next = activeId ?? "new";
@@ -2852,7 +2859,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   <ToolSteps key={item.key} lines={item.lines} live />
                 ) : ((m, i) =>
                   m.handoff ? (
-                  <div key={i} className="flex justify-center animate-fade-up">
+                  <div key={i} className={`flex justify-center ${fadeIn(i)}`}>
                     <button
                       onClick={() => openChat(m.handoff!.id)}
                       className="max-w-[85%] rounded-lg border border-[var(--bd-soft)] bg-[var(--panel)] px-3 py-2 text-left text-[12px] leading-[1.5] text-[var(--txt-dim)] transition-colors hover:bg-[var(--panel-2)]"
@@ -2862,7 +2869,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     </button>
                   </div>
                   ) : m.role === "user" ? (
-                  <div key={i} className="group flex justify-end animate-fade-up">
+                  <div key={i} className={`group flex justify-end ${fadeIn(i)}`}>
                     <div className="max-w-[80%] [transform:translateZ(0)]">
                       {m.attachments && m.attachments.length > 0 && (
                         <div className="flex flex-wrap justify-end gap-2 mb-2">
@@ -2918,7 +2925,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     </div>
                   </div>
                 ) : (
-                  <div key={i} className="group animate-fade-up [transform:translateZ(0)]" data-role="assistant">
+                  <div key={i} className={`group [transform:translateZ(0)] ${fadeIn(i)}`} data-role="assistant">
                     <div className="min-w-0">
                       {m.peer && <p className="mb-1 text-[11px] text-[var(--txt-faint)]">From {m.peer.name}</p>}
                       {m.peer && i === active.messages.length - 1 && (
