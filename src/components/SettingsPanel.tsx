@@ -22,8 +22,8 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const name = kind === "claude" ? "Claude Code" : "Codex";
+  const signingRef = useRef(false);
   const load = async () => {
-    setSigning(false);
     const s = await cliStatus(kind).catch(() => null);
     setStatus(s);
     if (kind === "codex" && s?.installed) {
@@ -35,7 +35,9 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   };
   useEffect(() => {
     void load();
-    const onFocus = () => void load();
+    const onFocus = () => {
+      if (!signingRef.current) void load();
+    };
     window.addEventListener("focus", onFocus);
     let un: (() => void) | undefined;
     void listen<{ kind: string; url: string }>("alter://cli-login-url", (e) => {
@@ -48,6 +50,7 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
   }, [kind]);
   const signIn = async () => {
     setSigning(true);
+    signingRef.current = true;
     setProblem(null);
     setLoginUrl(null);
     try {
@@ -57,6 +60,7 @@ function LocalAgentCard({ kind }: { kind: "claude" | "codex" }) {
       setProblem(e instanceof Error ? e.message : String(e));
     } finally {
       setSigning(false);
+      signingRef.current = false;
     }
   };
   const [installing, setInstalling] = useState<string | null>(null);
