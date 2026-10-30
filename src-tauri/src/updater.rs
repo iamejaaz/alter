@@ -39,8 +39,17 @@ fn log_path(app: &AppHandle) -> Option<PathBuf> {
     Some(app.path().app_data_dir().ok()?.join("update.log"))
 }
 
-fn status(app: &AppHandle, text: &str) {
-    let _ = app.emit("alter://update", serde_json::json!({ "text": text }));
+static LAST: Mutex<(&'static str, String)> = Mutex::new(("idle", String::new()));
+
+fn status(app: &AppHandle, phase: &'static str, text: &str) {
+    *LAST.lock().unwrap_or_else(|e| e.into_inner()) = (phase, text.to_string());
+    let _ = app.emit("alter://update", serde_json::json!({ "text": text, "phase": phase }));
+}
+
+#[tauri::command]
+pub fn update_status() -> serde_json::Value {
+    let (phase, text) = LAST.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    serde_json::json!({ "phase": phase, "text": text })
 }
 
 pub fn busy(app: &AppHandle) -> bool {
@@ -54,7 +63,7 @@ pub fn busy(app: &AppHandle) -> bool {
 fn check(app: &AppHandle) {
     if BUILDING.load(Ordering::SeqCst) {
         if WANTED.load(Ordering::SeqCst) {
-            status(app, "Building the new version of Alter. It installs as soon as the build is done.");
+            status(app, "building", "Building the new version of Alter. It installs as soon as the build is done.");
         }
         return;
     }
@@ -69,7 +78,7 @@ fn check(app: &AppHandle) {
     let installed = installed_commit();
     if remote == installed {
         if WANTED.swap(false, Ordering::SeqCst) {
-            status(app, &format!("Alter is up to date ({}).", &remote[..7.min(remote.len())]));
+            status(app, "idle", &format!("Alter is up to date ({}).", &remote[..7.min(remote.len())]));
         }
         return;
     }
@@ -80,6 +89,9 @@ fn check(app: &AppHandle) {
                 if let Some(p) = installed_path() {
                     let _ = std::fs::write(p, &remote);
                 }
+                if WANTED.swap(false, Ordering::SeqCst) {
+                    status(app, "idle", "Skills updated. Nothing else changed, so Alter didn't need to restart.");
+                }
             }
             return;
         }
@@ -89,12 +101,12 @@ fn check(app: &AppHandle) {
     }
     let up = crate::bridge::self_update();
     if up["ok"].as_bool() != Some(true) {
-        status(app, &format!("Update skipped: {}", up["error"].as_str().unwrap_or("the local copy can't be fast forwarded")));
+        status(app, "idle", &format!("Update skipped: {}", up["error"].as_str().unwrap_or("the local copy can't be fast forwarded")));
         return;
     }
     let Some(head) = git(&root, &["rev-parse", "HEAD"]) else { return };
     BUILDING.store(true, Ordering::SeqCst);
-    status(app, "Building the new version of Alter in the background…");
+    status(app, "building", "Building the new version of Alter in the background…");
     let log = log_path(app).and_then(|p| std::fs::File::create(p).ok());
     let mut cmd = std::process::Command::new("/bin/zsh");
     cmd.arg("-lc")
@@ -112,12 +124,12 @@ fn check(app: &AppHandle) {
     if ok && built.is_dir() {
         *READY.lock().unwrap_or_else(|e| e.into_inner()) = Some((head, built));
         if WANTED.load(Ordering::SeqCst) {
-            status(app, "The new version is built. Alter restarts into it as soon as no chat is running.");
+            status(app, "ready", "The new version is built. Alter restarts into it as soon as no chat is running.");
         } else {
-            status(app, "A new version of Alter is ready. It installs when you quit Alter or close its window. Settings, Update installs it now.");
+            status(app, "idle", "A new version of Alter is ready. It installs when you quit Alter or close its window. Settings, Update installs it now.");
         }
     } else {
-        status(app, "Building the update failed. Details are in update.log in Alter's data folder.");
+        status(app, "idle", "Building the update failed. Details are in update.log in Alter's data folder.");
     }
 }
 
@@ -202,12 +214,21 @@ pub fn update_now(app: AppHandle, _s: State<'_, crate::bridge::BridgeState>) -> 
     WANTED.store(true, Ordering::SeqCst);
     if let Some((head, path)) = ready {
         if busy(&app) {
+            status(&app, "ready", "The new version is ready. Alter restarts into it as soon as no chat is running.");
             return "The new version is ready. Alter restarts into it as soon as no chat is running.".into();
         }
+        status(&app, "ready", "Restarting into the new version…");
         swap(&app, &path, &head);
         return "Restarting into the new version.".into();
     }
+    status(&app, "checking", "Checking for a new version…");
     let a = app.clone();
-    std::thread::spawn(move || check(&a));
+    std::thread::spawn(move || {
+        check(&a);
+        if LAST.lock().unwrap_or_else(|e| e.into_inner()).0 == "checking" {
+            WANTED.store(false, Ordering::SeqCst);
+            status(&a, "idle", "Couldn't check for a new version. Check your connection and try again.");
+        }
+    });
     "Checking for a new version.".into()
 }

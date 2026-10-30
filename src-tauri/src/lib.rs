@@ -2483,6 +2483,7 @@ pub fn run() {
             review_runs,
             keep_awake,
             updater::update_now,
+            updater::update_status,
             load_conversations,
             save_conversations,
             review_request,

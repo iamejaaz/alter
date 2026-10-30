@@ -278,18 +278,31 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
   const [version, setVersion] = useState<{ root: string; head: string } | null>(null);
   const [updating, setUpdating] = useState(false);
   const [updateNote, setUpdateNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [updatePhase, setUpdatePhase] = useState("idle");
   useEffect(() => {
     void invoke<{ root: string; head: string }>("app_version_info").then(setVersion).catch(() => {});
+    const apply = (u: { phase?: string; text: string }) => {
+      if (!u.phase) return;
+      setUpdatePhase(u.phase);
+      if (u.text) setUpdateNote({ ok: !/failed|couldn't|skipped/i.test(u.text), text: u.text });
+    };
+    void invoke<{ phase: string; text: string }>("update_status").then((u) => u.phase !== "idle" && apply(u)).catch(() => {});
+    let un: (() => void) | undefined;
+    let gone = false;
+    void listen<{ phase?: string; text: string }>("alter://update", (e) => apply(e.payload)).then((u) => (gone ? u() : (un = u)));
+    return () => {
+      gone = true;
+      un?.();
+    };
   }, []);
+  const updateBusy = updating || ["checking", "building", "ready"].includes(updatePhase);
+  const updateLabel = updatePhase === "building" ? "Building…" : updatePhase === "ready" ? "Restarting…" : "Checking…";
   const runUpdate = async () => {
     setUpdating(true);
     setUpdateNote(null);
     try {
       const installed = await invoke<string>("update_now");
-      if (!installed.startsWith("Auto update works")) {
-        setUpdateNote({ ok: true, text: installed === "Checking for a new version." ? "Checking for a new version. If there is one, Alter builds it (a few minutes) and restarts into it when no chat is running." : installed });
-        return;
-      }
+      if (!installed.startsWith("Auto update works")) return;
       const u = await invoke<{ ok: boolean; error?: string; updated?: boolean; head?: string; commits?: string[]; backend?: boolean; extension?: boolean; skills?: boolean; switchedFrom?: string }>("app_update");
       const moved = u.switchedFrom ? ` Switched from the branch ${u.switchedFrom} to master, which is kept as it was.` : "";
       if (!u.ok) setUpdateNote({ ok: false, text: u.error ?? "Update failed." });
@@ -524,8 +537,8 @@ export default function SettingsPanel({ settings, memories, projects, onProjects
                     </>
                   }
                   control={
-                    <button onClick={() => void runUpdate()} disabled={updating} className={`${action} disabled:opacity-60`}>
-                      {updating ? "Checking…" : "Update"}
+                    <button onClick={() => void runUpdate()} disabled={updateBusy} className={`${action} disabled:opacity-60`}>
+                      {updateBusy ? updateLabel : "Update"}
                     </button>
                   }
                 />
