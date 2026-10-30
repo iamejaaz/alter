@@ -2955,9 +2955,13 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                         <div className="mt-1.5 flex items-center gap-3 select-none">
                           <button
                             onClick={() => {
-                              void navigator.clipboard.writeText(m.content);
-                              setCopiedIdx(i);
-                              setTimeout(() => setCopiedIdx((cur) => (cur === i ? null : cur)), 1500);
+                              navigator.clipboard.writeText(m.content).then(
+                                () => {
+                                  setCopiedIdx(i);
+                                  setTimeout(() => setCopiedIdx((cur) => (cur === i ? null : cur)), 1500);
+                                },
+                                () => setInfo("Couldn't copy to the clipboard."),
+                              );
                             }}
                             className={`text-[11px] text-[var(--txt-faint)] hover:text-[var(--txt)] group-hover:opacity-100 focus-visible:opacity-100 transition-opacity ${copiedIdx === i ? "opacity-100" : "opacity-0"}`}
                           >
