@@ -1644,7 +1644,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       setConversations((prev) => [conv, ...prev]);
       setActiveId(cid);
     }
-    const item: Scheduled = { id: newId(), convId: cid, text, at };
+    const pairedPeer = conversations.find((c) => c.id === cid)?.peer;
+    const item: Scheduled = { id: newId(), convId: cid, text, at, peer: pairedPeer ? { pid: pairedPeer.pid, name: pairedPeer.name } : undefined };
     setScheduled((prev) => [...prev, item].sort((a, b) => a.at - b.at));
     setInput("");
     setQuote(null);
@@ -1655,7 +1656,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const sendScheduledNow = (item: Scheduled) => {
     firedRef.current.add(item.id);
     setScheduled((prev) => prev.filter((x) => x.id !== item.id));
-    const peer = conversations.find((c) => c.id === item.convId)?.peer;
+    const peer = item.peer ?? conversations.find((c) => c.id === item.convId)?.peer;
     if (peer) return void sendToPeer(item.convId, peer, item.text);
     if (streamingIds.includes(item.convId)) {
       setQueued((q) => ({ ...q, [item.convId]: [...(q[item.convId] || []), item.text] }));
@@ -1680,7 +1681,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
     for (const item of picked) {
       const conv = conversations.find((c) => c.id === item.convId);
       if (!conv) continue;
-      if (conv.peer) void sendToPeer(conv.id, conv.peer, item.text);
+      const peer = item.peer ?? conv.peer;
+      if (peer) void sendToPeer(conv.id, peer, item.text);
       else void send({ text: item.text, targetConvId: item.convId });
     }
   };
@@ -2982,6 +2984,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--bd)] px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-[var(--txt-dim)]">
                       <span className="mb-0.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-[var(--txt-faint)]">
                         {item.at <= Date.now() ? "Sends when this turn finishes" : `Sends ${whenLabel(item.at)}`}
+                        {item.peer && <span className="normal-case tracking-normal">→ {item.peer.name}</span>}
                         <span className="flex items-center gap-2.5 normal-case tracking-normal">
                           <button type="button" onClick={() => sendScheduledNow(item)} className="hover:text-[var(--txt)] transition-colors">
                             Send now

@@ -92,6 +92,7 @@ export interface Scheduled {
   convId: string;
   text: string;
   at: number;
+  peer?: { pid: number; name: string };
 }
 
 export function whenLabel(at: number): string {
