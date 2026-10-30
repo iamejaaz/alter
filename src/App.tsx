@@ -263,6 +263,8 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [asks, setAsks] = useState<Record<string, ToolAsk[]>>({});
   const [streamingIds, setStreamingIds] = useState<string[]>([]); // conversations currently generating
+  const [nextHints, setNextHints] = useState<Record<string, string>>({});
+  const wasStreaming = useRef<string[]>([]);
   const [runsRoutineId, setRunsRoutineId] = useState<string | null>(null);
   const [reviewRuns, setReviewRuns] = useState<ReviewRun[]>([]);
   const [reviewErr, setReviewErr] = useState<string | null>(null);
@@ -767,6 +769,47 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
 
   // Generate a concise chat title from the first message (like Claude Code does),
   // instead of using the raw first 40 characters.
+  const suggestNext = async (cid: string) => {
+    const conv = convsRef.current.find((c) => c.id === cid);
+    if (!conv || conv.peer || conv.routineId) return;
+    const visible = conv.messages.filter((m) => !m.hidden && (m.role === "user" || m.role === "assistant") && m.content);
+    const last = visible[visible.length - 1];
+    if (!last || last.role !== "assistant" || last.failed) return;
+    const lastUser = [...visible].reverse().find((m) => m.role === "user");
+    const all = settings.connections ?? [];
+    const usable = (c?: NonNullable<Settings["connections"]>[number]) => !!c && !isCodexUrl(c.baseUrl) && (isClaudeCodeUrl(c.baseUrl) || !!c.apiKey);
+    const own = all.find((c) => c.id === (conv.connectionId ?? settings.activeConnectionId));
+    const conn = usable(own) ? own! : all.find((c) => isClaudeCodeUrl(c.baseUrl) && !c.apiKey) ?? all.find(usable);
+    if (!conn) return;
+    const claude = isClaudeCodeUrl(conn.baseUrl);
+    try {
+      const out = await invoke<string>("complete_once", {
+        baseUrl: conn.baseUrl,
+        apiKey: conn.apiKey,
+        model: claude ? "haiku" : conn === own ? conv.model ?? conn.model : conn.model,
+        system: "You decide whether to suggest the user's next message in a chat with an AI assistant. Most of the time the answer is NONE. Suggest only when the assistant's reply asks the user a question, offers a choice or a follow-up it can do (for example 'Should I build it?'), or leaves one obvious next action. Then reply with ONLY that message: one short line, under 12 words, written as the user would type it, in the same language and tone. Otherwise reply exactly NONE.",
+        prompt: `User said:\n${(lastUser?.content ?? "").slice(-1500)}\n\nAssistant replied:\n${last.content.slice(-2500)}`,
+      });
+      const hint = out
+        .replace(/<think>[\s\S]*?<\/think>/gi, "")
+        .split("\n")
+        .map((x) => x.trim())
+        .find(Boolean)
+        ?.replace(/^["'“]|["'”]$/g, "")
+        .slice(0, 120);
+      if (hint && !/^none\.?$/i.test(hint)) setNextHints((h) => ({ ...h, [cid]: hint }));
+    } catch {
+      /* a suggestion is optional */
+    }
+  };
+  useEffect(() => {
+    const ended = wasStreaming.current.filter((id) => !streamingIds.includes(id));
+    wasStreaming.current = streamingIds;
+    for (const id of ended) void suggestNext(id);
+    for (const id of streamingIds) if (nextHints[id]) setNextHints((h) => ({ ...h, [id]: "" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamingIds]);
+
   const generateTitle = async (cid: string, firstMessage: string, connectionId?: string) => {
     try {
       // Resolve the chat's OWN connection (per-chat model), not the global default.
@@ -2531,20 +2574,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       void autoReply(c);
     }
   }, [conversations, streamingIds]);
-  // Ghost-text autocomplete: complete from a recent message that starts with the current input.
-  const ghost = (() => {
-    const val = input;
-    if (val.trim().length < 2 || val.includes("\n") || val.startsWith("/")) return "";
-    const lower = val.toLowerCase();
-    for (const c of conversations) {
-      for (const m of c.messages) {
-        if (m.role === "user" && m.content.length > val.length && m.content.toLowerCase().startsWith(lower)) {
-          return m.content.slice(val.length);
-        }
-      }
-    }
-    return "";
-  })();
+  const nextHint = active && !input && !activeStreaming && !dictating ? nextHints[active.id] ?? "" : "";
   const showSlash = input.startsWith("/") && !input.includes(" ") && !input.includes("\n");
   const slashMatches = showSlash
     ? slashCommands.filter((c) => c.cmd.startsWith(input.toLowerCase()))
@@ -3493,7 +3523,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                 </div>
               )}
               <div className="relative">
-                {(dictating || ghost) && (
+                {(dictating || nextHint) && (
                   <div
                     ref={overlayRef}
                     aria-hidden
@@ -3506,7 +3536,10 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                         <span className="ml-px inline-block h-[1.15em] w-px animate-pulse bg-[var(--txt)] align-text-bottom" />
                       </>
                     ) : (
-                      <span className="text-[var(--txt-faint)]">{ghost}</span>
+                      <span className="text-[var(--txt-faint)]">
+                        {nextHint}
+                        <span className="ml-2 rounded border border-[var(--bd)] px-1 text-[10px]">Tab</span>
+                      </span>
                     )}
                   </div>
                 )}
@@ -3538,9 +3571,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                       return;
                     }
                   }
-                  if (ghost && e.key === "Tab" && slashMatches.length === 0) {
+                  if (nextHint && (e.key === "Tab" || e.key === "ArrowRight")) {
                     e.preventDefault();
-                    setInput((v) => v + ghost);
+                    setInput(nextHint);
                     return;
                   }
                   if (slashMatches.length > 0) {
@@ -3576,7 +3609,9 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                   }
                 }}
                 rows={1}
-                placeholder={dictating ? "" : active?.peer ? `Message ${active.peer.name}` : "Type / for commands, @ for a Claude Code session"}
+                autoCorrect="off"
+                autoCapitalize="off"
+                placeholder={dictating || nextHint ? "" : active?.peer ? `Message ${active.peer.name}` : "Type / for commands, @ for a Claude Code session"}
                 className="relative w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[13px] leading-[1.5] focus:outline-none placeholder:text-[var(--txt-faint)]"
               />
               </div>
