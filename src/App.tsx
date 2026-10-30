@@ -1293,7 +1293,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       let nudges = 0;
       let sinceChange = 0;
       let stepCount = 0;
-      let hinted = false;
       const seen = new Map<string, { step: number; output: string }>();
       let lastFinish: string | undefined;
       let lastRaw = "";
@@ -1487,10 +1486,6 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
           sinceChange = changed ? 0 : sinceChange + 1;
           if (changed) seen.clear();
           else if (!before) seen.set(sig, { step: stepCount, output });
-          if (!hinted && stepCount >= 30 && !isLocalAgentUrl(activeSettings.baseUrl) && (settings.connections ?? []).some((c) => isClaudeCodeUrl(c.baseUrl))) {
-            hinted = true;
-            setConvInfo(convId, `This is a long task for ${connLabel(activeSettings)}. Claude Code handles long bench work much better: pick it in the model menu below the message box for the next message.`);
-          }
         }
         // Keep the real calls + outputs on the step message so later turns (and a
         // turn after an interrupt) know what the tools returned, not just their labels.
