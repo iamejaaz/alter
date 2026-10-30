@@ -1329,7 +1329,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
         }));
       } catch (e: unknown) {
         const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
-        if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
+        if (!controller.signal.aborted && !/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
           setConvError(convId, humanizeError(msg));
           markFailed(convId, humanizeError(msg));
         }
@@ -1647,7 +1647,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
       }
     } catch (e: unknown) {
       const msg = typeof e === "string" ? e : (e as Error)?.message ?? String(e);
-      if (!/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
+      if (!controller.signal.aborted && !/abort/i.test(msg) && (e as Error)?.name !== "AbortError") {
         setError(humanizeError(msg));
         markFailed(convId, humanizeError(msg));
       }
