@@ -41,7 +41,7 @@ A chat keeps running when you switch to another chat or hide the window.
 
 ## Long runs
 
-A turn has no step or time limit, for Claude Code, Codex and HTTP models alike. It runs until the model is done or you press Stop. For HTTP models Alter also:
+A turn has no step or time limit, for Claude Code, Codex and HTTP models alike. It runs until the model is done or you press Stop. Long HTTP model runs may take many tool steps, but they are supported; the UI does not require switching to Claude Code. For HTTP models Alter also:
 
 - trims the output of older tool steps (keeps the last 8 in full) when the turn's context passes about 60% of the model's window, so a run that lasts hours does not overflow
 - retries a request that hits a rate limit or a provider hiccup up to 4 times (2s, 5s, 15s, 30s) before giving up

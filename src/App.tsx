@@ -2890,7 +2890,7 @@ Work on pull request ${pr.repo}#${pr.number} (branch \`${pr.branch}\`, ${pr.url}
                     </div>
                   </div>
                 ) : (
-                  <div key={i} className="group animate-fade-up" data-role="assistant">
+                  <div key={i} className="group animate-fade-up w-fit max-w-full" data-role="assistant">
                     <div className="min-w-0">
                       {m.peer && <p className="mb-1 text-[11px] text-[var(--txt-faint)]">From {m.peer.name}</p>}
                       {m.peer && i === active.messages.length - 1 && (
